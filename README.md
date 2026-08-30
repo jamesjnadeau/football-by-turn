@@ -44,9 +44,10 @@ hand the defense back over.
   green circle appears on the spot he will actually be standing when the whistle
   blows, and a longer drag still means a harder run. Half a second does not buy
   much ground from a standing start — about two yards — so drag past what he can
-  cover and the circle gives way to the old green arrow, which means "full speed
-  that way, and you won't get all the way there this turn". Either mark stays
-  visible until you change it or run the turn.
+  cover and the old green arrow appears *alongside* the circle: the circle is
+  still the truth about where he ends up this turn, and the arrow says he is
+  running full speed that way and is not done when the whistle goes. Either mark
+  stays visible until you change it or run the turn.
 - **Drag a player onto one of theirs** to put him on that man. The circle gives
   way to a dotted line running to the man he has taken, and a green disc appears
   under that man with just its rim showing. From then on he does not run at a

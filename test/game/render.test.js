@@ -81,6 +81,19 @@ test('a plan that knows where it lands renders as a filled circle there', () => 
   assert.ok(svg.includes(`r="${num(rb.radius)}"`), 'drawn at his own size');
 });
 
+test('a plan he cannot finish draws the direction AND where he does get to', () => {
+  const s = createGame({ seed: 1 });
+  const rb = getPlayer(s, 'o-rb');
+  const target = { x: rb.pos.x, y: rb.pos.y + 7.75 };
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 1, target, true);
+  const svg = renderPlans(s);
+  assert.ok(svg.includes('class="plan-dest"'), 'the circle he reaches this turn');
+  assert.ok(svg.includes(`cx="${num(target.x)}" cy="${num(target.y)}"`), 'at the landing spot');
+  assert.ok(svg.includes('class="plan-mv"'), 'and the arrow, still headed on');
+  assert.ok(svg.includes(`L ${num(rb.pos.x)} ${num(rb.pos.y + MAX_ARROW_UNITS)}`), 'at full length');
+  assert.equal((svg.match(/data-for="/g) || []).length, 1, 'one plan, one group');
+});
+
 test('the destination circle is a bare mark, so the preview and the plan match', () => {
   assert.equal(
     destinationMark({ x: 10, y: 20 }, 2.5),

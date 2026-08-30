@@ -7,14 +7,14 @@ import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
-  arrowMark, destinationMark, coverMark, passArrowMark, passArrowTip, renderMessage,
+  planMark, coverMark, passArrowMark, passArrowTip, renderMessage,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import {
-  TURN_SECONDS, MAX_ARROW_UNITS, PENALTY_YARDS, PICK_SLOP_UNITS,
+  TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS,
 } from '../lib/game/constants.js';
 import { attachInput } from './input.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
@@ -120,22 +120,9 @@ function hitTest(p) {
 }
 
 /**
- * The mark for a run drag: the circle when the spot is reachable this turn, the
- * old arrow when it is not. The live preview and the committed plan both come
- * through here so a drag never changes shape at the moment it is released.
- */
-function runMark(player, plan) {
-  return plan.target
-    ? destinationMark(plan.target, player.radius)
-    : arrowMark(player.pos, {
-      x: player.pos.x + plan.dir.x * plan.throttle * MAX_ARROW_UNITS,
-      y: player.pos.y + plan.dir.y * plan.throttle * MAX_ARROW_UNITS,
-    });
-}
-
-/**
  * What a run drag should draw, given where the pointer is. Dragging onto one of
- * their players is a cover order; anything else is a destination or an arrow.
+ * their players is a cover order; anything else is a destination, plus an arrow
+ * when the drag went further than the turn reaches.
  * The live preview and the committed plan both ask this, so the picture never
  * changes shape at the moment the finger comes up.
  */
@@ -143,7 +130,7 @@ function runOrCoverMark(player, travel, point) {
   const opp = opponentAt(state, point, player.team);
   return opp
     ? coverMark(player, getPlayer(state, opp))
-    : runMark(player, planForDrag(player, travel));
+    : planMark(player, planForDrag(player, travel));
 }
 
 function onGesture(playerId, gesture, point) {
@@ -159,7 +146,7 @@ function onGesture(playerId, gesture, point) {
       say(`${p.role} will throw.`);
     } else {
       const run = planForDrag(p, gesture.travel);
-      setPlan(state, playerId, run.dir, run.throttle, run.target);
+      setPlan(state, playerId, run.dir, run.throttle, run.target, run.short);
       say(`${p.role} doesn't have the ball — running instead.`);
     }
     pendingWarning = false;
@@ -169,7 +156,7 @@ function onGesture(playerId, gesture, point) {
       say(`${p.role} will cover ${getPlayer(state, opp).role}.`);
     } else {
       const run = planForDrag(p, gesture.travel);
-      setPlan(state, playerId, run.dir, run.throttle, run.target);
+      setPlan(state, playerId, run.dir, run.throttle, run.target, run.short);
       say('');
     }
     pendingWarning = false;

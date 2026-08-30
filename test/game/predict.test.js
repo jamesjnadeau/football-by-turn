@@ -86,12 +86,26 @@ test('a reachable drag becomes a target the player lands on', () => {
   assert.ok(Math.abs(rb.pos.y - plan.target.y) < 1e-9, 'the circle did not lie');
 });
 
-test('a drag past his reach loses the target and pins the throttle', () => {
+test('a reachable drag is not short', () => {
   const rb = getPlayer(solo('o-rb'), 'o-rb');
+  assert.equal(planForDrag(rb, { x: 0, y: 5 }).short, false);
+});
+
+test('a drag past his reach keeps the target and pins the throttle', () => {
+  const s = solo('o-rb');
+  const rb = getPlayer(s, 'o-rb');
   const plan = planForDrag(rb, { x: 0, y: MAX_ARROW_UNITS });
-  assert.equal(plan.target, null, 'unreachable: the caller draws the old arrow');
   assert.equal(plan.throttle, 1);
   assert.deepEqual(plan.dir, DOWN);
+  assert.equal(plan.short, true, 'he falls short of where the finger went');
+  assert.ok(plan.target, 'but the board still says where he does get to');
+  assert.ok(
+    Math.abs(plan.target.y - (rb.pos.y + 7.75)) < 1e-9,
+    'a full-throttle turn from a standstill, not the drag point',
+  );
+  setPlan(s, 'o-rb', plan.dir, plan.throttle);
+  for (let i = 0; i < SUBSTEPS_PER_TURN; i++) stepPhysics(s, DT);
+  assert.ok(Math.abs(rb.pos.y - plan.target.y) < 1e-9, 'the circle did not lie');
 });
 
 test('a moving player cannot be asked to stop short of his own coast', () => {

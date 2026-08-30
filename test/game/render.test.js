@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  renderBoardShell, renderPlayers, renderArrows, renderLooseBall, facingAngle, STYLE_GAME,
+  renderBoardShell, renderPlayers, renderArrows, renderLooseBall, facingAngle, arrowMark, STYLE_GAME,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer } from '../../lib/game/state.js';
 import { TEAM_SIZE, MAX_ARROW_UNITS } from '../../lib/game/constants.js';
@@ -56,7 +56,7 @@ test('arrows render only for planned players, scaled by throttle', () => {
   assert.equal(renderArrows(s), '');
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
   const full = renderArrows(s);
-  assert.ok(full.includes('marker-end="url(#ar)"'));
+  assert.ok(full.includes('marker-end="url(#ar-g)"'));
   const rb = getPlayer(s, 'o-rb');
   assert.ok(full.includes(`${rb.pos.y + MAX_ARROW_UNITS}`), 'full throttle = full length');
 });
@@ -110,4 +110,30 @@ test('the stance arc is drawn at the reach it actually tackles from', () => {
   const arc = renderPlayers(s).match(/class="stance" d="M [-\d.]+ [-\d.]+ A ([-\d.]+)/);
   assert.ok(arc, 'a stance arc is drawn');
   assert.equal(Number(arc[1]), Number(num(r)), 'its radius is the wedge reach, not the plain stance reach');
+});
+
+test('plan arrows are green, half-weight, and carry the game arrowhead', () => {
+  const s = createGame({ seed: 1 });
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
+  const svg = renderArrows(s);
+  assert.ok(svg.includes('class="plan-mv"'), 'the game arrow class, not the shared .mv');
+  assert.ok(svg.includes('marker-end="url(#ar-g)"'));
+  assert.ok(!svg.includes('url(#ar)"'), 'not the shared black arrowhead');
+  // Half of the shared .mv weight (1.7), which halves the arrowhead with it:
+  // markers default to markerUnits="strokeWidth".
+  assert.ok(STYLE_GAME.includes('.plan-mv{stroke:#1a7f37;stroke-width:.85;'), 'green at half weight');
+  assert.ok(STYLE_GAME.includes('.arh-g{fill:#1a7f37}'), 'the arrowhead is green too');
+});
+
+test('the board shell defines the game arrowhead at full marker width', () => {
+  const { markup } = renderBoardShell(0);
+  assert.ok(markup.includes('id="ar-g"'), 'the green marker is defined');
+  assert.ok(markup.includes('markerWidth="5"'), 'the head halves via stroke-width, not markerWidth');
+});
+
+test('arrowMark draws a rounded path between two points', () => {
+  assert.equal(
+    arrowMark({ x: 1, y: 2 }, { x: 3.456, y: 4 }),
+    '<path d="M 1 2 L 3.46 4" class="plan-mv" marker-end="url(#ar-g)"/>',
+  );
 });

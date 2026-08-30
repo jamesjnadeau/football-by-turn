@@ -239,7 +239,7 @@ test('the COACHES MENU label carries a transparent hit target of its own', () =>
   assert.ok(markup.includes('id="game-menu"'), 'the button gets a layer of its own');
   assert.equal(
     menuButtonMark(),
-    '<rect data-menu-button="1" class="menu-hit" x="247" y="37" width="20" height="96"/>',
+    '<rect data-menu-button="1" class="menu-hit" tabindex="0" role="button" aria-label="Open the Coaches Menu" x="247" y="37" width="20" height="96"/>',
   );
   assert.ok(STYLE_GAME.includes('.menu-hit{fill:transparent;pointer-events:all;cursor:pointer}'));
   assert.ok(STYLE_GAME.includes('.pb{fill:#1a7f37;cursor:pointer}'), 'the label reads as pressable');
@@ -254,6 +254,16 @@ test('the menu hit target sits over the label and inside the frame', () => {
   assert.ok(x + rw <= w, 'inside the viewBox width');
   assert.ok(y0 > 0 && y0 + rh <= h, 'inside the viewBox height');
   assert.ok(y0 < 85 && y0 + rh > 85, 'straddles the label centre at y=85');
+});
+
+test('the menu button is reachable and labelled without a pointer', () => {
+  // A closed <dialog> is out of the tab order, so this rect is the only
+  // focusable element until the menu is open — it has to carry its own
+  // keyboard affordances rather than relying on the controls inside.
+  const mark = menuButtonMark();
+  assert.ok(mark.includes('tabindex="0"'), 'the rect is a keyboard stop');
+  assert.ok(mark.includes('role="button"'), 'the rect reads as a button to assistive tech');
+  assert.ok(mark.includes('aria-label="Open the Coaches Menu"'), 'the rect names itself');
 });
 
 test('wrapWords breaks greedily at the character budget', () => {

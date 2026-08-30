@@ -225,6 +225,18 @@ board.on('click', (e) => {
   if (e.target.closest && e.target.closest('[data-menu-button]')) openMenu();
 });
 
+// The hit rect is the only opener for the menu, and the menu's controls live
+// inside a closed <dialog> — out of the tab order until it is open. Without
+// this, a keyboard user who tabbed to the rect could never actually press it.
+// Space is also prevented from scrolling the page, same as a native button.
+board.on('keydown', (e) => {
+  if (!e.target.closest || !e.target.closest('[data-menu-button]')) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    openMenu();
+  }
+});
+
 // Content is inside .menu-body, so a click whose target IS the dialog landed
 // on the backdrop. Esc is handled natively by showModal().
 menu.addEventListener('click', (e) => {

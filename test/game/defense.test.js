@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   positionGroup, defendDir, losY, pastLine, groupMates,
-  interceptPoint, leverageAim, containSide, rushLineman,
+  interceptPoint, leverageAim, containSide, rushLineman, flowLinebacker,
 } from '../../lib/game/defense.js';
 import { createGame, getPlayer } from '../../lib/game/state.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -138,4 +138,24 @@ test('contain is given up at contact range — then he attacks the man', () => {
   const dt = getPlayer(s, 'd-dt2');
   dt.pos = { x: 140, y: 76 };   // ~7.8 units off the QB, inside AI_ATTACK_UNITS
   assert.deepEqual(rushLineman(s, dt), { aim: { x: 135, y: 70 }, cover: null });
+});
+
+test('a linebacker holds his depth and mirrors the ball across the field', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  // The QB is 4 yards deep — nowhere near the line — so the backer does not
+  // chase him into the backfield. He sits 8 units on his own side of the line
+  // and matches him across it. losY is 85, so his depth is 93.
+  assert.deepEqual(flowLinebacker(s, getPlayer(s, 'd-lb')),
+    { aim: { x: 135, y: 93 }, cover: null });
+
+  getPlayer(s, 'o-qb').pos = { x: 110, y: 70 }; // rolling out to his left
+  assert.deepEqual(flowLinebacker(s, getPlayer(s, 'd-lb')),
+    { aim: { x: 110, y: 93 }, cover: null }, 'slides with him, same depth');
+});
+
+test('a linebacker fills once the carrier threatens the line', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  getPlayer(s, 'o-qb').pos = { x: 135, y: 80 }; // 5 units behind the line
+  assert.deepEqual(flowLinebacker(s, getPlayer(s, 'd-lb')),
+    { aim: { x: 135, y: 84 }, cover: null }, 'downhill, a cushion goal-side');
 });

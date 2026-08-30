@@ -15,6 +15,9 @@ import {
   TURN_SECONDS, MAX_ARROW_UNITS, PENALTY_YARDS,
 } from '../lib/game/constants.js';
 import { attachInput } from './input.js';
+import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
+import { PLAY_SLOTS, firstEmptySlot, putPlay } from '../lib/game/playbook.js';
+import { loadPlaybook, savePlaybook } from './playbook-store.js';
 
 // SVG(el) adopts the existing <svg id="board"> node rather than creating a
 // nested one — every read/write below goes through this wrapper.
@@ -22,6 +25,8 @@ const board = SVG(document.getElementById('board'));
 const hud = document.getElementById('hud');
 const menu = document.getElementById('menu');
 const closeMenuBtn = document.getElementById('close-menu');
+const savePlayBtn = document.getElementById('save-play');
+const playSlotsEl = document.getElementById('play-slots');
 const runBtn = document.getElementById('run');
 const clearBtn = document.getElementById('clear');
 const aiBtn = document.getElementById('ai');
@@ -41,6 +46,9 @@ let animating = false;
 // A debug read-out, not game state: New Game replaces `state` wholesale, and
 // having asked to see velocities should survive that.
 let showVelocity = false;
+// Not game state: the playbook outlives New Game, and lives in the browser
+// rather than in `state`, which is replaced wholesale.
+let playbook = loadPlaybook();
 
 function layer(id) {
   return board.findOne(`#${id}`);
@@ -76,6 +84,7 @@ function paint() {
   newBtn.disabled = animating;
   nextBtn.hidden = state.phase !== 'playOver';
   drawMessage();
+  paintPlays();
 }
 
 /**
@@ -209,6 +218,34 @@ function animate(frames, done) {
     }
   }
   requestAnimationFrame(tick);
+}
+
+/**
+ * The five load buttons are built once and thereafter only relabelled.
+ * paint() runs on every gesture — rebuilding the nodes each time would throw
+ * away the focus of anyone tabbing the menu with the keyboard.
+ */
+const slotBtns = [];
+for (let i = 0; i < PLAY_SLOTS; i++) {
+  const btn = document.createElement('button');
+  btn.className = 'play-slot';
+  playSlotsEl.appendChild(btn);
+  slotBtns.push(btn);
+}
+
+/**
+ * A play is what you come to the line with, so both saving and calling one are
+ * offered only on the first turn of a down. Off it the buttons go grey rather
+ * than disappearing: a grey button explains itself, a vanished one does not.
+ */
+function paintPlays() {
+  const usable = !animating && canUsePlays(state);
+  savePlayBtn.disabled = !usable;
+  for (let i = 0; i < PLAY_SLOTS; i++) {
+    const play = playbook[i];
+    slotBtns[i].textContent = play ? `${i + 1}. ${play.name}` : `${i + 1}. (empty)`;
+    slotBtns[i].disabled = !usable || !play;
+  }
 }
 
 function openMenu() {

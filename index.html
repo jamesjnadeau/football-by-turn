@@ -19,6 +19,8 @@
     #hud { margin-bottom: .5rem; }
     .menu-body button { display: block; width: 100%; margin: .25rem 0; padding: .5rem; }
     .menu-body button[hidden] { display: none; } /* author `button{display:block}` above would otherwise beat the UA [hidden] rule */
+    .menu-body h2 { font-size: 1rem; margin: 1rem 0 .25rem; }
+    .play-slot { font-size: .9rem; }
     #close-menu { margin-top: .75rem; }
   </style>
 </head>
@@ -34,6 +36,9 @@
       <button id="debug">Velocity lines: off</button>
       <button id="next" hidden>Next Down</button>
       <button id="new">New Game</button>
+      <h2>Plays</h2>
+      <button id="save-play">Save current play</button>
+      <div id="play-slots"></div>
       <button id="close-menu">Close</button>
     </div>
   </dialog>

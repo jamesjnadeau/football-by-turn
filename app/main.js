@@ -695,8 +695,12 @@ function startNewGame() {
   state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
   random = mulberry32(state.seed);
   pendingWarning = false;
-  say('New game. 1st and goal from the 10.');
+  // The board is built before anything is said into it. Every other caller
+  // arrives with a board already up, but startGame() comes here with a cold
+  // one — and the message layer say() writes into does not exist until
+  // rebuildBoard() has made it.
   rebuildBoard();
+  say('New game. 1st and goal from the 10.');
   paint();
 }
 

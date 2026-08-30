@@ -4,7 +4,7 @@ import {
   renderBoardShell, renderPlayers, renderArrows, renderLooseBall, facingAngle, arrowMark, STYLE_GAME,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer } from '../../lib/game/state.js';
-import { TEAM_SIZE, MAX_ARROW_UNITS } from '../../lib/game/constants.js';
+import { TEAM_SIZE, MAX_ARROW_UNITS, DEBUG_VELOCITY_SECONDS } from '../../lib/game/constants.js';
 import { tackleReach } from '../../lib/game/modes.js';
 import { num } from '../../lib/field/geometry.js';
 
@@ -144,4 +144,39 @@ test('arrows and the drag preview are painted beneath the players', () => {
   assert.ok(at('game-arrows') < at('game-players'), 'committed arrows under the players');
   assert.ok(at('game-preview') < at('game-players'), 'the live preview under them too');
   assert.ok(at('game-players') < at('game-overlay'), 'the overlay stays on top for the loose ball');
+});
+
+test('velocity lines are off by default and drawn from the player centre when on', () => {
+  const s = createGame({ seed: 1 });
+  getPlayer(s, 'o-rb').vel = { x: 0, y: 20 };
+  assert.ok(!renderPlayers(s).includes('class="vel"'), 'off unless asked for');
+  const svg = renderPlayers(s, { showVelocity: true });
+  assert.equal((svg.match(/class="vel"/g) || []).length, 1, 'only the player who is moving gets one');
+  assert.ok(svg.includes('<line x1="0" y1="0"'), 'from the centre of the player group');
+});
+
+test('the velocity line pokes past the player edge in proportion to speed', () => {
+  const s = createGame({ seed: 1 });
+  const rb = getPlayer(s, 'o-rb'); // radius 2.5
+  const drawnX = () => Number(
+    renderPlayers(s, { showVelocity: true }).match(/<line x1="0" y1="0" x2="([-\d.]+)"/)[1],
+  );
+  rb.vel = { x: 40, y: 0 };
+  assert.equal(drawnX(), rb.radius + 40 * DEBUG_VELOCITY_SECONDS, '2.5 of body + 10 of speed');
+  rb.vel = { x: 80, y: 0 };
+  assert.equal(drawnX(), rb.radius + 80 * DEBUG_VELOCITY_SECONDS, 'twice the speed, twice the overhang');
+});
+
+test('the velocity line points along the velocity, not along the plan', () => {
+  const s = createGame({ seed: 1 });
+  const rb = getPlayer(s, 'o-rb');
+  rb.vel = { x: 0, y: -40 }; // drifting back upfield
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 1); // told to go the other way
+  const line = renderPlayers(s, { showVelocity: true }).match(/<line x1="0" y1="0" x2="([-\d.]+)" y2="([-\d.]+)"/);
+  assert.equal(Number(line[1]), 0);
+  assert.equal(Number(line[2]), -(rb.radius + 40 * DEBUG_VELOCITY_SECONDS));
+});
+
+test('the velocity line is a thin blue hairline', () => {
+  assert.ok(STYLE_GAME.includes('.vel{stroke:#1668dc;stroke-width:.4;'));
 });

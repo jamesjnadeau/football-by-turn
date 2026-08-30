@@ -9,6 +9,34 @@
     /* The board owns the viewport; the menu floats above it. */
     body { font-family: system-ui, sans-serif; margin: 0; overflow: hidden; }
     #board { display: block; width: 100vw; height: 100%; touch-action: none; }
+    /* Author `#board{display:block}` above would otherwise beat the UA [hidden]
+       rule — the same trap the menu buttons below carry a note about. The board
+       is hidden until a game is picked off the home screen. */
+    #board[hidden] { display: none; }
+
+    /* The home screen owns the whole viewport until a game starts, and gets it
+       back when one is left. It is empty in the markup: app/home.js writes the
+       heading and the buttons in from lib/game/home.js. */
+    #home {
+      position: fixed; inset: 0; box-sizing: border-box; padding: 1.5rem;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: .75rem; text-align: center; background: #fff;
+    }
+    #home[hidden] { display: none; }
+    #home h1 { font-size: 2rem; margin: 0; }
+    .home-blurb { margin: 0 0 .5rem; max-width: 26rem; color: #454545; }
+    .home-choices { display: flex; flex-direction: column; gap: .75rem; width: 16rem; }
+    .home-choice {
+      display: block; width: 100%; padding: .75rem; font: inherit; cursor: pointer;
+      border: 2px solid #1a7f37; border-radius: .5rem; background: #1a7f37; color: #fff;
+    }
+    /* The game that is not built yet reads as a promise rather than a control:
+       no fill, no green, and no pointer that suggests it will do something. */
+    .home-choice:disabled {
+      background: #fff; color: #666; border-color: #ccc; cursor: default;
+    }
+    .home-choice-label { display: block; font-size: 1.1rem; font-weight: 600; }
+    .home-choice-note { display: block; font-size: .85rem; opacity: .85; margin-top: .25rem; }
 
     /* Padding lives on .menu-body, not the dialog, so a click landing on the
        dialog element itself is unambiguously a backdrop click. */
@@ -25,7 +53,8 @@
   </style>
 </head>
 <body>
-  <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+  <section id="home"></section>
+  <svg id="board" xmlns="http://www.w3.org/2000/svg" hidden></svg>
   <dialog id="menu">
     <div class="menu-body">
       <h1>Coaches Menu</h1>
@@ -43,6 +72,6 @@
       <button id="close-menu">Close</button>
     </div>
   </dialog>
-  <script type="module" src="app/main.js"></script>
+  <script type="module" src="app/home.js"></script>
 </body>
 </html>

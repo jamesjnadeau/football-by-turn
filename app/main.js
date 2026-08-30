@@ -712,7 +712,26 @@ newBtn.addEventListener('click', () => {
   startNewGame();
 });
 
-attachInput(board, { hitTest, onGesture, onDragPreview });
-rebuildBoard();
-paint();
-say('Drag your players, then open the Coaches Menu to run the turn.');
+/**
+ * Start a drive. app/home.js calls this when a coach picks a game off the home
+ * screen — the first press imports this module and lands here, and every press
+ * after a trip home lands here again. That is why the pointer plumbing is
+ * attached once and the state is built fresh every time: the listeners on the
+ * board (and on the menu's buttons, registered above at module scope) belong to
+ * the module, and a second set of them would run every gesture twice.
+ *
+ * startNewGame() is the whole of a fresh drive — it cancels any pending
+ * advance, drops reposition mode, builds the state, rebuilds the board and
+ * paints. The only thing said differently here is the opening line, which is
+ * an instruction rather than a score report.
+ */
+let inputAttached = false;
+
+export function startGame() {
+  if (!inputAttached) {
+    attachInput(board, { hitTest, onGesture, onDragPreview });
+    inputAttached = true;
+  }
+  startNewGame();
+  say('Drag your players, then open the Coaches Menu to run the turn.');
+}

@@ -76,12 +76,13 @@ test('an untucked runner can fumble on the hit; the ball comes loose', () => {
   const s = scenario(['o-qb', 'd-lb']);
   getPlayer(s, 'o-qb').pos = { x: 135, y: 100 };
   getPlayer(s, 'd-lb').pos = { x: 135, y: 105 };
-  // first roll (tackle) low → success; second roll (fumble) 0 → fumbles
-  const rolls = [0, 0];
+  // first roll (tackle) low → success; second roll (fumble) 0 → fumbles; third roll (angle) for dropBall
+  const rolls = [0, 0, 0.5];
   const events = checkTackles(s, () => rolls.shift());
   assert.equal(events[0].type, 'fumble');
   assert.equal(s.ball.carrierId, null);
   assert.ok(s.ball.pos && s.ball.vel, 'ball is loose with a velocity');
+  assert.ok(Number.isFinite(s.ball.vel.x) && Number.isFinite(s.ball.vel.y), 'fumble velocity is a real number, not NaN');
   assert.equal(s.deadReason, null, 'a fumble keeps the play alive');
 });
 

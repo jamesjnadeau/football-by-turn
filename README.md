@@ -26,13 +26,30 @@ Each drive starts 1st and goal from the offense's own 10-yard line, and the
 offense has **4 downs** to score before the ball turns over.
 
 **The computer coaches the defense.** You draw arrows for your seven offensive
-players; each turn the computer sends every defender at the ball — leading the
-carrier rather than chasing where he just was — and breaks a defender down into
-the tackling stance once he is within range to make the hit. You never see what
-it has planned: no defensive arrows are drawn, ever, because the computer does
-not decide until you press **Run Turn**. Press **Defense: computer** to take the
-defense back and play hot-seat, coaching both teams yourself; press it again to
-hand the defense back over.
+players; each turn the computer plans the defense and runs it. You never see
+what it has planned: no defensive arrows and no coverage marks are ever drawn,
+because the computer does not decide until you press **Run Turn**. The
+**Defense:** button in the Coaches Menu cycles between three settings.
+
+- **Defense: computer (smart)** — the default. Assignment football. The
+  defensive line rushes the ball but the outside rushers keep contain, so the
+  pocket has walls and a carrier who wants the edge has to run around somebody.
+  The linebacker does not chase into the backfield: he holds his depth a couple
+  of yards off the line and mirrors the ball across the field until the run
+  declares, then fills. The cornerbacks take the receivers man-to-man — the same
+  cover order you give by dragging, re-aimed at their man every fraction of a
+  second — and the safety plays free behind everything, so nobody gets over the
+  top. All of that is off the moment the ball comes loose or the carrier crosses
+  the line: then it is seven players converging on one, each on the angle that
+  arrives in front of him rather than behind.
+- **Defense: computer (basic)** — the original brain. Every defender runs
+  straight at the ball, leading the carrier rather than chasing where he just
+  was. Easier to beat: get one man moving sideways and the whole defense follows
+  him.
+- **Defense: you** — hot-seat. You coach both teams.
+
+Either computer breaks a defender down into the tackling stance once he is
+within range to make the hit.
 
 - All the controls live in the **Coaches Menu**. Press the vertical green
   **COACHES MENU** text down the right-hand side of the field to open it; press

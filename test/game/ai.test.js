@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   aiPlayers, pursuitTarget, defensePlans, coachAi, clearAiPlans, applyAiModes,
-  coachSmartDefense,
+  coachSmartDefense, AI_MODES, aiModeIndex, nextAiMode,
 } from '../../lib/game/ai.js';
 import { createGame, getPlayer, setPlan, setMode } from '../../lib/game/state.js';
 import { runTurn } from '../../lib/game/turn.js';
@@ -195,4 +195,30 @@ test('a whole smart turn runs, and leaves nothing of the computer behind', () =>
   assert.ok(s.players.filter((p) => p.team === 'defense')
     .every((p) => p.plan === null && p.cover === null),
   'no plan and no halo for the human to read');
+});
+
+test('the Defense button cycles smart, basic, hot-seat, and back', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' });
+  assert.equal(aiModeIndex(s), 0);
+  assert.equal(AI_MODES[0].label, 'Defense: computer (smart)');
+
+  let next = nextAiMode(s);
+  assert.deepEqual([next.ai, next.level], ['defense', 'pursuit']);
+  s.aiTeam = next.ai; s.aiLevel = next.level;
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: computer (basic)');
+
+  next = nextAiMode(s);
+  assert.equal(next.ai, null);
+  s.aiTeam = next.ai; s.aiLevel = next.level;
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: you');
+
+  next = nextAiMode(s);
+  assert.deepEqual([next.ai, next.level], ['defense', 'smart'], 'round it goes');
+});
+
+test('hot-seat reads as hot-seat whatever level it is carrying', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: you');
+  s.aiLevel = 'smart';
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: you');
 });

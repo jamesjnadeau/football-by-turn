@@ -2,7 +2,7 @@ import { SVG } from './vendor/svg.esm.js';
 import {
   createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable, setPass,
 } from '../lib/game/state.js';
-import { clearAiPlans } from '../lib/game/ai.js';
+import { clearAiPlans, AI_MODES, aiModeIndex, nextAiMode } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
@@ -36,7 +36,7 @@ const debugBtn = document.getElementById('debug');
 const nextBtn = document.getElementById('next');
 const newBtn = document.getElementById('new');
 
-let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense' });
+let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
 let random = mulberry32(state.seed);
 let pendingWarning = false;
 let messageText = '';
@@ -77,7 +77,7 @@ function paint() {
     state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state) : '',
   );
   hud.textContent = `Down ${state.down} of 4 — ${state.phase}`;
-  aiBtn.textContent = state.aiTeam ? 'Defense: computer' : 'Defense: you';
+  aiBtn.textContent = AI_MODES[aiModeIndex(state)].label;
   aiBtn.disabled = animating || state.phase !== 'planning';
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
@@ -423,14 +423,15 @@ clearBtn.addEventListener('click', () => {
 aiBtn.addEventListener('click', () => {
   closeMenu();
   if (animating || state.phase !== 'planning') return;
-  state.aiTeam = state.aiTeam === null ? 'defense' : null;
-  // Handing the defense back to the computer drops whatever arrows the human
-  // had already drawn for it — they are not his to give any more.
+  const next = nextAiMode(state);
+  state.aiTeam = next.ai;
+  state.aiLevel = next.level;
+  // Handing the defense back to the computer — or to a different brain — drops
+  // whatever arrows and coverage were already on it. They are not that
+  // coach's any more.
   if (state.aiTeam) clearAiPlans(state);
   pendingWarning = false;
-  say(state.aiTeam
-    ? 'The computer coaches the defense.'
-    : 'Hot-seat: you coach both teams.');
+  say(next.note);
   paint();
 });
 
@@ -463,7 +464,7 @@ nextBtn.addEventListener('click', () => {
 newBtn.addEventListener('click', () => {
   closeMenu();
   if (animating) return;
-  state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense' });
+  state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
   random = mulberry32(state.seed);
   pendingWarning = false;
   say('New game. 1st and goal from the 10.');

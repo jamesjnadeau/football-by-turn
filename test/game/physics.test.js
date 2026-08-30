@@ -13,6 +13,7 @@ function run(state, substeps) {
 
 test('a planned player accelerates toward its arrow and tops out at maxSpeed', () => {
   const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-rb');
   const rb = getPlayer(s, 'o-rb');
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
   const y0 = rb.pos.y;
@@ -24,6 +25,7 @@ test('a planned player accelerates toward its arrow and tops out at maxSpeed', (
 
 test('half throttle targets half speed', () => {
   const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-rb');
   const rb = getPlayer(s, 'o-rb');
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 0.5);
   run(s, SUBSTEPS_PER_TURN * 4);

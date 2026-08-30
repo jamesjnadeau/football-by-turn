@@ -610,3 +610,17 @@ test('the quick-press buttons sit on the board and clear of the menu hit area', 
   assert.equal(shuffle.x, run.x, 'they share the label\'s column');
   assert.ok(shuffle.x + shuffle.w <= 270, 'and stay inside the viewBox');
 });
+
+test('the quick-press buttons sit under the label, clear of the yard numbers', () => {
+  // Browser-measured at the .pb size: the rotated COACHES MENU label occupies
+  // x 254.9 to 265.0, and the right-hand yard numbers end at x 251.2. The
+  // buttons belong in the first and nowhere near the second — centring them on
+  // the label's BASELINE (257) rather than its glyph column left them a unit
+  // off the numbers, reading as part of the field.
+  const LABEL_LEFT = 254.9, LABEL_RIGHT = 265.0, YARD_NUMBERS_RIGHT = 251.23;
+  const box = rectBox(buttonGroup(renderFieldButtons(createGame({ seed: 1 })), 'data-run-button'));
+
+  assert.ok(box.x >= LABEL_LEFT, `left edge ${box.x} is within the label column`);
+  assert.ok(box.x + box.w <= LABEL_RIGHT, `right edge ${box.x + box.w} is within it too`);
+  assert.ok(box.x - YARD_NUMBERS_RIGHT >= 3, `clears the yard numbers by ${(box.x - YARD_NUMBERS_RIGHT).toFixed(2)}`);
+});

@@ -303,7 +303,8 @@ test('a long message grows past the end zone but never off the board', () => {
   const [py, ph] = svg.match(/y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/).slice(1).map(Number);
   assert.ok(py > 0, 'still on the board at the top');
   assert.ok(py + ph <= 170, 'and still on the board at the bottom');
-  // Ten lines could not be centred and stay on the board; the clamp catches it.
+  // 40 short words wrap to six lines at this budget, which is too tall to be
+  // centred and still stay on the board; the clamp catches it.
   const huge = renderMessage(new Array(40).fill('word').join(' '));
   const [hy, hh] = huge.match(/y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/).slice(1).map(Number);
   assert.ok(hy >= 0 && hy + hh <= 170, 'clamped inside the viewBox');

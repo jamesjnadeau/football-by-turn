@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import {
   positionGroup, defendDir, losY, pastLine, groupMates,
   interceptPoint, leverageAim, containSide, rushLineman, flowLinebacker,
+  deepestThreat, deepMan, deepAim, coverAssignments, coverBack,
 } from '../../lib/game/defense.js';
 import { createGame, getPlayer } from '../../lib/game/state.js';
 import { fieldPos } from '../../lib/game/view.js';
+import { RADIUS_LINE } from '../../lib/game/constants.js';
 
 test('every defensive role lands in one of the three position groups', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
@@ -158,4 +160,54 @@ test('a linebacker fills once the carrier threatens the line', () => {
   getPlayer(s, 'o-qb').pos = { x: 135, y: 80 }; // 5 units behind the line
   assert.deepEqual(flowLinebacker(s, getPlayer(s, 'd-lb')),
     { aim: { x: 135, y: 84 }, cover: null }, 'downhill, a cushion goal-side');
+});
+
+test('the deep man is whoever lines up deepest, not whoever is called safety', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  assert.equal(deepMan(s, 'defense').id, 'd-s');
+  getPlayer(s, 'd-cb2').pos = { x: 191.25, y: 200 }; // now HE is the last man back
+  assert.equal(deepMan(s, 'defense').id, 'd-cb2');
+});
+
+test('the deepest threat is the opponent nearest the goal being defended', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  assert.equal(deepestThreat(s, 'defense').id, 'o-c', 'ties go to formation order');
+  getPlayer(s, 'o-wr2').pos = { x: 191.25, y: 100 };
+  assert.equal(deepestThreat(s, 'defense').id, 'o-wr2');
+});
+
+test('the deep man plays behind the deepest threat and the ball, splitting them', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  // Deepest opponent is the line at y 81.25; the ball is the QB at y 70.
+  assert.deepEqual(deepAim(s, getPlayer(s, 'd-s')), { x: 135, y: 101.25 });
+
+  getPlayer(s, 'o-wr2').pos = { x: 191.25, y: 100 }; // a receiver gets behind him
+  assert.deepEqual(deepAim(s, getPlayer(s, 'd-s')), { x: 163.125, y: 120 },
+    'he goes and gets on top of him');
+});
+
+test('the corners take the receivers; the deep man takes nobody', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const map = coverAssignments(s, 'defense');
+  assert.equal(map.get('d-cb1'), 'o-wr1');
+  assert.equal(map.get('d-cb2'), 'o-wr2');
+  assert.equal(map.has('d-s'), false, 'the last man back is free');
+  assert.equal(map.size, 2);
+});
+
+test('a defensive back does not cover a man who cannot run with him', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  for (const id of ['o-wr1', 'o-wr2', 'o-rb']) getPlayer(s, id).radius = RADIUS_LINE;
+  assert.equal(coverAssignments(s, 'defense').size, 0, 'nobody left worth covering');
+  const order = coverBack(s, getPlayer(s, 'd-cb1'));
+  assert.equal(order.cover, null);
+  assert.deepEqual(order.aim, deepAim(s, getPlayer(s, 'd-cb1')),
+    'an unassigned back plays help instead');
+});
+
+test('coverBack hands out a man to cover and a spot to the free man', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  assert.deepEqual(coverBack(s, getPlayer(s, 'd-cb1')), { aim: null, cover: 'o-wr1' });
+  assert.deepEqual(coverBack(s, getPlayer(s, 'd-s')),
+    { aim: { x: 135, y: 101.25 }, cover: null });
 });

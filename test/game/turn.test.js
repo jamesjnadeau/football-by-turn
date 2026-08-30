@@ -88,6 +88,13 @@ test('unplannedPlayers lists everyone without an arrow (the warning feed)', () =
   assert.ok(!ids.includes('o-rb'));
 });
 
+test('a player with a throw planned is not nagged for a run arrow', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  assert.ok(unplannedPlayers(s).includes('o-qb'));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  assert.ok(!unplannedPlayers(s).includes('o-qb'), 'he has a plan — to throw');
+});
+
 test('the computer coaches the defense during the turn — and its arrows never survive it', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
@@ -174,6 +181,17 @@ test('a planned throw goes up at the snap of the turn, and the ball flies', () =
   const travelled = Math.hypot(last.x - first.x, last.y - first.y);
   assert.ok(travelled > 40, `the throw covered ground (${travelled.toFixed(1)} units)`);
   assert.equal(s.plannedPass, null, 'a throw is planned for one turn only');
+});
+
+test('a forward pass nobody catches is incomplete in the turn it was thrown', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb'); // nobody out there to catch it
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  const { events } = runTurn(s, mulberry32(1));
+  assert.ok(events.some((e) => e.type === 'incomplete'), 'ruled incomplete');
+  assert.equal(s.deadReason, 'incomplete');
+  assert.equal(s.phase, 'playOver');
+  assert.equal(s.turnIndex, 1, 'decided in its own turn, never left live for another');
 });
 
 test('a forward pass nobody catches is incomplete: dead ball, play over', () => {

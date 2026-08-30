@@ -45,6 +45,7 @@ export function attachInput(board, { hitTest, onGesture, onDragPreview }) {
   });
 
   board.on('pointercancel', () => {
+    if (playerId) lastTapAt.delete(playerId); // a cancelled gesture disarms, like any other non-tap
     log = null;
     playerId = null;
     onDragPreview(null, null, null);

@@ -99,13 +99,16 @@ function onGesture(playerId, gesture, point) {
   if (state.phase !== 'planning') return;
   const p = getPlayer(state, playerId);
   if (gesture.kind === 'passdrag') {
-    // Tap-then-drag on the man with the ball is a throw. Anyone else tapped
-    // and dragged is just running — there is nothing in his hands to throw.
-    if (!setPass(state, playerId, gesture.dir, gesture.throttle)) {
-      say(`${p.role} doesn't have the ball.`);
-    } else {
+    // Tap-then-drag is a throw only from the man with the ball. From anyone
+    // else it is an ordinary run arrow — which is what the drag preview showed
+    // him, so committing anything less would break that promise.
+    if (setPass(state, playerId, gesture.dir, gesture.throttle)) {
       say(`${p.role} will throw.`);
+    } else {
+      setPlan(state, playerId, gesture.dir, gesture.throttle);
+      say(`${p.role} doesn't have the ball — running instead.`);
     }
+    pendingWarning = false;
   } else if (gesture.kind === 'drag') {
     setPlan(state, playerId, gesture.dir, gesture.throttle);
     pendingWarning = false;
@@ -210,6 +213,7 @@ runBtn.addEventListener('click', () => {
   // pre-turn spots, so animating the frames walks them to where state says.
   const { frames, events } = runTurn(state, random);
   layer('game-arrows').clear();
+  const thrown = events.some((e) => e.type === 'pass');
   const finish = () => {
     animating = false;
     paint();
@@ -218,7 +222,10 @@ runBtn.addEventListener('click', () => {
       if (e.type === 'fumble') say('FUMBLE! The ball is loose!');
       if (e.type === 'touchdown') say('TOUCHDOWN!');
       if (e.type === 'out-of-bounds') say('Out of bounds.');
-      if (e.type === 'pickup') say(`Recovered by ${e.team}.`);
+      if (e.type === 'pickup') {
+        if (!thrown) say(`Recovered by ${e.team}.`);
+        else say(e.team === 'defense' ? 'INTERCEPTED!' : 'Caught!');
+      }
       if (e.type === 'incomplete') say('Incomplete.');
     }
     // The flag is called after the down, not when it was thrown — the spec is

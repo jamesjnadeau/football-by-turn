@@ -162,6 +162,18 @@ test('the carrier stepping out of bounds kills the play', () => {
   assert.equal(s.deadReason, 'out-of-bounds');
 });
 
+test('a loose ball out of bounds ends the play too, not just a carried one', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = {
+    carrierId: null,
+    pos: { x: SIDELINE_LEFT - 1, y: fieldPos(0, 2).y },
+    vel: { x: 0, y: 0 },
+  };
+  const events = checkDeadBall(s);
+  assert.equal(events[0].type, 'out-of-bounds');
+  assert.equal(s.deadReason, 'out-of-bounds');
+});
+
 test('between downs: ball is spotted where it died, down advances, formation resets there', () => {
   const s = createGame({ seed: 1 });
   const qb = getPlayer(s, 'o-qb');

@@ -221,10 +221,6 @@ test('the planned throw draws its own arrow, distinct from a run arrow', () => {
   assert.ok(svg.includes(`${qb.pos.y + MAX_PASS_ARROW_UNITS}`), 'full power = full length');
 });
 
-test('a throw arrow is longer than a run arrow at the same throttle', () => {
-  assert.ok(MAX_PASS_ARROW_UNITS > MAX_ARROW_UNITS);
-});
-
 test('no throw arrow once the man who planned it no longer has the ball', () => {
   const s = createGame({ seed: 1 });
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);

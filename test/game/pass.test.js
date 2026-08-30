@@ -58,6 +58,13 @@ test('releasing a throw puts the ball in the air, clear of the passer\'s own rea
   assert.equal(s.penalty, null);
 });
 
+test('a non-unit direction does not secretly change the throw\'s power', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, 'o-qb', { x: 0, y: 3 }, 1); // three times as long as a unit vector
+  releasePass(s);
+  assert.ok(Math.abs(len(s.ball.vel) - PASS_SPEED_MAX) < 1e-9, 'full power, not triple');
+});
+
 test('an illegal throw is allowed to happen, and flagged', () => {
   const s = createGame({ seed: 1 });
   s.forwardPasses = 1; // he already threw one this down

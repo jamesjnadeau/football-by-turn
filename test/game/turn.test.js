@@ -47,21 +47,22 @@ test('a clean run to the end zone ends the turn early with a touchdown', () => {
 });
 
 test('a full scripted play: everyone charges, the play eventually ends', () => {
-  // Everyone charging exactly straight up/down the field is a knife-edge:
-  // the O-line and D-line meet head-on with equal mass, equal speed, and
-  // exactly mirrored (x) starting positions, so the collision resolver never
-  // has anything asymmetric to work with — under Task 13's retuned
-  // SPEED_FACTOR this is a genuine fixed point (checked out to 2000 turns,
-  // position and velocity identical to 4 decimal places turn over turn:
-  // Task 13's scratchpad diagnostics), not merely a slow grind. A real
-  // player never draws 14 pixel-perfect vertical arrows, so nudge every
+  // Everyone charging exactly straight up/down the field is a knife-edge, and
+  // the reason is visible in physics.js's resolveCollisions: it is entirely
+  // deterministic and symmetric about the x axis. The O-line and D-line meet
+  // head-on with equal mass, equal target speed, and exactly mirrored x
+  // positions, so every pairwise push and friction impulse has an equal and
+  // opposite twin. Nothing in the loop can break that tie, and no defender
+  // ever reaches the carrier to make checkTackles roll a die — so the exact
+  // mirror is a genuine fixed point, not a slow grind.
+  //
+  // A real player never draws 14 pixel-perfect vertical arrows, so nudge every
   // plan a few degrees off the vertical (still "everyone charges downfield",
-  // just not an exact mirror) — this is the realistic case the spec's
-  // "eventually ends" claim is actually about, and it resolves fast and
-  // robustly (checked seeds 1-20, 50, 100, 500, 12345: every one ends by
-  // turn 6, via a tackle, since with the nudge some defender does close the
-  // gap and checkTackles's random() gets exercised). 40 turns leaves ample
-  // margin over the observed worst case.
+  // just not an exact mirror). That is the realistic case the spec's
+  // "eventually ends" claim is about, and with the mirror broken some defender
+  // does close the gap, so checkTackles's random() actually gets exercised.
+  // 40 turns is a generous cap: across seeds 1-20, 50, 100, 500 and 12345 the
+  // slowest play here ends on turn 10, most on turn 5.
   const s = createGame({ seed: 3 });
   for (const p of s.players) {
     const dir = norm({ x: p.team === 'offense' ? 0.05 : -0.05, y: p.team === 'offense' ? 1 : -1 });

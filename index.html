@@ -10,6 +10,7 @@
     #panel { width: 16rem; padding: 1rem; }
     #message { min-height: 3rem; font-weight: bold; }
     button { display: block; width: 100%; margin: .25rem 0; padding: .5rem; }
+    button[hidden] { display: none; } /* author `button{display:block}` above would otherwise beat the UA [hidden] rule */
   </style>
 </head>
 <body>

@@ -981,7 +981,7 @@ git add lib/game/pass.js lib/game/state.js lib/game/turn.js test/game/pass.test.
 - Consumes: `stepLob` (Task 2), `ball.lob` (Task 3).
 - Produces: nothing new — `stepPhysics` simply moves a lobbing ball differently.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `test/game/physics.test.js` (it already imports `stepPhysics`, `len`
 and `createGame`; add `import { DT } from '../../lib/game/constants.js';` if the
@@ -1015,13 +1015,13 @@ test('an ordinary loose ball still rolls and decays', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test test/game/physics.test.js`
 Expected: FAIL — the first test's `lob.elapsed` is still 0 and the ball has been
 integrated from `vel` instead (`pos.y` ≈ 76.7, not 72).
 
-- [ ] **Step 3: Fly it**
+- [x] **Step 3: Fly it**
 
 In `lib/game/physics.js`, add the import:
 
@@ -1050,12 +1050,12 @@ and replace the loose-ball block inside `stepPhysics`:
   }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/game/physics.js test/game/physics.test.js && git commit -m "Fly a lob along its plan instead of rolling it"

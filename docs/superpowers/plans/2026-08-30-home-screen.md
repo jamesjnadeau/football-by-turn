@@ -28,7 +28,7 @@
 - **No build step and no dependencies.** Everything is plain ES modules with relative imports, loaded straight from disk. `package.json` gains nothing.
 - **There is no DOM in tests.** `node --test` runs bare Node. Anything in `app/` or `index.html` is verified by hand in the browser, per the verification scripts in Tasks 3 and 4. Anything that can be a string in `lib/` **must** be, so it can be tested.
 - **All caller-supplied text written into markup goes through `escapeText()`** from `lib/field/escape.js`.
-- **Baseline:** `main` at `84ea5e4` ("Replace the sideline legend with a clipboard button"), working tree clean apart from untracked plan files under `docs/superpowers/plans/`. `npm test` reports **320 passing**. Every task below states the count it should leave behind.
+- **Baseline:** branch `home-screen` off `main` at `1c2b59e` ("Lead the man a throw is locked onto, and solve the meeting"). `npm test` reports **384 passing**. The tree also carries an uncommitted playtest tweak to `lib/game/constants.js` (`LOB_CATCH_YARDS`) and an untracked `docs/superpowers/plans/2026-08-30-eleven-a-side.md` — **neither is yours; leave both alone and never stage them.** Every task below states the count it should leave behind.
 - **The green is `#1a7f37`.** Use that literal string — it is the green `lib/game/render.js` already draws plans and cover halos in.
 - **Author `display` rules beat the UA `[hidden]` rule.** `index.html` already carries this lesson for `.menu-body button[hidden]`. Anything given an author `display` and hidden via the `hidden` property needs its own `[hidden] { display: none; }` rule, or it will not hide. This bites both `#board` and `#home` in Task 3.
 - **The deploy workflow needs no change.** `.github/workflows/deploy.yml` copies `index.html`, `app/`, and `lib/` wholesale, so new files under those directories ship automatically.
@@ -158,7 +158,7 @@ Expected: PASS — 4 tests.
 - [ ] **Step 5: Run the whole suite**
 
 Run: `npm test`
-Expected: **324 passing**, 0 failing.
+Expected: **388 passing**, 0 failing.
 
 - [ ] **Step 6: Commit**
 
@@ -276,7 +276,7 @@ Expected: PASS — 3 tests.
 - [ ] **Step 5: Run the whole suite**
 
 Run: `npm test`
-Expected: **327 passing**, 0 failing.
+Expected: **391 passing**, 0 failing.
 
 - [ ] **Step 6: Commit**
 
@@ -291,7 +291,7 @@ git add lib/game/home.js test/game/home.test.js && git commit -m "Build the home
 **Files:**
 - Create: `app/home.js`
 - Modify: `index.html` (whole file given below)
-- Modify: `app/main.js:673-676` (the four bootstrap lines at the very bottom)
+- Modify: `app/main.js` (the four bootstrap lines at the very bottom, currently 715-718)
 - Test: none automated — there is no DOM in `node --test`. Step 5 is a browser script.
 
 **Interfaces:**
@@ -300,7 +300,7 @@ git add lib/game/home.js test/game/home.test.js && git commit -m "Build the home
 
 - [ ] **Step 1: Give `app/main.js` a start function instead of a bootstrap**
 
-The file currently *ends* with these four lines (`app/main.js:673-676`):
+The file currently *ends* with these four lines (currently `app/main.js:715-718` — find them by content, the file grows):
 
 ```js
 attachInput(board, { hitTest, onGesture, onDragPreview });
@@ -337,6 +337,33 @@ export function startGame() {
 }
 ```
 
+**Then fix the order inside `startNewGame()`, or the very first press crashes.**
+That function calls `say('New game. 1st and goal from the 10.')` *before*
+`rebuildBoard()`. Harmless while this module booted itself at import — a board
+always existed by then — but `startGame()` arrives at a cold, empty
+`<svg id="board">`, and `say()` reaches for the `game-message` layer
+`rebuildBoard()` has not made yet: `TypeError: Cannot read properties of null
+(reading 'clear')`. That `say()` is in the wrong place regardless, since it
+draws into a layer `rebuildBoard()` immediately throws away and `paint()`
+redraws from `messageText`. Move it between the two:
+
+```js
+function startNewGame() {
+  cancelAutoAdvance();
+  stopRepositioning();
+  state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
+  random = mulberry32(state.seed);
+  pendingWarning = false;
+  // The board is built before anything is said into it. Every other caller
+  // arrives with a board already up, but startGame() comes here with a cold
+  // one — and the message layer say() writes into does not exist until
+  // rebuildBoard() has made it.
+  rebuildBoard();
+  say('New game. 1st and goal from the 10.');
+  paint();
+}
+```
+
 Nothing else in `app/main.js` moves. Every other statement in the file is a declaration or a listener registration, and those are still meant to run on import.
 
 - [ ] **Step 2: Write `app/home.js`**
@@ -364,17 +391,30 @@ const board = document.getElementById('board');
 // played; startGame() is what every visit after the first calls.
 let game = null;
 
+/**
+ * `hidden` is an HTMLElement property, and the board is an <svg> — an
+ * SVGElement, which has no such property at all: assigning to it writes a
+ * field nobody reads and leaves the attribute, and the `#board[hidden]` rule
+ * in index.html, exactly where they were. The attribute is what CSS matches,
+ * so setting the attribute is the only thing that actually shows or hides
+ * anything here. The section would tolerate the property; it goes through the
+ * same helper so there is one way of doing this rather than two.
+ */
+function show(el, visible) {
+  el.toggleAttribute('hidden', !visible);
+}
+
 function showHome() {
-  board.hidden = true;
-  home.hidden = false;
+  show(board, false);
+  show(home, true);
 }
 
 async function start(variantId) {
   // The unplayable button is disabled in the markup; this is that same rule
   // said again, because a disabled button is a picture and this is the gate.
   if (!isPlayable(variantId)) return;
-  home.hidden = true;
-  board.hidden = false;
+  show(home, false);
+  show(board, true);
   game ??= await import('./main.js');
   game.startGame();
 }
@@ -479,7 +519,7 @@ Three things changed and nothing else: `#home` and its styles plus the `#board[h
 - [ ] **Step 4: Run the whole suite**
 
 Run: `npm test`
-Expected: **327 passing**, 0 failing — unchanged from Task 2. Nothing in `lib/` moved; this is a check that nothing was knocked over.
+Expected: **391 passing**, 0 failing — unchanged from Task 2. Nothing in `lib/` moved; this is a check that nothing was knocked over.
 
 - [ ] **Step 5: Verify in the browser**
 
@@ -532,19 +572,19 @@ Its id is `home-btn` rather than `home`, which is the section's.
 
 Five edits.
 
-**(a)** With the other element lookups, after `const newBtn = ...` (currently `app/main.js:42`):
+**(a)** With the other element lookups, after `const newBtn = ...` (currently `app/main.js:44`):
 
 ```js
 const homeBtn = document.getElementById('home-btn');
 ```
 
-**(b)** In `paint()`, after `newBtn.disabled = animating;` (currently `app/main.js:105`):
+**(b)** In `paint()`, after `newBtn.disabled = animating;` in paint() (currently `app/main.js:111`):
 
 ```js
   homeBtn.disabled = animating;
 ```
 
-**(c)** In `pressRun()`, in the block that locks the controls before `animate()`, after `newBtn.disabled = true;` (currently `app/main.js:536`):
+**(c)** In `pressRun()`, in the block that locks the controls before `animate()`, after `newBtn.disabled = true;` (currently `app/main.js:578`):
 
 ```js
     homeBtn.disabled = true;
@@ -573,7 +613,7 @@ export function startGame({ onExit = () => {} } = {}) {
   if (!inputAttached) {
 ```
 
-**(e)** Beside the New Game listener (currently `app/main.js:667`), add the handler:
+**(e)** Beside the New Game listener (currently `app/main.js:709`), add the handler:
 
 ```js
 /**
@@ -639,7 +679,7 @@ Second, add a bullet immediately **after** the `New Game` bullet near the end of
 - [ ] **Step 5: Run the whole suite**
 
 Run: `npm test`
-Expected: **327 passing**, 0 failing — unchanged. Nothing in `lib/` moved.
+Expected: **391 passing**, 0 failing — unchanged. Nothing in `lib/` moved.
 
 - [ ] **Step 6: Verify in the browser**
 
@@ -669,4 +709,14 @@ git add index.html app/main.js app/home.js README.md && git commit -m "Add a Bac
 
 - **Spec coverage.** "Home screen to land on" → Task 3 (`index.html`, `app/home.js`). "Select between 7 player and 11 player (not available yet)" → Tasks 1 and 2 (the list and the disabled button), rendered in Task 3. "Takes them to that version of the game" → Task 3's `startGame()` for the seven; the eleven is disabled and cannot be taken anywhere, which is the spec. Decision 1 (Back to Home) → Task 4.
 - **The one thing this plan changes that nobody asked for** is `app/main.js`'s bootstrap becoming an exported function. It is unavoidable: a game that boots itself on import can be entered once, and Decision 1 asks for it to be entered twice.
+- **Two bugs this plan shipped, caught by Task 3's browser check and corrected in
+  the steps above.** (1) `startNewGame()` said its message before it built the
+  board, which only ever worked because the module used to boot itself; a cold
+  start died on the missing `game-message` layer. (2) `board.hidden = false` is a
+  no-op — `hidden` is an HTMLElement property and `<svg>` is an SVGElement, so
+  the assignment wrote an expando, left the attribute in place, and the board
+  stayed `display: none` while reading back as visible. `<section id="home">` is
+  a real HTMLElement, which is why its half worked and hid the failure. The
+  commits are "Build the board before the first thing is said into it" and "Show
+  and hide the board by attribute, not by a property SVG lacks".
 - **`startNewGame()` is reused rather than reimplemented** — it already cancels the pending auto-advance, drops reposition mode, rebuilds the board and paints. Task 3's `startGame()` adds only the input plumbing (once) and the opening message.

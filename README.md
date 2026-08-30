@@ -173,17 +173,21 @@ within range to make the hit.
   is offered on the first turn of a down and switches itself off at the snap.
 - **Clear Arrows** wipes every plan for the current turn, in case you want to
   start over before running it.
-- The Coaches Menu has a **Plays** section. Draw the first set of arrows for a
-  down, press **Save current play**, and name it — the play goes into one of
-  five slots, stances and a planned throw included. Press a slot to call that
-  play again on a later down; it replaces whatever you have drawn so far rather
-  than adding to it. Saving and calling are offered only on the **first turn of
-  a down** — that is what a play is — so the buttons grey out once the ball has
-  moved. Saved plays are kept in your browser, so they survive a reload and a
-  New Game. With all five slots full, saving asks which one to replace. Anyone
-  in a saved play the current game has no orders to give — a defender in a play
-  you saved while coaching both teams, say — is skipped, and the message says
-  how many.
+- The Coaches Menu has a **Plays** section. Set up a formation, draw the first
+  set of arrows for a down, press **Save current play**, and name it — the play
+  goes into one of five slots, formation, stances and a planned throw included.
+  Press a slot to call that play again on a later down; it replaces whatever
+  you have drawn *and* whoever is standing where, rather than adding to it.
+  Every man's spot is kept relative to the line of scrimmage, not the yard
+  line, so a play saved on your own 25 lines up the same way when you call it
+  from the 40. Saving and calling are offered only on the **first turn of a
+  down** — that is what a play is — so the buttons grey out once the ball has
+  moved, and moving a man before you save is as much a play as any arrow.
+  Saved plays are kept in your browser, so they survive a reload and a New
+  Game. With all five slots full, saving asks which one to replace. Anyone in
+  a saved play the current game has no orders to give — a defender in a play
+  you saved while coaching both teams, a man whose saved spot will not fit on
+  the down being played, say — is skipped, and the message says how many.
 - When a play ends, **Next Down** appears — click it to spot the ball, advance
   the down counter, and re-form both teams at the new line of scrimmage. After
   a touchdown, a turnover on downs, or a fumble recovered by the defense, the

@@ -203,7 +203,7 @@ test('the velocity triangle grows past the player edge in proportion to speed', 
   assert.equal(
     x1,
     rb.radius + 40 * DEBUG_VELOCITY_SECONDS * DEBUG_VELOCITY_TRIANGLE_SCALE,
-    'the rim (2.5) plus a height of 2.0 beyond it',
+    'the rim (2.5) plus a height of 4.0 beyond it',
   );
   rb.vel = { x: 80, y: 0 };
   const [x2] = apexOf(renderPlayers(s, { showVelocity: true }));
@@ -216,7 +216,7 @@ test('the velocity triangle grows past the player edge in proportion to speed', 
   // strictly-larger apex distance alone wouldn't prove the size tracks speed
   // proportionally — an implementation that barely nudged the height would
   // still pass that weaker check. Assert the HEIGHT beyond the rim itself
-  // (apex distance minus the fixed radius) exactly doubles: 2.0 -> 4.0.
+  // (apex distance minus the fixed radius) exactly doubles: 4.0 -> 8.0.
   assert.equal(2 * (x1 - rb.radius), x2 - rb.radius, 'doubling the speed exactly doubles the height beyond the rim');
 });
 

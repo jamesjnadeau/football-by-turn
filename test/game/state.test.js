@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createGame, setPlan, clearAllPlans, setMode, placePlayer, getPlayer, ballPos, carrier,
+  isControllable,
 } from '../../lib/game/state.js';
 import { TEAM_SIZE } from '../../lib/game/constants.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -81,4 +82,15 @@ test('repositioning: allowed only at turn 0 planning, and only on your own side 
   // once the play has run a turn, nobody repositions
   s.turnIndex = 1;
   assert.equal(placePlayer(s, 'o-wr1', fieldPos(-15, -2)), false);
+});
+
+test('the computer opponent is opt-in, and its players take no orders', () => {
+  const hotSeat = createGame({ seed: 1 });
+  assert.equal(hotSeat.aiTeam, null, 'the library default is still hot-seat');
+  assert.equal(isControllable(hotSeat, 'd-lb'), true);
+
+  const vsCpu = createGame({ seed: 1, ai: 'defense' });
+  assert.equal(vsCpu.aiTeam, 'defense');
+  assert.equal(isControllable(vsCpu, 'o-rb'), true, 'the human still coaches his own team');
+  assert.equal(isControllable(vsCpu, 'd-lb'), false, 'the computer\'s players are off limits');
 });

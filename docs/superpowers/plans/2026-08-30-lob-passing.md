@@ -1259,7 +1259,7 @@ carry the ball's drawn size, or the animation cannot swell it.
 - Produces: a frame's `looseBall` becomes `{x, y, scale}` — `app/main.js` reads
   `scale` in Task 9.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `test/game/turn.test.js`, add imports:
 
@@ -1365,14 +1365,14 @@ test('the frames carry the ball\'s drawn size, so the animation can swell it', (
   assert.equal(scales[scales.length - 1], 1, 'and is back to size where it came down');
 });
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test test/game/turn.test.js`
 Expected: FAIL — `frames[0].looseBall.scale` is `undefined`. (The two hanging-lob
 tests should already pass from Tasks 3-5; if they do not, that is a defect in an
 earlier task, not in this one.)
 
-- [ ] **Step 3: Put the size in the frames**
+- [x] **Step 3: Put the size in the frames**
 
 In `lib/game/turn.js`, add the import:
 
@@ -1403,7 +1403,7 @@ function snapshot(state) {
 }
 ```
 
-- [ ] **Step 4: Correct the comment that is now wrong**
+- [x] **Step 4: Correct the comment that is now wrong**
 
 In `runTurn`, the paragraph above the end-of-turn `checkIncomplete` claims every
 forward pass is decided inside its own turn. Replace it with:
@@ -1422,12 +1422,12 @@ forward pass is decided inside its own turn. Replace it with:
   events.push(...checkIncomplete(state, { endOfTurn: true }));
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/game/turn.js test/game/turn.test.js && git commit -m "Let a lob hang across the whistle, and size the ball in every frame"

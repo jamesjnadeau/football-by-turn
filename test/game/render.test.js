@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
+  coverMark, coverHaloMark,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
+import { setCover } from '../../lib/game/cover.js';
 import {
   TEAM_SIZE, MAX_ARROW_UNITS, MAX_PASS_ARROW_UNITS, DEBUG_VELOCITY_SECONDS,
-  DEBUG_VELOCITY_TRIANGLE_SCALE,
+  DEBUG_VELOCITY_TRIANGLE_SCALE, COVER_HALO_UNITS,
 } from '../../lib/game/constants.js';
 import { tackleReach } from '../../lib/game/modes.js';
 import { num } from '../../lib/field/geometry.js';
@@ -434,4 +436,40 @@ test('the message layer is the topmost layer on the board', () => {
   const msgRules = STYLE_GAME.split('}').filter((r) => r.startsWith('.msg'));
   assert.equal(msgRules.length, 2, '.msg-plate and .msg');
   for (const rule of msgRules) assert.ok(rule.includes('pointer-events:none'), rule);
+});
+
+test('a cover order draws a halo under the covered man and a dotted line to him', () => {
+  const s = createGame({ seed: 1 });
+  setCover(s, 'o-c', 'd-nt');
+  const svg = renderPlans(s);
+  const nt = getPlayer(s, 'd-nt');
+  assert.ok(svg.includes('class="cover-halo"'), 'the halo');
+  assert.ok(svg.includes('class="plan-mv"'), 'the same dotted green line as a plan arrow');
+  assert.ok(!svg.includes('class="plan-dest"'), 'and no destination circle');
+  assert.ok(svg.includes(`cx="${num(nt.pos.x)}" cy="${num(nt.pos.y)}"`), 'centred on him');
+  assert.ok(svg.includes(`data-for="o-c"`), 'attributed to the blocker, not the target');
+});
+
+test('the halo is a little wider than the man it sits under', () => {
+  const s = createGame({ seed: 1 });
+  const nt = getPlayer(s, 'd-nt');
+  const halo = coverHaloMark(nt);
+  assert.ok(halo.includes(`r="${num(nt.radius + COVER_HALO_UNITS)}"`));
+  assert.ok(COVER_HALO_UNITS > 0 && COVER_HALO_UNITS < nt.radius, 'a rim, not a target ring');
+});
+
+test('the cover line stops at the covered man\'s edge, not his centre', () => {
+  const s = createGame({ seed: 1 });
+  const c = getPlayer(s, 'o-c');
+  const nt = getPlayer(s, 'd-nt');
+  c.pos = { x: 135, y: 100 };
+  nt.pos = { x: 135, y: 130 };
+  const mark = coverMark(c, nt);
+  assert.ok(mark.includes(`L ${num(135)} ${num(130 - nt.radius)}`), mark);
+});
+
+test('the halo is drawn before the line, so the line reads on top of it', () => {
+  const s = createGame({ seed: 1 });
+  const mark = coverMark(getPlayer(s, 'o-c'), getPlayer(s, 'd-nt'));
+  assert.ok(mark.indexOf('cover-halo') < mark.indexOf('plan-mv'));
 });

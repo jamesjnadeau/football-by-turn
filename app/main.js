@@ -1,13 +1,15 @@
 import { SVG } from './vendor/svg.esm.js';
 import {
   createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable, setPass,
+  placePlayer, canReposition,
 } from '../lib/game/state.js';
 import { clearAiPlans, AI_MODES, aiModeIndex, nextAiMode } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
-  planMark, coverMark, passArrowMark, passArrowTip, renderMessage,
+  planMark, coverMark, passArrowMark, passArrowTip, renderMessage, renderFieldButtons,
+  destinationMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { planForDrag } from '../lib/game/predict.js';
@@ -52,6 +54,11 @@ let showVelocity = true;
 // Not game state: the playbook outlives New Game, and lives in the browser
 // rather than in `state`, which is replaced wholesale.
 let playbook = loadPlaybook();
+// Whether a drag moves a player instead of drawing him an arrow. A mode, not a
+// setting: paint() switches it off the moment repositioning stops being legal,
+// so the next down starts with drags meaning arrows again rather than silently
+// re-arming a mode the coach turned on two downs ago.
+let repositioning = false;
 
 function layer(id) {
   return board.findOne(`#${id}`);
@@ -86,6 +93,11 @@ function paint() {
   nextBtn.disabled = animating;
   newBtn.disabled = animating;
   nextBtn.hidden = state.phase !== 'playOver';
+  // Repositioning dies with the snap. Clearing it here rather than at each of
+  // the places a play can end means there is one rule, in the same breath as
+  // the button that shows it — and the button and the mode can't disagree.
+  if (!canReposition(state)) repositioning = false;
+  layer('game-buttons').clear().svg(renderFieldButtons(state, { repositioning, animating }));
   drawMessage();
   paintPlays();
 }
@@ -138,6 +150,18 @@ function onGesture(playerId, gesture, point) {
   layer('game-preview').clear();
   if (state.phase !== 'planning') return;
   const p = getPlayer(state, playerId);
+  // With the shuffle button pressed in, dragging a man carries him rather than
+  // drawing him an arrow — both flavours of drag, because a tap-then-drag
+  // while setting up is someone moving a player, not calling for a throw. His
+  // arrows are left alone: moving a man is not the same as changing his mind.
+  if (repositioning && canReposition(state)
+      && (gesture.kind === 'drag' || gesture.kind === 'passdrag')) {
+    if (placePlayer(state, playerId, point)) say(`${p.role} set up there.`);
+    else if (p.team === 'offense') say(`${p.role} has to line up behind the ball, on the field.`);
+    else say(`${p.role} has to line up past the ball, on the field.`);
+    paint();
+    return;
+  }
   if (gesture.kind === 'passdrag') {
     // Tap-then-drag is a throw only from the man with the ball. From anyone
     // else it is an ordinary run arrow — which is what the drag preview showed
@@ -169,9 +193,11 @@ function onGesture(playerId, gesture, point) {
     if (!setMode(state, playerId, target)) say(`${p.role} can't do that.`);
     else say(target === 'normal' ? `${p.role} back to normal.` : `${p.role}: ${target}.`);
   }
-  // gesture.kind === 'click': a tap on a player does nothing (player
-  // placement is out of scope for this task — see lib/game/state.js's
-  // placePlayer, which is implemented and tested but not wired up here).
+  // gesture.kind === 'click': a tap on a player still does nothing by itself.
+  // It is what arms the next drag on him as a throw, and the spec's
+  // click-to-reposition would have fought that — as well as only ever being
+  // able to shift a man the few units a tap is allowed to wander. Moving
+  // players is the 🔀 button and a drag instead, handled above.
   paint();
 }
 
@@ -188,6 +214,14 @@ function onDragPreview(playerId, log, prevTapAt) {
   // from anyone else a tap-then-drag is an ordinary run. Both marks come from
   // render.js, so the arrow being dragged and the arrow committed are the same
   // picture either way.
+  // While repositioning, the drag is a carry, so the preview is the man where
+  // he would come to rest — same mark renderPlans uses for a destination, at
+  // his own radius, so the ghost is exactly his body in the new spot.
+  if (repositioning && canReposition(state)) {
+    const at = log[log.length - 1];
+    layer('game-preview').clear().svg(destinationMark(at, p.radius));
+    return;
+  }
   const throwing = g.kind === 'passdrag' && state.ball.carrierId === playerId;
   const mark = throwing
     ? passArrowMark(p.pos, passArrowTip(p.pos, g.dir, g.throttle))
@@ -331,22 +365,33 @@ function closeMenu() {
   if (menu.open) menu.close();
 }
 
-// The hit rect is re-created by every rebuildBoard(), so the listener goes on
-// the board and matches on the way up rather than on the rect itself.
+/**
+ * What a press on the board itself does: open the menu, or work one of the two
+ * quick-press buttons. Every one of these nodes is re-created — the menu rect
+ * by rebuildBoard(), the buttons by every paint() — so the listener goes on
+ * the board and matches on the way up rather than on the nodes themselves.
+ */
+function pressBoardButton(target) {
+  if (!target.closest) return false;
+  if (target.closest('[data-menu-button]')) openMenu();
+  else if (target.closest('[data-reposition-button]')) toggleReposition();
+  else if (target.closest('[data-run-button]')) pressRun();
+  else return false;
+  return true;
+}
+
 board.on('click', (e) => {
-  if (e.target.closest && e.target.closest('[data-menu-button]')) openMenu();
+  pressBoardButton(e.target);
 });
 
-// The hit rect is the only opener for the menu, and the menu's controls live
-// inside a closed <dialog> — out of the tab order until it is open. Without
-// this, a keyboard user who tabbed to the rect could never actually press it.
-// Space is also prevented from scrolling the page, same as a native button.
+// These three rects are the only controls on the board, and everything the
+// menu holds lives in a closed <dialog> — out of the tab order until it is
+// open. Without this, a keyboard user who tabbed to one could never actually
+// press it. Space is also prevented from scrolling the page, same as a native
+// button does.
 board.on('keydown', (e) => {
-  if (!e.target.closest || !e.target.closest('[data-menu-button]')) return;
-  if (e.key === 'Enter' || e.key === ' ') {
-    e.preventDefault();
-    openMenu();
-  }
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  if (pressBoardButton(e.target)) e.preventDefault();
 });
 
 // Content is inside .menu-body, so a click whose target IS the dialog landed
@@ -358,8 +403,13 @@ menu.addEventListener('click', (e) => {
 closeMenuBtn.addEventListener('click', closeMenu);
 savePlayBtn.addEventListener('click', savePlay);
 
-runBtn.addEventListener('click', () => {
-  closeMenu();
+/**
+ * Run the turn. The menu's Run Turn and the board's quick press both come
+ * here, so the shortcut is the same press and not a second, subtly different
+ * way to snap the ball — same warning when someone has no direction set, same
+ * second press to run anyway.
+ */
+function pressRun() {
   if (animating || state.phase !== 'planning') return;
   const missing = unplannedPlayers(state);
   if (missing.length > 0 && !pendingWarning) {
@@ -421,7 +471,27 @@ runBtn.addEventListener('click', () => {
     debugBtn.disabled = true;
     animate(frames, finish);
   } else finish();
+}
+
+runBtn.addEventListener('click', () => {
+  closeMenu();
+  pressRun();
 });
+
+/**
+ * The shuffle button. Turning it on says so out loud, because the mode
+ * silently changes what every drag means — the pressed-in plate alone would
+ * leave a coach to discover that by dragging someone.
+ */
+function toggleReposition() {
+  if (animating || !canReposition(state)) return;
+  repositioning = !repositioning;
+  layer('game-preview').clear();
+  say(repositioning
+    ? 'Reposition: drag your players to move them. Press again to draw arrows.'
+    : 'Reposition off. Drags draw arrows again.');
+  paint();
+}
 
 clearBtn.addEventListener('click', () => {
   closeMenu();

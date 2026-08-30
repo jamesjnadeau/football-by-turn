@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
-  coverMark, coverHaloMark,
+  coverMark, coverHaloMark, renderFieldButtons,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
@@ -17,7 +17,7 @@ import { num } from '../../lib/field/geometry.js';
 test('the board shell has the field and every game layer', () => {
   const { viewBox, markup } = renderBoardShell(0);
   assert.match(viewBox, /^0 0 270 /);
-  for (const id of ['game-field', 'game-arrows', 'game-preview', 'game-players', 'game-overlay', 'game-menu', 'game-message']) {
+  for (const id of ['game-field', 'game-arrows', 'game-preview', 'game-players', 'game-overlay', 'game-menu', 'game-buttons', 'game-message']) {
     assert.ok(markup.includes(`id="${id}"`), id);
   }
   assert.ok(markup.includes(STYLE_GAME));
@@ -503,4 +503,90 @@ test('the halo is drawn before the line, so the line reads on top of it', () => 
   const s = createGame({ seed: 1 });
   const mark = coverMark(getPlayer(s, 'o-c'), getPlayer(s, 'd-nt'));
   assert.ok(mark.indexOf('cover-halo') < mark.indexOf('plan-mv'));
+});
+
+
+/**
+ * The x/y/width/height of the one rect in a mark, as numbers. The leading
+ * space matters: a bare /x="/ matches inside `tabindex="0"` too.
+ */
+function rectBox(markup) {
+  const at = (name) => Number(new RegExp(`\\s${name}="([-\\d.]+)"`).exec(markup)[1]);
+  return { x: at('x'), y: at('y'), w: at('width'), h: at('height') };
+}
+
+/** Just the one <g> whose plate carries this data attribute. */
+function buttonGroup(markup, attr) {
+  for (const g of markup.split('<g ').slice(1)) {
+    if (g.includes(attr)) return `<g ${g}`;
+  }
+  return null;
+}
+
+test('the board carries both quick-press buttons before the snap', () => {
+  const s = createGame({ seed: 1 });
+  const markup = renderFieldButtons(s, { repositioning: false, animating: false });
+  assert.ok(markup.includes('data-reposition-button'), 'the shuffle is offered');
+  assert.ok(markup.includes('data-run-button'), 'the run button is offered');
+  assert.ok(markup.includes('\u{1F500}'), 'shuffle icon');
+  assert.ok(markup.includes('\u{23E9}'), 'run icon');
+});
+
+test('the shuffle button goes away once the play has started, but Run stays put', () => {
+  const s = createGame({ seed: 1 });
+  const before = rectBox(buttonGroup(renderFieldButtons(s), 'data-run-button'));
+
+  s.turnIndex = 1; // the play is under way
+  const running = renderFieldButtons(s);
+  assert.ok(!running.includes('data-reposition-button'), 'nobody repositions mid-play');
+  assert.ok(running.includes('data-run-button'), 'the turn can still be run');
+  assert.deepEqual(rectBox(buttonGroup(running, 'data-run-button')), before,
+    'Run does not move up into the space the shuffle left');
+});
+
+test('the run button greys rather than vanishing when there is no turn to run', () => {
+  const s = createGame({ seed: 1 });
+  const live = buttonGroup(renderFieldButtons(s), 'data-run-button');
+  assert.ok(!live.includes('fbtn-off'));
+  assert.ok(!live.includes('aria-disabled'));
+
+  s.phase = 'playOver';
+  const dead = buttonGroup(renderFieldButtons(s), 'data-run-button');
+  assert.ok(dead.includes('fbtn-off'), 'greyed');
+  assert.ok(dead.includes('aria-disabled="true"'), 'and says so to a screen reader');
+
+  const drawing = buttonGroup(renderFieldButtons(createGame({ seed: 1 }), { animating: true }), 'data-run-button');
+  assert.ok(drawing.includes('fbtn-off'), 'dead while the turn is being drawn, like every other control');
+});
+
+test('the shuffle button shows which way it is set', () => {
+  const s = createGame({ seed: 1 });
+  const off = buttonGroup(renderFieldButtons(s, { repositioning: false }), 'data-reposition-button');
+  assert.ok(off.includes('aria-pressed="false"'));
+  assert.ok(!off.includes('fbtn-on'));
+
+  const on = buttonGroup(renderFieldButtons(s, { repositioning: true }), 'data-reposition-button');
+  assert.ok(on.includes('aria-pressed="true"'));
+  assert.ok(on.includes('fbtn-on'), 'the plate fills in');
+});
+
+test('both quick-press buttons are reachable by keyboard, like the menu rect', () => {
+  const markup = renderFieldButtons(createGame({ seed: 1 }));
+  assert.equal(markup.match(/tabindex="0"/g).length, 2);
+  assert.equal(markup.match(/role="button"/g).length, 2);
+  assert.equal(markup.match(/aria-label="/g).length, 2);
+});
+
+test('the quick-press buttons sit on the board and clear of the menu hit area', () => {
+  const boardHeight = Number(renderBoardShell(0).viewBox.split(' ')[3]);
+  const menu = rectBox(menuButtonMark());
+  const markup = renderFieldButtons(createGame({ seed: 1 }));
+  const shuffle = rectBox(buttonGroup(markup, 'data-reposition-button'));
+  const run = rectBox(buttonGroup(markup, 'data-run-button'));
+
+  assert.ok(shuffle.y + shuffle.h <= menu.y, 'the shuffle is above the label');
+  assert.ok(run.y >= menu.y + menu.h, 'and the run button below it');
+  assert.ok(shuffle.y >= 0 && run.y + run.h <= boardHeight, 'both are on the board');
+  assert.equal(shuffle.x, run.x, 'they share the label\'s column');
+  assert.ok(shuffle.x + shuffle.w <= 270, 'and stay inside the viewBox');
 });

@@ -62,12 +62,22 @@ because the computer does not decide until you press **Run Turn**. The
 Either computer breaks a defender down into the tackling stance once he is
 within range to make the hit.
 
-- All the controls live in the **Coaches Menu**. Press the vertical green
+- Nearly all the controls live in the **Coaches Menu**. Press the vertical green
   **COACHES MENU** text down the right-hand side of the field to open it; press
   Esc, click outside it, or press **Close** to dismiss it. Every button in it
   closes the menu as it acts, so you can watch the board. The play's status —
   the warning about unplanned players, `TOUCHDOWN!`, `FUMBLE!` — is drawn on the
   field itself, in the end zone, so it stays readable with the menu shut.
+- **Two buttons sit on the board itself**, in the same right-hand margin as the
+  menu label, for the two things you do over and over. They are shortcuts, not
+  extra features: each does exactly what its twin in the menu does.
+  - 🔀 **above** the label toggles repositioning on and off (see below). It is
+    only there while you are setting up, and disappears once the play starts.
+  - ⏩ **below** the label runs the turn, exactly as **Run Turn** does — the
+    same warning if someone has no direction set, and the same second press to
+    run anyway. It greys out while there is no turn to run.
+
+  Both are ordinary buttons to a keyboard: tab to one and press Enter or Space.
 - **Drag a player** to say where you want him at the end of the turn: a filled
   green circle appears on the spot he will actually be standing when the whistle
   blows, and a longer drag still means a harder run. Half a second does not buy
@@ -132,10 +142,18 @@ within range to make the hit.
   game is over.
 - **New Game** resets everything and starts a fresh drive from the 10.
 
-One thing this version *doesn't* do: there's no click-to-reposition of players
-before the snap. Every formation starts at its default positions — you set
-destinations, cover orders and stances from there, but you can't drag a player
-to a new starting spot pre-snap.
+**Repositioning before the snap.** Press 🔀 and dragging a player carries him
+to a new starting spot instead of drawing him an arrow; a ghost shows where he
+will come to rest. Press it again to go back to drawing arrows. It is a mode
+rather than a separate gesture because a plain tap is already spoken for — a
+tap arms the next drag on that player as a throw.
+
+The rules are the game's, not the button's: you may only reposition before the
+play's first turn, only on your own side of the line of scrimmage (the offense
+behind the ball, the defense past it), and only somewhere the whole player fits
+on the field. A move that breaks one of those is refused and says why, and the
+arrows and stances you have already set are left alone — moving a man is not
+the same as changing his mind.
 
 ## Running the tests
 
@@ -166,10 +184,13 @@ game:
   three-lineman front, two corners, a linebacker, and a safety on defense.
   Chosen to keep a turn-based, hand-drawn-arrow game legible — 22 players all
   needing an arrow every half-second turn would be a lot of drawing.
-- **Player placement before the snap was scoped out of this pass** (see "How
-  to play" above) — everything else in the original spec (drag-to-plan,
-  long-press stances, blocking friction, tackling, fumbles, downs, and
-  scoring) is implemented and playable.
+- **Player placement before the snap is a mode rather than a click.** The spec
+  asks for "click to move position"; a click is already the throw-arming tap,
+  and a click can only ever land a player within a few units of where he
+  already stands, so it is the 🔀 button and a drag instead (see "How to
+  play" above). Everything else in the original spec (drag-to-plan, long-press
+  stances, blocking friction, tackling, fumbles, downs, and scoring) is
+  implemented and playable.
 
 ## Design notes
 

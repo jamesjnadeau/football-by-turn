@@ -101,7 +101,7 @@ function onGesture(playerId, gesture, point) {
   if (gesture.kind === 'passdrag') {
     // Tap-then-drag on the man with the ball is a throw. Anyone else tapped
     // and dragged is just running — there is nothing in his hands to throw.
-    if (!setPass(state, gesture.dir, gesture.throttle)) {
+    if (!setPass(state, playerId, gesture.dir, gesture.throttle)) {
       say(`${p.role} doesn't have the ball.`);
     } else {
       say(`${p.role} will throw.`);

@@ -44,7 +44,7 @@ test('releasing a throw puts the ball in the air, clear of the passer\'s own rea
   const s = createGame({ seed: 1 });
   const qb = getPlayer(s, 'o-qb');
   const from = { ...qb.pos };
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   const events = releasePass(s);
   assert.equal(s.ball.carrierId, null);
   assert.equal(s.ball.forward, true);
@@ -61,7 +61,7 @@ test('releasing a throw puts the ball in the air, clear of the passer\'s own rea
 test('an illegal throw is allowed to happen, and flagged', () => {
   const s = createGame({ seed: 1 });
   s.forwardPasses = 1; // he already threw one this down
-  setPass(s, { x: 0, y: 1 }, 0.5);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5);
   const events = releasePass(s);
   assert.equal(s.ball.carrierId, null, 'the throw still happens');
   assert.deepEqual(s.penalty, { foul: 'second-forward-pass', spot: s.losYard });
@@ -71,7 +71,7 @@ test('an illegal throw is allowed to happen, and flagged', () => {
 
 test('a backward throw touches neither the forward tally nor the flag', () => {
   const s = createGame({ seed: 1 });
-  setPass(s, { x: 0, y: -1 }, 0.3);
+  setPass(s, 'o-qb', { x: 0, y: -1 }, 0.3);
   releasePass(s);
   assert.equal(s.forwardPasses, 0);
   assert.equal(s.penalty, null);
@@ -80,14 +80,14 @@ test('a backward throw touches neither the forward tally nor the flag', () => {
 
 test('power scales the throw from the shortest handoff to the longest bomb', () => {
   const s = createGame({ seed: 1 });
-  setPass(s, { x: 0, y: -1 }, 0);
+  setPass(s, 'o-qb', { x: 0, y: -1 }, 0);
   releasePass(s);
   assert.ok(Math.abs(len(s.ball.vel) - PASS_SPEED_MIN) < 1e-9, 'zero power is still a handoff');
 });
 
 test('a fumble between planning and the whistle cancels the throw', () => {
   const s = createGame({ seed: 1 });
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   s.ball = { carrierId: 'o-rb', pos: null, vel: null }; // somebody else has it now
   assert.deepEqual(releasePass(s), []);
   assert.equal(s.ball.carrierId, 'o-rb', 'the ball stays where it is');
@@ -102,14 +102,14 @@ test('nothing planned, nothing thrown', () => {
 
 test('only the first flag of a down is kept', () => {
   const s = createGame({ seed: 1 });
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   releasePass(s);                       // legal: the down's one forward pass
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   releasePass(s);                       // illegal: second forward pass
   const first = { ...s.penalty };
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   releasePass(s);                       // illegal again
   assert.deepEqual(s.penalty, first, 'one flag per down, the first one');
   assert.equal(s.forwardPasses, 3);

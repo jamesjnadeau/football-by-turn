@@ -164,7 +164,7 @@ test('a real computer-coached game: hidden plans hold, aiTeam survives the down,
 test('a planned throw goes up at the snap of the turn, and the ball flies', () => {
   const s = createGame({ seed: 1 });
   s.players = s.players.filter((p) => p.id === 'o-qb'); // nobody out there to catch it
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   const { frames, events } = runTurn(s, mulberry32(1));
   assert.ok(events.some((e) => e.type === 'pass'), 'the throw was reported');
   assert.equal(s.ball.carrierId, null, 'the ball is out of his hands');
@@ -179,7 +179,7 @@ test('a planned throw goes up at the snap of the turn, and the ball flies', () =
 test('a forward pass nobody catches is incomplete: dead ball, play over', () => {
   const s = createGame({ seed: 1 });
   s.players = s.players.filter((p) => p.id === 'o-qb');
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   let turns = 0;
   while (s.phase !== 'playOver' && turns < 8) { runTurn(s, mulberry32(1)); turns += 1; }
   assert.equal(s.deadReason, 'incomplete');
@@ -189,7 +189,7 @@ test('a forward pass nobody catches is incomplete: dead ball, play over', () => 
 test('a backward throw nobody catches stays live — a lateral on the ground is a fumble', () => {
   const s = createGame({ seed: 1 });
   s.players = s.players.filter((p) => p.id === 'o-qb');
-  setPass(s, { x: 0, y: -1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: -1 }, 1);
   let turns = 0;
   while (s.phase !== 'playOver' && turns < 8) { runTurn(s, mulberry32(1)); turns += 1; }
   assert.equal(s.deadReason, null, 'still live after the ball has stopped');
@@ -203,7 +203,7 @@ test('a teammate downfield catches the throw', () => {
   const wr = getPlayer(s, 'o-wr1');
   // Park him straight downfield of the QB, inside the first turn's flight.
   wr.pos = { x: qb.pos.x, y: qb.pos.y + 40 };
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   const { events } = runTurn(s, mulberry32(1));
   assert.deepEqual(
     events.find((e) => e.type === 'pickup'),
@@ -221,7 +221,7 @@ test('a defender in the throwing lane intercepts it — the play is over', () =>
   cb.pos = { x: qb.pos.x, y: qb.pos.y + 40 };
   cb.plan = null;
   s.aiTeam = null; // hot-seat: he stands where he is put, so the throw finds him
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   const { events } = runTurn(s, mulberry32(1));
   assert.ok(events.some((e) => e.type === 'pickup' && e.team === 'defense'));
   assert.equal(s.deadReason, 'recovered');

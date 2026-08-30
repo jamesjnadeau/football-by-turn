@@ -211,7 +211,7 @@ test('the velocity line is a thin blue hairline', () => {
 test('the planned throw draws its own arrow, distinct from a run arrow', () => {
   const s = createGame({ seed: 1 });
   assert.equal(renderPassArrow(s), '', 'nothing planned, nothing drawn');
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   const svg = renderPassArrow(s);
   assert.ok(svg.includes('data-pass="o-qb"'));
   assert.ok(svg.includes('class="pass"'), 'its own class, not the run arrow\'s');
@@ -227,7 +227,7 @@ test('a throw arrow is longer than a run arrow at the same throttle', () => {
 
 test('no throw arrow once the man who planned it no longer has the ball', () => {
   const s = createGame({ seed: 1 });
-  setPass(s, { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   s.ball = { carrierId: 'o-rb', pos: null, vel: null };
   assert.equal(renderPassArrow(s), '');
 });

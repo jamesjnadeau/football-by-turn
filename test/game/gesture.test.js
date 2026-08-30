@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyGesture, DRAG_MIN_UNITS, LONGPRESS_MS } from '../../lib/game/gesture.js';
+import { classifyGesture, DRAG_MIN_UNITS, LONGPRESS_MS, DOUBLE_TAP_MS } from '../../lib/game/gesture.js';
 import { MAX_ARROW_UNITS } from '../../lib/game/constants.js';
 
 test('a quick tap with no movement is a click', () => {
@@ -43,4 +43,43 @@ test('a slow drag is still a drag — movement wins over duration', () => {
 test('tiny drags below the threshold fall back to click', () => {
   const g = classifyGesture([{ t: 0, x: 0, y: 0 }, { t: 100, x: DRAG_MIN_UNITS - 1, y: 0 }]);
   assert.deepEqual(g, { kind: 'click' });
+});
+
+test('a drag soon after a tap on the same player is a throw, not a run', () => {
+  const log = [{ t: 1100, x: 0, y: 0 }, { t: 1200, x: 0, y: 20 }];
+  assert.equal(classifyGesture(log, 1000).kind, 'passdrag', 'tapped 100ms before the drag');
+  assert.equal(classifyGesture(log).kind, 'drag', 'no tap at all: an ordinary run arrow');
+  assert.equal(classifyGesture(log, null).kind, 'drag');
+  assert.equal(
+    classifyGesture(log, 1100 - DOUBLE_TAP_MS - 1).kind, 'drag',
+    'a stale tap does not arm a throw',
+  );
+});
+
+test('a throw drag carries the same direction and throttle as a run drag', () => {
+  const log = [{ t: 1100, x: 0, y: 0 }, { t: 1200, x: 0, y: MAX_ARROW_UNITS }];
+  const g = classifyGesture(log, 1000);
+  assert.equal(g.kind, 'passdrag');
+  assert.deepEqual(g.dir, { x: 0, y: 1 });
+  assert.equal(g.throttle, 1);
+});
+
+test('arming changes nothing about a tap or a long press', () => {
+  const tap = [{ t: 1100, x: 0, y: 0 }, { t: 1150, x: 0, y: 1 }];
+  assert.equal(classifyGesture(tap, 1000).kind, 'click');
+  const hold = [{ t: 1100, x: 0, y: 0 }, { t: 1100 + LONGPRESS_MS, x: 0, y: 1 }];
+  assert.equal(classifyGesture(hold, 1000).kind, 'longpress');
+});
+
+test('movement still beats duration, armed or not', () => {
+  const slow = [{ t: 1000, x: 0, y: 0 }, { t: 1000 + LONGPRESS_MS + 200, x: 0, y: DRAG_MIN_UNITS + 1 }];
+  assert.equal(classifyGesture(slow).kind, 'drag', 'no tap: a slow drag is still a drag');
+  assert.equal(
+    classifyGesture(slow, 900).kind, 'passdrag',
+    'armed: a slow drag is a throw, never a long press',
+  );
+  assert.equal(
+    classifyGesture(slow, 1000 - DOUBLE_TAP_MS - 1).kind, 'drag',
+    'a genuinely stale tap does not arm a throw',
+  );
 });

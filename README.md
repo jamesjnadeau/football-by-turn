@@ -33,6 +33,11 @@ https://jamesjnadeau.github.io/football-by-turn/.
 
 ## How to play
 
+The page opens on a **home screen** listing the games it can deal: **7 Player**,
+which is the game described below, and **11 Player**, which is greyed out and
+marked *coming soon* — the eleven-a-side game is not built yet. Press **7
+Player** and the board takes over the screen.
+
 Each drive starts 1st and goal from the offense's own 10-yard line, and the
 offense has **4 downs** to score before the ball turns over.
 
@@ -208,6 +213,10 @@ within range to make the hit.
   a touchdown, a turnover on downs, or a fumble recovered by the defense, the
   game is over.
 - **New Game** resets everything and starts a fresh drive from the 10.
+- **Back to Home** leaves the drive and returns to the home screen. It abandons
+  the play you were in — the next press of **7 Player** starts a fresh drive —
+  but your saved plays are kept, the same as they are across a reload. Like
+  **Next Down** and **New Game**, it is dead while a turn is being drawn.
 
 
 ## Running the tests

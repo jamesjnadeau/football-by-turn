@@ -43,7 +43,7 @@ async function start(variantId) {
   show(home, false);
   show(board, true);
   game ??= await import('./main.js');
-  game.startGame();
+  game.startGame({ onExit: showHome });
 }
 
 home.innerHTML = homeMarkup();

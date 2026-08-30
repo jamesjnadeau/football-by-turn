@@ -42,6 +42,7 @@ const repositionBtn = document.getElementById('reposition');
 const debugBtn = document.getElementById('debug');
 const nextBtn = document.getElementById('next');
 const newBtn = document.getElementById('new');
+const homeBtn = document.getElementById('home-btn');
 
 let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
 let random = mulberry32(state.seed);
@@ -109,6 +110,7 @@ function paint() {
   clearBtn.disabled = animating;
   nextBtn.disabled = animating;
   newBtn.disabled = animating;
+  homeBtn.disabled = animating;
   nextBtn.hidden = state.phase !== 'playOver';
   // The board's own two buttons are redrawn every paint rather than built with
   // the board, which is what lets the shuffle disappear at the snap and the
@@ -576,6 +578,7 @@ function pressRun() {
     clearBtn.disabled = true;
     nextBtn.disabled = true;
     newBtn.disabled = true;
+    homeBtn.disabled = true;
     aiBtn.disabled = true;
     repositionBtn.disabled = true;
     debugBtn.disabled = true;
@@ -717,6 +720,29 @@ newBtn.addEventListener('click', () => {
 });
 
 /**
+ * Leave the drive and go back to the home screen. Everything that could still
+ * fire after we are gone is stopped first: a pending auto-advance would bring
+ * up the next down behind a hidden board, and the menu would still be open on
+ * the next visit. The board itself is left as it is — startGame() rebuilds it
+ * from scratch, so clearing it here would only be a flicker on the way out.
+ *
+ * Dead while a turn is being drawn, exactly like Next Down and New Game: the
+ * animate() loop is still walking the frames, and its finish() would paint over
+ * a drive nobody is watching.
+ */
+function goHome() {
+  cancelAutoAdvance();
+  stopRepositioning();
+  exitToHome();
+}
+
+homeBtn.addEventListener('click', () => {
+  closeMenu();
+  if (animating) return;
+  goHome();
+});
+
+/**
  * Start a drive. app/home.js calls this when a coach picks a game off the home
  * screen — the first press imports this module and lands here, and every press
  * after a trip home lands here again. That is why the pointer plumbing is
@@ -730,8 +756,13 @@ newBtn.addEventListener('click', () => {
  * an instruction rather than a score report.
  */
 let inputAttached = false;
+// How the Back to Home button gets back to the screen that started us. It is
+// handed in rather than imported so the dependency runs one way only: home.js
+// knows about the game, and the game knows nothing about home.
+let exitToHome = () => {};
 
-export function startGame() {
+export function startGame({ onExit = () => {} } = {}) {
+  exitToHome = onExit;
   if (!inputAttached) {
     attachInput(board, { hitTest, onGesture, onDragPreview });
     inputAttached = true;

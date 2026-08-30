@@ -8,6 +8,18 @@ import { SUBSTEPS_PER_TURN, TEAM_SIZE } from '../../lib/game/constants.js';
 import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
 import { norm, dist } from '../../lib/game/vec.js';
 
+/**
+ * The snap taken: the ball in the quarterback's hands and nothing pending.
+ * A down now opens with the ball on the CENTRE and a lateral to the
+ * quarterback already planned, which is the state before the one these tests
+ * are about -- they start from a backfield carrier, so they say so.
+ */
+function afterSnap(s) {
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  return s;
+}
+
 test('a turn produces one frame per sub-step and moves planned players', () => {
   const s = createGame({ seed: 1 });
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
@@ -36,6 +48,7 @@ test('charge is consumed by the turn that uses it', () => {
 
 test('a clean run to the end zone ends the turn early with a touchdown', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.players = s.players.filter((p) => p.id === 'o-qb'); // no defense in the way
   const qb = getPlayer(s, 'o-qb');
   qb.pos = fieldPos(0, GOAL_YARD - 0.5);
@@ -81,6 +94,7 @@ test('a full scripted play: everyone charges, the play eventually ends', () => {
 
 test('unplannedPlayers lists everyone without an arrow (the warning feed)', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   assert.equal(unplannedPlayers(s).length, TEAM_SIZE * 2);
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
   const ids = unplannedPlayers(s);
@@ -90,6 +104,7 @@ test('unplannedPlayers lists everyone without an arrow (the warning feed)', () =
 
 test('a player with a throw planned is not nagged for a run arrow', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  afterSnap(s);
   assert.ok(unplannedPlayers(s).includes('o-qb'));
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   assert.ok(!unplannedPlayers(s).includes('o-qb'), 'he has a plan — to throw');
@@ -112,6 +127,7 @@ test('the computer coaches the defense during the turn — and its arrows never 
 
 test('the computer runs its players at the ball', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  afterSnap(s);
   s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'd-lb'); // no traffic in between
   const y0 = getPlayer(s, 'd-lb').pos.y;
   runTurn(s, mulberry32(1));
@@ -121,6 +137,7 @@ test('the computer runs its players at the ball', () => {
 
 test('the unplanned warning counts only the players the human is coaching', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  afterSnap(s);
   const ids = unplannedPlayers(s);
   assert.equal(ids.length, TEAM_SIZE, 'the offense, and nobody else');
   assert.ok(ids.every((id) => id.startsWith('o-')));
@@ -133,6 +150,7 @@ test('a real computer-coached game: hidden plans hold, aiTeam survives the down,
   // to gameOver — which is what exercises (b). Confirmed by running this
   // exact scenario repeatedly: same three turns, same tackle, every time.
   const s = createGame({ seed: 1, ai: 'defense' });
+  afterSnap(s);
   for (const p of s.players) {
     if (p.team === 'offense') setPlan(s, p.id, { x: 0, y: 1 }, 1);
   }
@@ -170,6 +188,7 @@ test('a real computer-coached game: hidden plans hold, aiTeam survives the down,
 
 test('a planned throw goes up at the snap of the turn, and the ball flies', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.players = s.players.filter((p) => p.id === 'o-qb'); // nobody out there to catch it
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   const { frames, events } = runTurn(s, mulberry32(1));
@@ -185,6 +204,7 @@ test('a planned throw goes up at the snap of the turn, and the ball flies', () =
 
 test('a forward pass nobody catches is incomplete in the turn it was thrown', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.players = s.players.filter((p) => p.id === 'o-qb'); // nobody out there to catch it
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   const { events } = runTurn(s, mulberry32(1));
@@ -196,6 +216,7 @@ test('a forward pass nobody catches is incomplete in the turn it was thrown', ()
 
 test('a forward pass nobody catches is incomplete: dead ball, play over', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.players = s.players.filter((p) => p.id === 'o-qb');
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   let turns = 0;
@@ -206,6 +227,7 @@ test('a forward pass nobody catches is incomplete: dead ball, play over', () => 
 
 test('a backward throw nobody catches stays live — a lateral on the ground is a fumble', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.players = s.players.filter((p) => p.id === 'o-qb');
   setPass(s, 'o-qb', { x: 0, y: -1 }, 1);
   let turns = 0;
@@ -216,6 +238,7 @@ test('a backward throw nobody catches stays live — a lateral on the ground is 
 
 test('a teammate downfield catches the throw', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'o-wr1');
   const qb = getPlayer(s, 'o-qb');
   const wr = getPlayer(s, 'o-wr1');
@@ -233,6 +256,7 @@ test('a teammate downfield catches the throw', () => {
 
 test('a defender in the throwing lane intercepts it — the play is over', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'd-cb1');
   const qb = getPlayer(s, 'o-qb');
   const cb = getPlayer(s, 'd-cb1');

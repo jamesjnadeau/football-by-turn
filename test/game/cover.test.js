@@ -84,6 +84,7 @@ test('with no carrier of his own the blocker shadows the target, led', () => {
 
 test('with the ball on his own team the blocker interposes', () => {
   const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null }; // the snap is away
   setCover(s, 'o-c', 'd-nt');
   const c = getPlayer(s, 'o-c');
   const nt = getPlayer(s, 'd-nt');

@@ -44,6 +44,7 @@ test('every player renders as a positioned group with a team-classed circle of i
 
 test('the carrier shows the football; tucking moves it inside the circle', () => {
   const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null }; // after the snap
   const untucked = renderPlayers(s);
   assert.equal((untucked.match(/class="fb"/g) || []).length, 1, 'exactly one ball');
   const qb = getPlayer(s, 'o-qb');
@@ -341,6 +342,10 @@ test('a moving carrier draws his football on top of his own velocity triangle', 
 
 test('the planned throw draws its own arrow, distinct from a run arrow', () => {
   const s = createGame({ seed: 1 });
+  // The snap is drawn like any other throw, so clear it to get an empty board
+  // and hand the quarterback the ball, which is the throw this is about.
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
   assert.equal(renderPassArrow(s), '', 'nothing planned, nothing drawn');
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   const svg = renderPassArrow(s);
@@ -354,6 +359,7 @@ test('the planned throw draws its own arrow, distinct from a run arrow', () => {
 
 test('no throw arrow once the man who planned it no longer has the ball', () => {
   const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   s.ball = { carrierId: 'o-rb', pos: null, vel: null };
   assert.equal(renderPassArrow(s), '');
@@ -637,4 +643,29 @@ test('the button column clears the yard numbers and the edge of the frame', () =
     assert.ok(boardWidth - (box.x + box.w) >= 3,
       `clears the edge of the frame by ${(boardWidth - (box.x + box.w)).toFixed(2)}`);
   }
+});
+
+test('the snap arrow reaches the man it is aimed at, not a length scaled by power', () => {
+  const s = createGame({ seed: 1 });
+  const c = getPlayer(s, 'o-c');
+  const qb = getPlayer(s, 'o-qb');
+  assert.equal(s.plannedPass.power, 0, 'the snap is the gentlest throw in the game');
+
+  const svg = renderPassArrow(s);
+  assert.ok(svg.includes('data-pass="o-c"'), 'drawn from the centre');
+  // Scaled by power it would be a path from a point to the same point. It runs
+  // to the quarterback instead, which is the whole of what it has to say.
+  assert.ok(!svg.includes(`M ${num(c.pos.x)} ${num(c.pos.y)} L ${num(c.pos.x)} ${num(c.pos.y)}`),
+    'not a zero-length arrow');
+  assert.ok(svg.includes(`L ${num(qb.pos.x)} ${num(qb.pos.y)}`), 'it reaches him');
+});
+
+test('a throw the coach drew is still drawn at the length he dragged', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  const qb = getPlayer(s, 'o-qb');
+  assert.ok(renderPassArrow(s).includes(`${num(qb.pos.y + MAX_PASS_ARROW_UNITS)}`),
+    'full power still means a full-length arrow');
 });

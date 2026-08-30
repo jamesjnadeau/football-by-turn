@@ -4,7 +4,8 @@ import {
   spotFault, onTheLine, lineCount, formationFoul, alignDefense, canReposition, placePlayer,
 } from '../../lib/game/formation.js';
 import { MIN_ON_LINE, TEAM_SIZE } from '../../lib/game/constants.js';
-import { createGame, getPlayer, setPlan } from '../../lib/game/state.js';
+import { createGame, getPlayer, setPlan, setPass } from '../../lib/game/state.js';
+import { hashCentresX } from '../../lib/field/geometry.js';
 import { setCover } from '../../lib/game/cover.js';
 import { fieldPos, yardsOfY } from '../../lib/game/view.js';
 
@@ -197,4 +198,64 @@ test('the drive-start line stands clear of the zone edges, so a nudge cannot kno
     assert.equal(onTheLine(s, getPlayer(s, 'o-wr1')), true, `nudged ${nudge} yd`);
     assert.equal(formationFoul(s), null, `still legal at ${nudge} yd`);
   }
+});
+
+test('the man with the ball must line up between the hash marks', () => {
+  const s = createGame({ seed: 1 });
+  const [hashLeft, hashRight] = hashCentresX();
+  const backfield = fieldPos(0, -1).y;
+  const at = (x) => ({ x, y: backfield });
+
+  // The centre starts every down holding it, so the rule falls on him.
+  assert.equal(s.ball.carrierId, 'o-c');
+  assert.equal(spotFault(s, 'o-c', at(hashLeft + 1)), null, 'just inside the left hash');
+  assert.equal(spotFault(s, 'o-c', at(hashRight - 1)), null, 'just inside the right hash');
+  assert.equal(spotFault(s, 'o-c', at(hashLeft - 1)), 'outside-hashes');
+  assert.equal(spotFault(s, 'o-c', at(hashRight + 1)), 'outside-hashes');
+
+  // It is a rule about the BALL, so it follows the ball rather than the role:
+  // nobody else is held to it, and the centre is not held to it once he has
+  // given the ball up.
+  assert.equal(spotFault(s, 'o-wr1', at(hashLeft - 20)), null, 'a receiver splits out freely');
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  assert.equal(spotFault(s, 'o-c', at(hashLeft - 1)), null, 'no longer his to spot');
+});
+
+test('the hash rule is judged on the ball, not on the whole body', () => {
+  // Out-of-bounds takes the player's radius off each edge because a body
+  // cannot be over the sideline. This one does not: the ball rides at his
+  // middle, so a centre whose shoulder overhangs a hash is still legal.
+  const s = createGame({ seed: 1 });
+  const [hashLeft] = hashCentresX();
+  const c = getPlayer(s, 'o-c');
+  const spot = { x: hashLeft + c.radius / 2, y: fieldPos(0, -1).y };
+  assert.ok(spot.x - c.radius < hashLeft, 'his body really does overhang the hash');
+  assert.equal(spotFault(s, 'o-c', spot), null);
+});
+
+test('moving either man re-aims the snap between them', () => {
+  const s = createGame({ seed: 1 });
+  assert.deepEqual(s.plannedPass.dir, { x: 0, y: -1 }, 'straight back to begin with');
+
+  // Move the quarterback out to one side and the throw follows him...
+  assert.equal(placePlayer(s, 'o-qb', fieldPos(-6, -4)), true);
+  assert.ok(s.plannedPass.dir.x < 0, 'the snap leans his way');
+  assert.ok(s.plannedPass.dir.y < 0, 'and is still a lateral');
+  assert.equal(s.plannedPass.auto, true);
+
+  // ...and so does moving the centre, which is the other half of the aim.
+  // Straight back rather than sideways: his guards stand two and a half yards
+  // off him and the two bodies are seven units wide between them, so there is
+  // barely a yard of lateral room before spotFault calls it occupied.
+  const before = { ...s.plannedPass.dir };
+  assert.equal(placePlayer(s, 'o-c', fieldPos(0, -2)), true);
+  assert.notDeepEqual(s.plannedPass.dir, before, 're-aimed from his new spot');
+});
+
+test('a move never overwrites a throw the coach called himself', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, 'o-c', { x: 1, y: -1 }, 0.7);
+  const his = { ...s.plannedPass };
+  assert.equal(placePlayer(s, 'o-qb', fieldPos(6, -4)), true);
+  assert.deepEqual(s.plannedPass, his, 'his call survives the shuffle');
 });

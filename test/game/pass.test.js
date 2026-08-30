@@ -9,6 +9,18 @@ import {
   PICKUP_RADIUS_BONUS,
 } from '../../lib/game/constants.js';
 
+/**
+ * The snap taken: the ball in the quarterback's hands and nothing pending.
+ * A down now opens with the ball on the CENTRE and a lateral to the
+ * quarterback already planned, which is the state before the one these tests
+ * are about -- they start from a backfield carrier, so they say so.
+ */
+function afterSnap(s) {
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  return s;
+}
+
 test('forward means toward the goal the offense attacks; a flat lateral is not', () => {
   assert.equal(isForward({ x: 0, y: 1 }), true);
   assert.equal(isForward({ x: 1, y: 0.001 }), true);
@@ -42,6 +54,7 @@ test('a forward pass from beyond the line of scrimmage is illegal', () => {
 
 test('releasing a throw puts the ball in the air, clear of the passer\'s own reach', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   const qb = getPlayer(s, 'o-qb');
   const from = { ...qb.pos };
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
@@ -60,6 +73,7 @@ test('releasing a throw puts the ball in the air, clear of the passer\'s own rea
 
 test('a non-unit direction does not secretly change the throw\'s power', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   setPass(s, 'o-qb', { x: 0, y: 3 }, 1); // three times as long as a unit vector
   releasePass(s);
   assert.ok(Math.abs(len(s.ball.vel) - PASS_SPEED_MAX) < 1e-9, 'full power, not triple');
@@ -67,6 +81,7 @@ test('a non-unit direction does not secretly change the throw\'s power', () => {
 
 test('an illegal throw is allowed to happen, and flagged', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.forwardPasses = 1; // he already threw one this down
   setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5);
   const events = releasePass(s);
@@ -103,12 +118,14 @@ test('a fumble between planning and the whistle cancels the throw', () => {
 
 test('nothing planned, nothing thrown', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   assert.deepEqual(releasePass(s), []);
   assert.equal(s.ball.carrierId, 'o-qb');
 });
 
 test('only the first flag of a down is kept', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   releasePass(s);                       // legal: the down's one forward pass
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };

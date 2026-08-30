@@ -22,10 +22,25 @@ import {
 } from '../../lib/game/constants.js';
 
 /** A game trimmed to the players a scenario names; carrier stays the QB. */
+/**
+ * The snap taken: the ball in the quarterback's hands and nothing pending.
+ * A down now opens with the ball on the CENTRE and a lateral to the
+ * quarterback already planned, which is the state before the one these tests
+ * are about.
+ */
+function afterSnap(s) {
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  return s;
+}
+
 function scenario(ids) {
   const s = createGame({ seed: 1 });
   s.players = s.players.filter((p) => ids.includes(p.id));
-  return s;
+  // These scenarios are about what happens once someone is running with the
+  // ball, so they start from the snap already taken. Left alone, the down
+  // opens with the ball on a centre this filter has usually thrown away.
+  return afterSnap(s);
 }
 
 /** A scripted `random`: the listed rolls in order, then 0.99 (fail everything). */

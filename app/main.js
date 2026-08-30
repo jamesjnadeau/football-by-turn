@@ -88,7 +88,11 @@ function paint() {
   // it still reads as a man rather than as a man behind glass. While
   // repositioning there are no arrows to draw anyway — that is the mode.
   layer('game-arrows').clear().svg(
-    repositioning ? lineZoneMark(state)
+    // Repositioning draws no ORDERS — that is the mode, and moving a man drops
+    // his anyway. The snap is not one of his orders though, and it is aimed
+    // between the two men most likely to be moved, so it stays on the board:
+    // it is the one arrow that answers "what did that just do?".
+    repositioning ? lineZoneMark(state) + (state.plannedPass?.auto ? renderPassArrow(state) : '')
     : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state)
     : '',
   );
@@ -168,6 +172,7 @@ const FAULT_WORDS = {
   'past-line': (p) => `${p.role} can't line up past the line.`,
   'out-of-bounds': (p) => `${p.role} would be out of bounds there.`,
   occupied: (p) => `No room for ${p.role} there.`,
+  'outside-hashes': (p) => `${p.role} has the ball — he has to snap it from between the hashes.`,
 };
 
 /**

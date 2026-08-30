@@ -9,6 +9,18 @@ import { runTurn } from '../../lib/game/turn.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { TEAM_SIZE, AI_LEAD_MAX_SECONDS, AI_BREAKDOWN_UNITS } from '../../lib/game/constants.js';
 
+/**
+ * The snap taken: the ball in the quarterback's hands and nothing pending.
+ * A down now opens with the ball on the CENTRE and a lateral to the
+ * quarterback already planned, which is the state before the one these tests
+ * are about -- they start from a backfield carrier, so they say so.
+ */
+function afterSnap(s) {
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  return s;
+}
+
 test('with no computer opponent there is nothing to coach', () => {
   const s = createGame({ seed: 1 });
   assert.deepEqual(aiPlayers(s), []);
@@ -24,11 +36,13 @@ test('the computer coaches exactly its own team', () => {
 
 test('a standing carrier is chased where he stands', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  afterSnap(s);
   assert.deepEqual(pursuitTarget(s, getPlayer(s, 'd-lb')), getPlayer(s, 'o-qb').pos);
 });
 
 test('a moving carrier is led, and a further-away pursuer aims further ahead', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  afterSnap(s);
   const qb = getPlayer(s, 'o-qb');
   qb.vel = { x: 10, y: 0 };
   const near = pursuitTarget(s, getPlayer(s, 'd-nt')); // 5 yards off the ball
@@ -39,6 +53,7 @@ test('a moving carrier is led, and a further-away pursuer aims further ahead', (
 
 test('the lead is capped, so one breakaway cannot fling a pursuer off the field', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  afterSnap(s);
   const qb = getPlayer(s, 'o-qb');
   qb.vel = { x: 40, y: 0 };
   const safety = getPlayer(s, 'd-s');
@@ -58,6 +73,7 @@ test('a loose ball is chased where it lies', () => {
 
 test('every plan is a unit vector at the ball, full throttle', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  afterSnap(s);
   const plans = defensePlans(s);
   assert.equal(plans.length, TEAM_SIZE);
   const qb = getPlayer(s, 'o-qb');
@@ -97,6 +113,7 @@ test('coachAi writes the plans; clearAiPlans wipes them and leaves the human\'s 
 
 test('a defender breaks down only once he is close enough to make the hit', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  afterSnap(s);
   const qb = getPlayer(s, 'o-qb');
   const near = getPlayer(s, 'd-lb');
   const far = getPlayer(s, 'd-s');
@@ -109,6 +126,7 @@ test('a defender breaks down only once he is close enough to make the hit', () =
 
 test('a defender who gets left behind stands back up', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  afterSnap(s);
   const qb = getPlayer(s, 'o-qb');
   const lb = getPlayer(s, 'd-lb');
   lb.pos = { x: qb.pos.x, y: qb.pos.y + 1 };

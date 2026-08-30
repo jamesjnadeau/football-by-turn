@@ -36,6 +36,20 @@ https://jamesjnadeau.github.io/football-by-turn/.
 Each drive starts 1st and goal from the offense's own 10-yard line, and the
 offense has **4 downs** to score before the ball turns over.
 
+**Every down starts with the snap.** The centre comes to the line holding the
+ball, already aimed at the quarterback — a short backward toss, which is a
+lateral, so it costs you nothing against the one forward pass a down allows.
+You do not have to draw it and you are not nagged about the centre having no
+arrow; it is how a play starts, not a call you make. It goes back on by itself
+whenever it would otherwise be lost: a new down, **Clear Arrows**, a called
+play, or moving either man. Re-aiming follows them both, so shifting the
+quarterback out to one side leans the snap that way. Draw the centre a throw of
+your own and it replaces the snap for good — yours is never re-aimed over.
+
+Because the ball is spotted between the hash marks, the man holding it has to
+line up between them: drag the centre wider than that while repositioning and
+the spot is refused. Everyone else splits out as far as the sideline allows.
+
 **The computer coaches the defense.** You draw arrows for your seven offensive
 players; each turn the computer plans the defense and runs it. You never see
 what it has planned: no defensive arrows and no coverage marks are ever drawn,
@@ -115,7 +129,10 @@ within range to make the hit.
   Long-press the same player again to go back to normal.
 - **Tap the ball carrier, then drag** to throw. The dashed red arrow shows where
   the ball is going and how hard — a short backward drag is a handoff to the man
-  beside you, a long forward one is a bomb. Anyone can catch a throw, including
+  beside you, a long forward one is a bomb. The automatic snap is drawn in the
+  same red, but running all the way to the quarterback rather than at a length
+  scaled by power: it is thrown as gently as the game allows, so its length
+  would say nothing, and where it is going is the useful thing to see. Anyone can catch a throw, including
   the defense, so a forward pass into traffic is an interception waiting to
   happen. You get **one forward pass per down, and only from behind the line of
   scrimmage**; backward throws and handoffs are unlimited. Throw illegally and

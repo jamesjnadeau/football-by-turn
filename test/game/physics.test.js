@@ -173,6 +173,9 @@ test('a defender who stands back up gets his agility back', () => {
 function tuckedQbLockedDownfield() {
   const s = createGame({ seed: 1 });
   s.players = s.players.filter((p) => p.id === 'o-qb');
+  // He has taken the snap: tucking is something only the man with the ball
+  // may do, and the down now opens with it on the centre instead.
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   const qb = getPlayer(s, 'o-qb');
   qb.vel = { x: 0, y: 30 }; // already driving downfield when he tucks
   setMode(s, 'o-qb', 'tucked');

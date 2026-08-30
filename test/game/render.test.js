@@ -187,6 +187,13 @@ const rbGroup = (svg) => svg.match(/data-id="o-rb"[\s\S]*?<\/g>/)[0];
 // origin — the first "x,y" pair in the polygon's points list.
 const apexOf = (svg) => rbGroup(svg).match(/<polygon points="([-\d.]+),([-\d.]+) /).slice(1, 3).map(Number);
 
+// All three "x,y" pairs from o-rb's polygon, in emitted order.
+const allPointsOf = (svg) => rbGroup(svg)
+  .match(/<polygon points="([^"]+)" class="vel"\/>/)[1]
+  .trim()
+  .split(/\s+/)
+  .map((pair) => pair.split(',').map(Number));
+
 test('the velocity triangle grows past the player edge in proportion to speed', () => {
   const s = createGame({ seed: 1 });
   const rb = getPlayer(s, 'o-rb'); // radius 2.5
@@ -211,6 +218,28 @@ test('the velocity triangle points along the velocity, not along the plan', () =
     Math.abs(apexY - -(rb.radius + 40 * DEBUG_VELOCITY_SECONDS)) < EPS,
     'apex reaches upfield, along the velocity',
   );
+});
+
+test('the velocity triangle is equilateral: three equidistant vertices, 120 degrees apart', () => {
+  // The apex-only checks above would still pass an implementation that
+  // emitted the right apex but two wrong, non-triangular points behind it —
+  // e.g. collinear, or bunched together. This test looks at the shape itself:
+  // every vertex the same distance from the local origin (the circumradius),
+  // and each one exactly a third of a turn from the next.
+  const s = createGame({ seed: 1 });
+  const rb = getPlayer(s, 'o-rb');
+  rb.vel = { x: 30, y: 40 }; // an off-axis heading, so 120-degree spacing can't be mistaken for a right angle
+  const points = allPointsOf(renderPlayers(s, { showVelocity: true }));
+  assert.equal(points.length, 3);
+  const EPS = 0.02; // num()'s two-decimal rounding is the only source of slop here
+  const radii = points.map(([x, y]) => Math.hypot(x, y));
+  for (const r of radii) assert.ok(Math.abs(r - radii[0]) < EPS, 'every vertex is the same distance from the centre');
+  const twoPi = 2 * Math.PI;
+  const headings = points.map(([x, y]) => Math.atan2(y, x));
+  for (let i = 0; i < 3; i += 1) {
+    const delta = ((headings[(i + 1) % 3] - headings[i]) % twoPi + twoPi) % twoPi;
+    assert.ok(Math.abs(delta - twoPi / 3) < EPS, `vertex ${i} to ${(i + 1) % 3} is a third of a turn`);
+  }
 });
 
 test('the velocity triangle is filled in the same blue the line used to be', () => {

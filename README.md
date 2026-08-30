@@ -115,7 +115,23 @@ within range to make the hit.
   Long-press the same player again to go back to normal.
 - **Tap the ball carrier, then drag** to throw. The dashed red arrow shows where
   the ball is going and how hard — a short backward drag is a handoff to the man
-  beside you, a long forward one is a bomb. Anyone can catch a throw, including
+  beside you, a long forward one is a bomb.
+  - **Drop the drag on one of your own within 15 yards** and the throw locks
+    onto him: it goes where he is standing, thrown exactly hard enough to arrive
+    this turn. He gets a red halo, the way a covered man gets a green one. He is
+    free to move between now and the whistle, though — a lock-on is an aim, not
+    a guarantee.
+  - **Drag further than that** and you are throwing a **lob**. Nothing locks on;
+    a red circle shows where the ball is coming down instead, and it grows the
+    longer the throw — the ball lands *somewhere* inside it, not on the middle.
+    A lob goes up as well as out, so it takes about twice as long to arrive and
+    is usually still in the air when the turn ends: you get a whole planning
+    phase to run somebody under it. While it is over everyone's heads it is
+    drawn bigger and **nobody can catch it** — not your receiver, not the
+    defense. It is live for the first 15 yards of its flight, and again for the
+    last 3 as it comes down.
+
+  Anyone can catch a throw, including
   the defense, so a forward pass into traffic is an interception waiting to
   happen. You get **one forward pass per down, and only from behind the line of
   scrimmage**; backward throws and handoffs are unlimited. Throw illegally and

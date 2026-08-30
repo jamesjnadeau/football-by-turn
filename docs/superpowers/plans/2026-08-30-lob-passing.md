@@ -1841,7 +1841,7 @@ without having watched a lob land.
   `looseBall.scale` (Task 6).
 - Produces: nothing other modules read.
 
-- [ ] **Step 1: Extend the imports**
+- [x] **Step 1: Extend the imports**
 
 In `app/main.js`:
 
@@ -1855,7 +1855,7 @@ import { receiverAt, lockOnPass, passLanding } from '../lib/game/pass.js';
 import { lobLanded } from '../lib/game/lob.js';
 ```
 
-- [ ] **Step 2: Teach the drag to throw all three ways**
+- [x] **Step 2: Teach the drag to throw all three ways**
 
 Add this beside `runOrCoverMark`:
 
@@ -1904,7 +1904,7 @@ Replace the `passdrag` branch of `onGesture`:
   } else if (gesture.kind === 'drag') {
 ```
 
-- [ ] **Step 3: Preview it the same way**
+- [x] **Step 3: Preview it the same way**
 
 In `onDragPreview`, replace the two lines that build `mark`:
 
@@ -1920,7 +1920,7 @@ In `onDragPreview`, replace the two lines that build `mark`:
   layer('game-preview').clear().svg(mark);
 ```
 
-- [ ] **Step 4: Swell the ball as it flies**
+- [x] **Step 4: Swell the ball as it flies**
 
 In `animate`'s `tick`, replace the ball transform:
 
@@ -1934,7 +1934,7 @@ In `animate`'s `tick`, replace the ball transform:
     }
 ```
 
-- [ ] **Step 5: Say when the ball is still up**
+- [x] **Step 5: Say when the ball is still up**
 
 In `pressRun`'s `finish`, immediately after the `for (const e of events)` loop:
 
@@ -1947,7 +1947,7 @@ In `pressRun`'s `finish`, immediately after the `for (const e of events)` loop:
     }
 ```
 
-- [ ] **Step 6: Verify it by hand**
+- [x] **Step 6: Verify it by hand**
 
 Run:
 
@@ -1984,7 +1984,7 @@ does not match before moving on:
    onto a defender is still a cover order (green halo, not red); Clear Arrows
    still clears the throw.
 
-- [ ] **Step 7: Update the README**
+- [x] **Step 7: Update the README**
 
 Replace the "**Tap the ball carrier, then drag** to throw" bullet's first
 sentence and add the two sub-bullets, leaving the rest of the bullet (the
@@ -2010,7 +2010,7 @@ one-forward-pass rule, the flag, incompletions) exactly as it is:
     last 3 as it comes down.
 ```
 
-- [ ] **Step 8: Run the tests one last time and commit**
+- [x] **Step 8: Run the tests one last time and commit**
 
 Run: `npm test`
 Expected: PASS.

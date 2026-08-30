@@ -761,7 +761,7 @@ never lobs.
     `state.plannedPass` becomes `{from, dir, power, target}`.
   - `state.ball` gains `lob: flightPlan | null` on any thrown ball.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `test/game/pass.test.js`, add to the imports:
 
@@ -853,14 +853,14 @@ test('a throw can be locked onto a receiver, and the next one clears the lock', 
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test`
 Expected: FAIL — the new pass tests throw `TypeError: random is not a function`
 (or report `s.ball.lob` undefined), and the two `state.test.js` `deepEqual`s
 fail on the missing `target`.
 
-- [ ] **Step 3: Give setPass the target**
+- [x] **Step 3: Give setPass the target**
 
 In `lib/game/state.js`, replace `setPass` (keep the existing doc comment and add
 the last paragraph):
@@ -887,7 +887,7 @@ export function setPass(state, id, dir, power, target = null) {
 }
 ```
 
-- [ ] **Step 4: Build the lob in releasePass**
+- [x] **Step 4: Build the lob in releasePass**
 
 In `lib/game/pass.js`, add the import:
 
@@ -938,7 +938,7 @@ and replace the `state.ball = {...}` assignment with:
   };
 ```
 
-- [ ] **Step 5: Hand the turn's random to it**
+- [x] **Step 5: Hand the turn's random to it**
 
 In `lib/game/turn.js`, the one call site:
 
@@ -946,7 +946,7 @@ In `lib/game/turn.js`, the one call site:
   events.push(...releasePass(state, random));
 ```
 
-- [ ] **Step 6: Fix the existing releasePass calls in the tests**
+- [x] **Step 6: Fix the existing releasePass calls in the tests**
 
 Every bare `releasePass(s)` in `test/game/pass.test.js` becomes
 `releasePass(s, mulberry32(1))`. There are eight of them, in the tests named:
@@ -958,12 +958,12 @@ illegal throw is allowed to happen…", "a backward throw touches neither…",
 
 Run: `grep -n 'releasePass(s)' test/game/pass.test.js` to confirm none are left.
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS, all of it.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add lib/game/pass.js lib/game/state.js lib/game/turn.js test/game/pass.test.js test/game/state.test.js && git commit -m "Throw a lob when the pass reaches past the lock zone"

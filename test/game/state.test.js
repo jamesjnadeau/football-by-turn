@@ -147,9 +147,9 @@ test('a new game has no throw planned, no forward pass thrown, and no flag', () 
 test('only the ball carrier can plan a throw, and a second throw replaces the first', () => {
   const s = createGame({ seed: 1 });
   assert.equal(setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5), true);
-  assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.5 });
+  assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.5, target: null });
   setPass(s, 'o-qb', { x: 1, y: 0 }, 0.9);
-  assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 1, y: 0 }, power: 0.9 });
+  assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 1, y: 0 }, power: 0.9, target: null });
   // The bug this signature exists to prevent: a player who is not the carrier
   // must be refused, not silently substituted with whoever is.
   assert.equal(setPass(s, 'o-wr1', { x: 0, y: 1 }, 0.5), false);
@@ -160,6 +160,14 @@ test('only the ball carrier can plan a throw, and a second throw replaces the fi
   s.ball = { carrierId: null, pos: { x: 100, y: 100 }, vel: { x: 0, y: 0 } };
   assert.equal(setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5), false);
   assert.equal(s.plannedPass, null);
+});
+
+test('a throw can be locked onto a receiver, and the next one clears the lock', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5, 'o-wr1');
+  assert.equal(s.plannedPass.target, 'o-wr1');
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5);
+  assert.equal(s.plannedPass.target, null, 'a fresh drag is a fresh order');
 });
 
 test('Clear Arrows drops the planned throw along with the run arrows', () => {

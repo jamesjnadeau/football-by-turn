@@ -11,6 +11,9 @@ import {
   PASS_SPEED_MIN, PASS_SPEED_MAX, PASS_SPAWN_EPSILON, PASS_GRACE_SUBSTEPS,
   PICKUP_RADIUS_BONUS, PASS_REACH_MAX, DT, BALL_FRICTION, SUBSTEPS_PER_TURN,
 } from '../../lib/game/constants.js';
+import { mulberry32 } from '../../lib/game/rng.js';
+import { isLob, lobSubsteps, scatterRadius } from '../../lib/game/lob.js';
+import { dist } from '../../lib/game/vec.js';
 
 test('forward means toward the goal the offense attacks; a flat lateral is not', () => {
   assert.equal(isForward({ x: 0, y: 1 }), true);
@@ -48,7 +51,7 @@ test('releasing a throw puts the ball in the air, clear of the passer\'s own rea
   const qb = getPlayer(s, 'o-qb');
   const from = { ...qb.pos };
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
-  const events = releasePass(s);
+  const events = releasePass(s, mulberry32(1));
   assert.equal(s.ball.carrierId, null);
   assert.equal(s.ball.forward, true);
   assert.equal(s.ball.loose, PASS_GRACE_SUBSTEPS);
@@ -64,7 +67,7 @@ test('releasing a throw puts the ball in the air, clear of the passer\'s own rea
 test('a non-unit direction does not secretly change the throw\'s power', () => {
   const s = createGame({ seed: 1 });
   setPass(s, 'o-qb', { x: 0, y: 3 }, 1); // three times as long as a unit vector
-  releasePass(s);
+  releasePass(s, mulberry32(1));
   assert.ok(Math.abs(len(s.ball.vel) - PASS_SPEED_MAX) < 1e-9, 'full power, not triple');
 });
 
@@ -72,7 +75,7 @@ test('an illegal throw is allowed to happen, and flagged', () => {
   const s = createGame({ seed: 1 });
   s.forwardPasses = 1; // he already threw one this down
   setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5);
-  const events = releasePass(s);
+  const events = releasePass(s, mulberry32(1));
   assert.equal(s.ball.carrierId, null, 'the throw still happens');
   assert.deepEqual(s.penalty, { foul: 'second-forward-pass', spot: s.losYard });
   assert.deepEqual(events[1], { type: 'flag', foul: 'second-forward-pass' });
@@ -82,7 +85,7 @@ test('an illegal throw is allowed to happen, and flagged', () => {
 test('a backward throw touches neither the forward tally nor the flag', () => {
   const s = createGame({ seed: 1 });
   setPass(s, 'o-qb', { x: 0, y: -1 }, 0.3);
-  releasePass(s);
+  releasePass(s, mulberry32(1));
   assert.equal(s.forwardPasses, 0);
   assert.equal(s.penalty, null);
   assert.equal(s.ball.forward, false);
@@ -91,7 +94,7 @@ test('a backward throw touches neither the forward tally nor the flag', () => {
 test('power scales the throw from the shortest handoff to the longest bomb', () => {
   const s = createGame({ seed: 1 });
   setPass(s, 'o-qb', { x: 0, y: -1 }, 0);
-  releasePass(s);
+  releasePass(s, mulberry32(1));
   assert.ok(Math.abs(len(s.ball.vel) - PASS_SPEED_MIN) < 1e-9, 'zero power is still a handoff');
 });
 
@@ -99,28 +102,28 @@ test('a fumble between planning and the whistle cancels the throw', () => {
   const s = createGame({ seed: 1 });
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   s.ball = { carrierId: 'o-rb', pos: null, vel: null }; // somebody else has it now
-  assert.deepEqual(releasePass(s), []);
+  assert.deepEqual(releasePass(s, mulberry32(1)), []);
   assert.equal(s.ball.carrierId, 'o-rb', 'the ball stays where it is');
   assert.equal(s.forwardPasses, 0);
 });
 
 test('nothing planned, nothing thrown', () => {
   const s = createGame({ seed: 1 });
-  assert.deepEqual(releasePass(s), []);
+  assert.deepEqual(releasePass(s, mulberry32(1)), []);
   assert.equal(s.ball.carrierId, 'o-qb');
 });
 
 test('only the first flag of a down is kept', () => {
   const s = createGame({ seed: 1 });
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
-  releasePass(s);                       // legal: the down's one forward pass
+  releasePass(s, mulberry32(1));                       // legal: the down's one forward pass
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
-  releasePass(s);                       // illegal: second forward pass
+  releasePass(s, mulberry32(1));                       // illegal: second forward pass
   const first = { ...s.penalty };
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
-  releasePass(s);                       // illegal again
+  releasePass(s, mulberry32(1));                       // illegal again
   assert.deepEqual(s.penalty, first, 'one flag per down, the first one');
   assert.equal(s.forwardPasses, 3);
 });
@@ -159,4 +162,61 @@ test('a throw starts at the passer\'s leading edge and is aimed a reach beyond i
   assert.ok(Math.abs(origin.x - qb.pos.x) < 1e-9);
   const aim = passAim(qb, { x: 0, y: 2 }, 1);
   assert.ok(Math.abs(aim.y - (origin.y + passReach(1))) < 1e-9, 'a full reach past the hand');
+});
+
+test('a throw that reaches past the lock zone is flown, not rolled', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  releasePass(s, mulberry32(5));
+  const lob = s.ball.lob;
+  assert.ok(lob, 'full power arcs');
+  assert.deepEqual(lob.from, s.ball.pos, 'it starts where the ball starts');
+  assert.equal(lob.elapsed, 0);
+  const aim = passAim(qb, { x: 0, y: 1 }, 1);
+  assert.ok(dist(lob.to, aim) <= scatterRadius(passReach(1)) + 1e-9, 'lands inside the circle');
+  assert.equal(lob.substeps, lobSubsteps(dist(lob.from, lob.to)));
+  assert.ok(Math.abs(len(s.ball.vel) - PASS_SPEED_MAX) < 1e-9,
+    'vel is still what it left the hand at — nothing integrates it while it flies');
+});
+
+test('a throw that stays inside the lock zone is the ordinary rolling ball it always was', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4); // 14.5 yards: just short of a lob
+  releasePass(s, mulberry32(5));
+  assert.ok(!isLob(passReach(0.4)), 'the fixture is on the right side of the line');
+  assert.equal(s.ball.lob, null);
+});
+
+test('a handoff never becomes a lob', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, 'o-qb', { x: 0, y: -1 }, 0);
+  releasePass(s, mulberry32(5));
+  assert.equal(s.ball.lob, null);
+});
+
+test('a locked-on throw is never a lob, however hard it has to be thrown', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1, 'o-wr1');
+  releasePass(s, mulberry32(5));
+  assert.equal(s.ball.lob, null, 'a ball aimed at a man stays in reach of him');
+});
+
+test('the same seed throws the same lob, a different one does not', () => {
+  const throwIt = (seed) => {
+    const s = createGame({ seed: 1 });
+    setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+    releasePass(s, mulberry32(seed));
+    return s.ball.lob.to;
+  };
+  assert.deepEqual(throwIt(11), throwIt(11));
+  assert.notDeepEqual(throwIt(11), throwIt(12));
+});
+
+test('a short throw draws no dice at all, so it cannot shift a seeded game', () => {
+  const s = createGame({ seed: 1 });
+  const random = mulberry32(2);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.2);
+  releasePass(s, random);
+  assert.equal(random(), mulberry32(2)(), 'the stream is exactly where it was');
 });

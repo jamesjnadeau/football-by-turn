@@ -167,7 +167,7 @@ test('a throw is put back when the same man has the ball', () => {
   const play = capturePlay(state, 'Post');
   const fresh = createGame({ ai: 'defense' });
   applyPlay(fresh, play);
-  assert.deepEqual(fresh.plannedPass, { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.8 });
+  assert.deepEqual(fresh.plannedPass, { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.8, target: null });
 });
 
 test('a throw from someone who is not carrying the ball is skipped', () => {

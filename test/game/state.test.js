@@ -115,6 +115,12 @@ test('the computer opponent is opt-in, and its players take no orders', () => {
   assert.equal(isControllable(vsCpu, 'd-lb'), false, 'the computer\'s players are off limits');
 });
 
+test('the AI level defaults to the pursuit brain and can be asked for smart', () => {
+  assert.equal(createGame({ seed: 1 }).aiLevel, 'pursuit');
+  assert.equal(createGame({ seed: 1, ai: 'defense' }).aiLevel, 'pursuit');
+  assert.equal(createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' }).aiLevel, 'smart');
+});
+
 test('breaking down freezes the defender facing where he was headed, and only then', () => {
   const s = createGame({ seed: 1 });
   const lb = getPlayer(s, 'd-lb');

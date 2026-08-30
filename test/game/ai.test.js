@@ -2,8 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   aiPlayers, pursuitTarget, defensePlans, coachAi, clearAiPlans, applyAiModes,
+  coachSmartDefense, AI_MODES, aiModeIndex, nextAiMode,
 } from '../../lib/game/ai.js';
 import { createGame, getPlayer, setPlan, setMode } from '../../lib/game/state.js';
+import { runTurn } from '../../lib/game/turn.js';
+import { mulberry32 } from '../../lib/game/rng.js';
 import { TEAM_SIZE, AI_LEAD_MAX_SECONDS, AI_BREAKDOWN_UNITS } from '../../lib/game/constants.js';
 
 test('with no computer opponent there is nothing to coach', () => {
@@ -146,4 +149,76 @@ test('coachAi sets the stance as well as the arrow', () => {
   coachAi(s);
   assert.equal(lb.mode, 'prepared');
   assert.ok(lb.plan !== null);
+});
+
+test('the smart brain puts the corners on the receivers, arrows and all', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' });
+  coachAi(s);
+  const cb = getPlayer(s, 'd-cb1');
+  assert.equal(cb.cover, 'o-wr1');
+  assert.ok(cb.plan !== null, 'a cover order is still a plan');
+  assert.ok(s.players.filter((p) => p.team === 'defense').every((p) => p.plan !== null),
+    'everybody got a job');
+});
+
+test('the smart brain sends the linebacker to his depth, not at the quarterback', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' });
+  coachAi(s);
+  // He is at (135, 100) and his mirror spot is (135, 93): straight up the
+  // field toward the line, and no lateral drift.
+  assert.deepEqual(getPlayer(s, 'd-lb').plan.dir, { x: 0, y: -1 });
+});
+
+test('the pursuit brain is untouched and hands out no coverage', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  coachAi(s);
+  assert.ok(s.players.every((p) => p.cover === null), 'the old brain covers nobody');
+  assert.deepEqual(
+    s.players.filter((p) => p.team === 'defense').map((p) => p.plan.dir),
+    defensePlans(s).map((pl) => pl.dir),
+  );
+});
+
+test('the computer\'s coverage does not outlive the turn either', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' });
+  coachSmartDefense(s);
+  assert.ok(s.players.some((p) => p.cover !== null), 'somebody was covering');
+  clearAiPlans(s);
+  assert.ok(s.players.filter((p) => p.team === 'defense')
+    .every((p) => p.plan === null && p.cover === null));
+});
+
+test('a whole smart turn runs, and leaves nothing of the computer behind', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' });
+  setPlan(s, 'o-qb', { x: 0, y: 1 }, 1);
+  runTurn(s, mulberry32(1));
+  assert.ok(s.players.filter((p) => p.team === 'defense')
+    .every((p) => p.plan === null && p.cover === null),
+  'no plan and no halo for the human to read');
+});
+
+test('the Defense button cycles smart, basic, hot-seat, and back', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' });
+  assert.equal(aiModeIndex(s), 0);
+  assert.equal(AI_MODES[0].label, 'Defense: computer (smart)');
+
+  let next = nextAiMode(s);
+  assert.deepEqual([next.ai, next.level], ['defense', 'pursuit']);
+  s.aiTeam = next.ai; s.aiLevel = next.level;
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: computer (basic)');
+
+  next = nextAiMode(s);
+  assert.equal(next.ai, null);
+  s.aiTeam = next.ai; s.aiLevel = next.level;
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: you');
+
+  next = nextAiMode(s);
+  assert.deepEqual([next.ai, next.level], ['defense', 'smart'], 'round it goes');
+});
+
+test('hot-seat reads as hot-seat whatever level it is carrying', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: you');
+  s.aiLevel = 'smart';
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: you');
 });

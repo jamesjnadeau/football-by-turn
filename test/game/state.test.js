@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createGame, setPlan, clearAllPlans, setMode, getPlayer, ballPos, carrier,
-  isControllable, setPass, clearPass, aimSnap,
+  isControllable, setPass, clearPass, aimSnap, defaultSpots,
 } from '../../lib/game/state.js';
 import { TEAM_SIZE } from '../../lib/game/constants.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -211,4 +211,14 @@ test('Clear Arrows drops the coach\'s throw and leaves the snap standing', () =>
   // Wiping the board must not leave a down that cannot start, so the snap is
   // put straight back — aimed at the quarterback again, not out to the side.
   assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true });
+});
+
+test('the default spots are the formation every down opens in', () => {
+  const s = createGame({ seed: 1 });
+  const spots = defaultSpots();
+  assert.equal(Object.keys(spots).length, s.players.length);
+  for (const p of s.players) {
+    const { across, down } = spots[p.id];
+    assert.deepEqual(p.pos, fieldPos(across, s.losYard + down));
+  }
 });

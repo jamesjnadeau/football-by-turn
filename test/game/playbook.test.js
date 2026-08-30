@@ -10,6 +10,7 @@ const play = (name) => ({
   plans: { 'o-qb': { dir: { x: 0, y: -1 }, throttle: 1 } },
   stances: {},
   pass: null,
+  spots: {},
 });
 
 test('a new playbook is five empty slots', () => {

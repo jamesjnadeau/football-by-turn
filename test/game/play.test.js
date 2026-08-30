@@ -1,9 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, setPlan, setMode, setPass, getPlayer } from '../../lib/game/state.js';
+import {
+  createGame, setPlan, setMode, setPass, getPlayer, formationPlayers,
+} from '../../lib/game/state.js';
 import {
   canUsePlays, capturePlay, applyPlay, isEmptyPlay, sanitizePlay, PLAY_NAME_MAX,
 } from '../../lib/game/play.js';
+import { fieldPos } from '../../lib/game/view.js';
 
 /**
  * The snap taken: the ball in the quarterback's hands and nothing pending.
@@ -158,6 +161,7 @@ test('an id this game has no player for is skipped', () => {
     plans: { 'o-te': { dir: { x: 0, y: 1 }, throttle: 1 } },
     stances: {},
     pass: null,
+    spots: {},
   };
   const { applied, skipped } = applyPlay(fresh, play);
   assert.deepEqual(applied, []);
@@ -172,7 +176,12 @@ test('a play saved in hot-seat skips the defense once the computer has it', () =
   const fresh = createGame({ ai: 'defense' });
   const { applied, skipped } = applyPlay(fresh, play);
   assert.deepEqual(applied, ['o-qb']);
-  assert.deepEqual(skipped, ['d-lb']);
+  // capturePlay now saves a spot for every man in hot-seat, defense included
+  // (decision 6), so the whole defense is skipped here, not just the one man
+  // with an arrow on him: applyPlay refuses their spots for the same reason
+  // it refuses d-lb's plan — none of them are the human's once the computer
+  // is coaching that side.
+  assert.deepEqual(skipped.sort(), ['d-cb1', 'd-cb2', 'd-dt1', 'd-dt2', 'd-lb', 'd-nt', 'd-s']);
   assert.equal(getPlayer(fresh, 'd-lb').plan, null);
 });
 
@@ -199,7 +208,9 @@ test('a throw from someone who is not carrying the ball is skipped', () => {
 });
 
 test('a well-formed play survives sanitising unchanged', () => {
-  assert.deepEqual(sanitizePlay(goodPlay()), goodPlay());
+  // goodPlay() is a version-1 fixture — no spots key — so the one thing
+  // sanitising adds is the empty formation a play with no spots reads as.
+  assert.deepEqual(sanitizePlay(goodPlay()), { ...goodPlay(), spots: {} });
 });
 
 test('sanitising drops anything that is not a play', () => {
@@ -248,4 +259,103 @@ test('a stored name too long for a slot button is cut', () => {
   const p = goodPlay();
   p.name = 'y'.repeat(PLAY_NAME_MAX + 5);
   assert.equal(sanitizePlay(p).name.length, PLAY_NAME_MAX);
+});
+
+test('capturing takes where every one of the coach\'s men is standing', () => {
+  const state = drawn();
+  getPlayer(state, 'o-wr1').pos = fieldPos(-22, -1);
+  const play = capturePlay(state, 'Trips');
+  assert.equal(Object.keys(play.spots).length, 7);          // his team only
+  assert.deepEqual(play.spots['o-wr1'], { across: -22, down: -1 });
+  assert.equal('d-cb1' in play.spots, false);
+});
+
+test('a spot is saved off the line of scrimmage, not off the yard line', () => {
+  const state = drawn();
+  state.losYard = 6;
+  getPlayer(state, 'o-wr1').pos = fieldPos(-22, 6 - 1);
+  assert.deepEqual(capturePlay(state, 'Trips').spots['o-wr1'], { across: -22, down: -1 });
+});
+
+test('a play that only moves a man is not empty', () => {
+  const state = afterSnap(createGame({ ai: 'defense' }));
+  assert.equal(isEmptyPlay(capturePlay(state, '')), true);
+  getPlayer(state, 'o-wr1').pos = fieldPos(-22, -1);
+  assert.equal(isEmptyPlay(capturePlay(state, '')), false);
+});
+
+test('calling a play lines the formation back up on this down\'s line', () => {
+  const from = drawn();
+  getPlayer(from, 'o-wr1').pos = fieldPos(-22, -1);
+  const play = capturePlay(from, 'Trips');
+
+  const to = afterSnap(createGame({ ai: 'defense' }));
+  to.losYard = 6;
+  to.players = formationPlayers(6);
+  applyPlay(to, play);
+  assert.deepEqual(getPlayer(to, 'o-wr1').pos, fieldPos(-22, 5));
+});
+
+test('calling a play puts back a man the previous call had moved', () => {
+  const state = afterSnap(createGame({ ai: 'defense' }));
+  const home = { ...getPlayer(state, 'o-wr1').pos };
+  const plain = capturePlay(state, 'Base');
+  getPlayer(state, 'o-wr1').pos = fieldPos(-22, -1);
+  applyPlay(state, plain);
+  assert.deepEqual(getPlayer(state, 'o-wr1').pos, home);
+});
+
+test('the arrows are given after the men are seated, not before', () => {
+  const from = drawn();
+  getPlayer(from, 'o-wr1').pos = fieldPos(-22, -1);
+  setPlan(from, 'o-wr1', { x: 0, y: 1 }, 1);
+  const state = afterSnap(createGame({ ai: 'defense' }));
+  applyPlay(state, capturePlay(from, 'Trips'));
+  // Seating a man clears his plan; if that ran second the arrow would be gone.
+  assert.deepEqual(getPlayer(state, 'o-wr1').plan.dir, { x: 0, y: 1 });
+  assert.deepEqual(getPlayer(state, 'o-wr1').pos, fieldPos(-22, -1));
+});
+
+test('a spot this down has no room for is skipped, and the play still loads', () => {
+  const from = drawn();
+  const play = capturePlay(from, 'Deep');
+  play.spots['o-wr1'] = { across: 0, down: 4 };  // past the line
+  const state = afterSnap(createGame({ ai: 'defense' }));
+  const home = { ...getPlayer(state, 'o-wr1').pos };
+  const { skipped } = applyPlay(state, play);
+  assert.equal(skipped.includes('o-wr1'), true);
+  assert.deepEqual(getPlayer(state, 'o-wr1').pos, home);
+});
+
+test('a play saved in hot-seat does not move the computer\'s defense', () => {
+  const hotseat = afterSnap(createGame({ seed: 1 }));   // aiTeam null: both teams are his
+  getPlayer(hotseat, 'd-cb1').pos = fieldPos(-22, 2);
+  const play = capturePlay(hotseat, 'Both');
+  assert.equal('d-cb1' in play.spots, true);
+
+  const state = afterSnap(createGame({ ai: 'defense' }));
+  const home = { ...getPlayer(state, 'd-cb1').pos };
+  const { skipped } = applyPlay(state, play);
+  assert.deepEqual(getPlayer(state, 'd-cb1').pos, home);
+  assert.equal(skipped.includes('d-cb1'), true);
+});
+
+test('a version-1 play — no spots at all — loads its arrows and moves nobody', () => {
+  const state = drawn();
+  getPlayer(state, 'o-wr1').pos = fieldPos(-22, -1);
+  const where = { ...getPlayer(state, 'o-wr1').pos };
+  applyPlay(state, sanitizePlay({ ...goodPlay() }));   // goodPlay has no `spots`
+  assert.deepEqual(getPlayer(state, 'o-wr1').pos, where);
+});
+
+test('sanitising rejects a play with a NaN in a spot', () => {
+  assert.equal(sanitizePlay({ ...goodPlay(), spots: { 'o-wr1': { across: NaN, down: -1 } } }), null);
+  assert.equal(sanitizePlay({ ...goodPlay(), spots: { 'o-wr1': { down: -1 } } }), null);
+  assert.equal(sanitizePlay({ ...goodPlay(), spots: 7 }), null);
+});
+
+test('sanitising refuses a __proto__ spot', () => {
+  const raw = { ...goodPlay(), spots: {} };
+  Object.defineProperty(raw.spots, '__proto__', { value: { across: 0, down: 0 }, enumerable: true });
+  assert.equal(sanitizePlay(raw), null);
 });

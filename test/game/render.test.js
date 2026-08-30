@@ -168,44 +168,53 @@ test('arrows and the drag preview are painted beneath the players', () => {
   assert.ok(at('game-players') < at('game-overlay'), 'the overlay stays on top for the loose ball');
 });
 
-test('velocity lines are off by default and drawn from the player centre when on', () => {
+test('the velocity triangle is off by default and drawn as a three-point marker when on', () => {
   const s = createGame({ seed: 1 });
   getPlayer(s, 'o-rb').vel = { x: 0, y: 20 };
   assert.ok(!renderPlayers(s).includes('class="vel"'), 'off unless asked for');
   const svg = renderPlayers(s, { showVelocity: true });
   assert.equal((svg.match(/class="vel"/g) || []).length, 1, 'only the player who is moving gets one');
-  assert.ok(svg.includes('<line x1="0" y1="0"'), 'from the centre of the player group');
+  const points = svg.match(/<polygon points="([^"]+)" class="vel"\/>/);
+  assert.ok(points, 'the marker is a polygon');
+  assert.equal(points[1].trim().split(/\s+/).length, 3, 'three points');
 });
 
 // Scopes a regex to o-rb's own <g> so these tests don't depend on the
 // invariant (established elsewhere) that o-rb is the only moving player.
 const rbGroup = (svg) => svg.match(/data-id="o-rb"[\s\S]*?<\/g>/)[0];
 
-test('the velocity line pokes past the player edge in proportion to speed', () => {
+// The apex is emitted first, at angle theta = atan2(vel.y, vel.x) from the
+// origin — the first "x,y" pair in the polygon's points list.
+const apexOf = (svg) => rbGroup(svg).match(/<polygon points="([-\d.]+),([-\d.]+) /).slice(1, 3).map(Number);
+
+test('the velocity triangle grows past the player edge in proportion to speed', () => {
   const s = createGame({ seed: 1 });
   const rb = getPlayer(s, 'o-rb'); // radius 2.5
-  const drawnX = () => Number(
-    rbGroup(renderPlayers(s, { showVelocity: true })).match(/<line x1="0" y1="0" x2="([-\d.]+)"/)[1],
-  );
   rb.vel = { x: 40, y: 0 };
-  assert.equal(drawnX(), rb.radius + 40 * DEBUG_VELOCITY_SECONDS, '2.5 of body + 10 of speed');
+  const [x1] = apexOf(renderPlayers(s, { showVelocity: true }));
+  assert.equal(x1, rb.radius + 40 * DEBUG_VELOCITY_SECONDS, '2.5 of body + 10 of speed');
   rb.vel = { x: 80, y: 0 };
-  assert.equal(drawnX(), rb.radius + 80 * DEBUG_VELOCITY_SECONDS, 'twice the speed, twice the overhang');
+  const [x2] = apexOf(renderPlayers(s, { showVelocity: true }));
+  assert.equal(x2, rb.radius + 80 * DEBUG_VELOCITY_SECONDS, 'twice the speed, twice the reach');
+  assert.ok(x2 > x1, 'doubling the speed makes a strictly bigger triangle');
 });
 
-test('the velocity line points along the velocity, not along the plan', () => {
+test('the velocity triangle points along the velocity, not along the plan', () => {
   const s = createGame({ seed: 1 });
   const rb = getPlayer(s, 'o-rb');
   rb.vel = { x: 0, y: -40 }; // drifting back upfield
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1); // told to go the other way
-  const line = rbGroup(renderPlayers(s, { showVelocity: true }))
-    .match(/<line x1="0" y1="0" x2="([-\d.]+)" y2="([-\d.]+)"/);
-  assert.equal(Number(line[1]), 0);
-  assert.equal(Number(line[2]), -(rb.radius + 40 * DEBUG_VELOCITY_SECONDS));
+  const [apexX, apexY] = apexOf(renderPlayers(s, { showVelocity: true }));
+  const EPS = 1e-9;
+  assert.ok(Math.abs(apexX) < EPS, 'no sideways drift in the apex');
+  assert.ok(
+    Math.abs(apexY - -(rb.radius + 40 * DEBUG_VELOCITY_SECONDS)) < EPS,
+    'apex reaches upfield, along the velocity',
+  );
 });
 
-test('the velocity line is a thin blue hairline', () => {
-  assert.ok(STYLE_GAME.includes('.vel{stroke:#1668dc;stroke-width:.4;'));
+test('the velocity triangle is filled in the same blue the line used to be', () => {
+  assert.ok(STYLE_GAME.includes('.vel{fill:#1668dc'));
 });
 
 test('the planned throw draws its own arrow, distinct from a run arrow', () => {

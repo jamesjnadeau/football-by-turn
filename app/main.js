@@ -76,7 +76,7 @@ function paint() {
   hud.textContent = `Down ${state.down} of 4 — ${state.phase}`;
   aiBtn.textContent = state.aiTeam ? 'Defense: computer' : 'Defense: you';
   aiBtn.disabled = animating || state.phase !== 'planning';
-  debugBtn.textContent = `Velocity lines: ${showVelocity ? 'on' : 'off'}`;
+  debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
   runBtn.disabled = animating || state.phase !== 'planning';
   clearBtn.disabled = animating;

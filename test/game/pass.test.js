@@ -10,11 +10,24 @@ import { fieldPos } from '../../lib/game/view.js';
 import { len } from '../../lib/game/vec.js';
 import {
   PASS_SPEED_MIN, PASS_SPEED_MAX, PASS_SPAWN_EPSILON, PASS_GRACE_SUBSTEPS,
-  PICKUP_RADIUS_BONUS, PASS_REACH_MAX, DT, BALL_FRICTION, SUBSTEPS_PER_TURN,
+  PICKUP_RADIUS_BONUS, DT, BALL_FRICTION, SUBSTEPS_PER_TURN,
 } from '../../lib/game/constants.js';
+import { PASS_REACH_MAX } from '../../lib/game/flight.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { isLob, lobSubsteps, scatterRadius, LOCK_UNITS } from '../../lib/game/lob.js';
 import { dist } from '../../lib/game/vec.js';
+
+/**
+ * The snap taken: the ball in the quarterback's hands and nothing pending.
+ * A down now opens with the ball on the CENTRE and a lateral to the
+ * quarterback already planned, which is the state before the one these tests
+ * are about -- they start from a backfield carrier, so they say so.
+ */
+function afterSnap(s) {
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  return s;
+}
 
 test('forward means toward the goal the offense attacks; a flat lateral is not', () => {
   assert.equal(isForward({ x: 0, y: 1 }), true);
@@ -49,6 +62,7 @@ test('a forward pass from beyond the line of scrimmage is illegal', () => {
 
 test('releasing a throw puts the ball in the air, clear of the passer\'s own reach', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   const qb = getPlayer(s, 'o-qb');
   const from = { ...qb.pos };
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
@@ -67,6 +81,7 @@ test('releasing a throw puts the ball in the air, clear of the passer\'s own rea
 
 test('a non-unit direction does not secretly change the throw\'s power', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   setPass(s, 'o-qb', { x: 0, y: 3 }, 1); // three times as long as a unit vector
   releasePass(s, mulberry32(1));
   assert.ok(Math.abs(len(s.ball.vel) - PASS_SPEED_MAX) < 1e-9, 'full power, not triple');
@@ -74,6 +89,7 @@ test('a non-unit direction does not secretly change the throw\'s power', () => {
 
 test('an illegal throw is allowed to happen, and flagged', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.forwardPasses = 1; // he already threw one this down
   setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5);
   const events = releasePass(s, mulberry32(1));
@@ -85,6 +101,7 @@ test('an illegal throw is allowed to happen, and flagged', () => {
 
 test('a backward throw touches neither the forward tally nor the flag', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
   setPass(s, 'o-qb', { x: 0, y: -1 }, 0.3);
   releasePass(s, mulberry32(1));
   assert.equal(s.forwardPasses, 0);
@@ -94,6 +111,7 @@ test('a backward throw touches neither the forward tally nor the flag', () => {
 
 test('power scales the throw from the shortest handoff to the longest bomb', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
   setPass(s, 'o-qb', { x: 0, y: -1 }, 0);
   releasePass(s, mulberry32(1));
   assert.ok(Math.abs(len(s.ball.vel) - PASS_SPEED_MIN) < 1e-9, 'zero power is still a handoff');
@@ -101,6 +119,7 @@ test('power scales the throw from the shortest handoff to the longest bomb', () 
 
 test('a fumble between planning and the whistle cancels the throw', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   s.ball = { carrierId: 'o-rb', pos: null, vel: null }; // somebody else has it now
   assert.deepEqual(releasePass(s, mulberry32(1)), []);
@@ -110,12 +129,14 @@ test('a fumble between planning and the whistle cancels the throw', () => {
 
 test('nothing planned, nothing thrown', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   assert.deepEqual(releasePass(s, mulberry32(1)), []);
   assert.equal(s.ball.carrierId, 'o-qb');
 });
 
 test('only the first flag of a down is kept', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   releasePass(s, mulberry32(1));                       // legal: the down's one forward pass
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
@@ -167,6 +188,7 @@ test('a throw starts at the passer\'s leading edge and is aimed a reach beyond i
 
 test('a throw that reaches past the lock zone is flown, not rolled', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
   const qb = getPlayer(s, 'o-qb');
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   releasePass(s, mulberry32(5));
@@ -183,6 +205,7 @@ test('a throw that reaches past the lock zone is flown, not rolled', () => {
 
 test('a throw that stays inside the lock zone is the ordinary rolling ball it always was', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
   setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4); // 14.5 yards: just short of a lob
   releasePass(s, mulberry32(5));
   assert.ok(!isLob(passReach(0.4)), 'the fixture is on the right side of the line');
@@ -191,6 +214,7 @@ test('a throw that stays inside the lock zone is the ordinary rolling ball it al
 
 test('a handoff never becomes a lob', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
   setPass(s, 'o-qb', { x: 0, y: -1 }, 0);
   releasePass(s, mulberry32(5));
   assert.equal(s.ball.lob, null);
@@ -198,6 +222,7 @@ test('a handoff never becomes a lob', () => {
 
 test('a locked-on throw is never a lob, however hard it has to be thrown', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1, 'o-wr1');
   releasePass(s, mulberry32(5));
   assert.equal(s.ball.lob, null, 'a ball aimed at a man stays in reach of him');
@@ -206,6 +231,7 @@ test('a locked-on throw is never a lob, however hard it has to be thrown', () =>
 test('the same seed throws the same lob, a different one does not', () => {
   const throwIt = (seed) => {
     const s = createGame({ seed: 1 });
+    afterSnap(s); // the centre starts with it now; this is about the throw
     setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
     releasePass(s, mulberry32(seed));
     return s.ball.lob.to;
@@ -216,6 +242,7 @@ test('the same seed throws the same lob, a different one does not', () => {
 
 test('a short throw draws no dice at all, so it cannot shift a seeded game', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
   const random = mulberry32(2);
   setPass(s, 'o-qb', { x: 0, y: 1 }, 0.2);
   releasePass(s, random);

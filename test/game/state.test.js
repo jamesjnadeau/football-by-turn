@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createGame, setPlan, clearAllPlans, setMode, getPlayer, ballPos, carrier,
-  isControllable, setPass, clearPass,
+  isControllable, setPass, clearPass, aimSnap,
 } from '../../lib/game/state.js';
 import { TEAM_SIZE } from '../../lib/game/constants.js';
 import { fieldPos } from '../../lib/game/view.js';
 
-test('a new game: 1st down at yard 0, planning, TEAM_SIZE a side, QB has the ball', () => {
+test('a new game: 1st down at yard 0, planning, TEAM_SIZE a side, the centre has the ball', () => {
   const s = createGame({ seed: 7 });
   assert.equal(s.down, 1);
   assert.equal(s.losYard, 0);
@@ -15,10 +15,12 @@ test('a new game: 1st down at yard 0, planning, TEAM_SIZE a side, QB has the bal
   assert.equal(s.turnIndex, 0);
   assert.equal(s.players.filter((p) => p.team === 'offense').length, TEAM_SIZE);
   assert.equal(s.players.filter((p) => p.team === 'defense').length, TEAM_SIZE);
-  const qb = getPlayer(s, 'o-qb');
-  assert.equal(s.ball.carrierId, 'o-qb');
-  assert.deepEqual(ballPos(s), qb.pos);
-  assert.equal(carrier(s).id, 'o-qb');
+  // The down starts the way a down starts: the ball on the centre, waiting to
+  // be snapped. The quarterback does not have it until he is thrown it.
+  const c = getPlayer(s, 'o-c');
+  assert.equal(s.ball.carrierId, 'o-c');
+  assert.deepEqual(ballPos(s), c.pos);
+  assert.equal(carrier(s).id, 'o-c');
 });
 
 test('offense lines up behind the LOS, defense beyond it, nobody overlapping', () => {
@@ -76,18 +78,19 @@ test('a plan remembers whether the man falls short of where he was pointed', () 
 
 test('mode legality: tuck = carrier only, prepared = defense only, holding = offense only', () => {
   const s = createGame({ seed: 1 });
-  assert.equal(setMode(s, 'o-qb', 'tucked'), true);     // has the ball
+  assert.equal(setMode(s, 'o-c', 'tucked'), true);      // has the ball, pre-snap
+  assert.equal(setMode(s, 'o-qb', 'tucked'), false);    // no ball until it is snapped to him
   assert.equal(setMode(s, 'o-rb', 'tucked'), false);    // no ball
   assert.equal(setMode(s, 'd-lb', 'prepared'), true);
-  assert.equal(setMode(s, 'o-c', 'prepared'), false);
-  assert.equal(setMode(s, 'o-c', 'holding'), true);
+  assert.equal(setMode(s, 'o-lg', 'prepared'), false);
+  assert.equal(setMode(s, 'o-lg', 'holding'), true);
   assert.equal(setMode(s, 'd-nt', 'holding'), false);
   // setting a mode arms the next-turn charge (spec: momentum after preparing)
-  assert.equal(getPlayer(s, 'o-qb').charge, 1);
+  assert.equal(getPlayer(s, 'o-c').charge, 1);
   // toggling back to normal clears it
-  setMode(s, 'o-qb', 'normal');
-  assert.equal(getPlayer(s, 'o-qb').mode, 'normal');
-  assert.equal(getPlayer(s, 'o-qb').charge, 0);
+  setMode(s, 'o-c', 'normal');
+  assert.equal(getPlayer(s, 'o-c').mode, 'normal');
+  assert.equal(getPlayer(s, 'o-c').charge, 0);
 });
 
 test('the computer opponent is opt-in, and its players take no orders', () => {
@@ -126,26 +129,63 @@ test('breaking down freezes the defender facing where he was headed, and only th
 
 test('every special move locks an axis, and dropping back to normal releases it', () => {
   const s = createGame({ seed: 1 });
-  const qb = getPlayer(s, 'o-qb');
-  setMode(s, 'o-qb', 'tucked');
-  assert.notEqual(qb.facing, null, 'tucking commits to a line same as breaking down');
-  setMode(s, 'o-qb', 'normal');
-  assert.equal(qb.facing, null, 'standing back up releases it');
+  const c = getPlayer(s, 'o-c'); // the centre is the one holding the ball pre-snap
+  setMode(s, 'o-c', 'tucked');
+  assert.notEqual(c.facing, null, 'tucking commits to a line same as breaking down');
+  setMode(s, 'o-c', 'normal');
+  assert.equal(c.facing, null, 'standing back up releases it');
 
-  const c = getPlayer(s, 'o-c');
-  setMode(s, 'o-c', 'holding');
-  assert.notEqual(c.facing, null, 'holding position commits to a line too');
+  const lg = getPlayer(s, 'o-lg');
+  setMode(s, 'o-lg', 'holding');
+  assert.notEqual(lg.facing, null, 'holding position commits to a line too');
 });
 
-test('a new game has no throw planned, no forward pass thrown, and no flag', () => {
+test('a new game comes up with the snap planned, nothing thrown, and no flag', () => {
   const s = createGame({ seed: 1 });
-  assert.equal(s.plannedPass, null);
-  assert.equal(s.forwardPasses, 0);
+  // Not null any more: the centre has the ball and is already aimed at the
+  // quarterback. It is marked `auto` because nobody asked for it.
+  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true });
+  assert.equal(s.forwardPasses, 0, 'planned, not thrown');
   assert.equal(s.penalty, null);
+});
+
+test('the snap is aimed at the quarterback, wherever he is standing', () => {
+  const s = createGame({ seed: 1 });
+  // Straight back to begin with, and it follows him: put him out to one side
+  // and re-aim, and the throw leans that way instead.
+  assert.deepEqual(s.plannedPass.dir, { x: 0, y: -1 });
+  getPlayer(s, 'o-qb').pos = { x: 155, y: 70 };
+  assert.equal(aimSnap(s), true);
+  assert.ok(s.plannedPass.dir.x > 0, 'aimed to his new side');
+  assert.ok(s.plannedPass.dir.y < 0, 'and still backwards, so it stays a lateral');
+});
+
+test('a throw the coach set himself is never re-aimed by the snap', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(s.plannedPass.auto, true);
+  // His own call replaces it, and carries no `auto` mark...
+  assert.equal(setPass(s, 'o-c', { x: 1, y: 0 }, 0.4), true);
+  assert.equal(s.plannedPass.auto, undefined);
+  // ...so re-aiming refuses to touch it, however many times it is asked.
+  assert.equal(aimSnap(s), false);
+  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 1, y: 0 }, power: 0.4, target: null });
+});
+
+test('the snap is only planned before the play, and only from the man with the ball', () => {
+  const s = createGame({ seed: 1 });
+  s.plannedPass = null;
+  s.turnIndex = 1;
+  assert.equal(aimSnap(s), false, 'the play has started');
+  s.turnIndex = 0;
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  assert.equal(aimSnap(s), false, 'the centre is not the one holding it');
+  assert.equal(s.plannedPass, null);
 });
 
 test('only the ball carrier can plan a throw, and a second throw replaces the first', () => {
   const s = createGame({ seed: 1 });
+  // Take the snap first: this is about setPass, not about who starts with it.
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   assert.equal(setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5), true);
   assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.5, target: null });
   setPass(s, 'o-qb', { x: 1, y: 0 }, 0.9);
@@ -164,17 +204,21 @@ test('only the ball carrier can plan a throw, and a second throw replaces the fi
 
 test('a throw can be locked onto a receiver, and the next one clears the lock', () => {
   const s = createGame({ seed: 1 });
+  // Take the snap first: this is about the lock, not about who starts with it.
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5, 'o-wr1');
   assert.equal(s.plannedPass.target, 'o-wr1');
   setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5);
   assert.equal(s.plannedPass.target, null, 'a fresh drag is a fresh order');
 });
 
-test('Clear Arrows drops the planned throw along with the run arrows', () => {
+test('Clear Arrows drops the coach\'s throw and leaves the snap standing', () => {
   const s = createGame({ seed: 1 });
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5);
+  setPass(s, 'o-c', { x: 1, y: 0 }, 0.5); // his own call, out to the side
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
   clearAllPlans(s);
-  assert.equal(s.plannedPass, null);
-  assert.ok(s.players.every((p) => p.plan === null));
+  assert.ok(s.players.every((p) => p.plan === null), 'the arrows are gone');
+  // Wiping the board must not leave a down that cannot start, so the snap is
+  // put straight back — aimed at the quarterback again, not out to the side.
+  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true });
 });

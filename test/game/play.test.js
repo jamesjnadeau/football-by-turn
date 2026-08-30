@@ -5,10 +5,22 @@ import {
   canUsePlays, capturePlay, applyPlay, isEmptyPlay, sanitizePlay, PLAY_NAME_MAX,
 } from '../../lib/game/play.js';
 
+/**
+ * The snap taken: the ball in the quarterback's hands and nothing pending.
+ * A down now opens with the ball on the CENTRE and a lateral to the
+ * quarterback already planned, which is the state before the one these tests
+ * are about -- they start from a backfield carrier, so they say so.
+ */
+function afterSnap(s) {
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  return s;
+}
+
 // A first-turn game with the computer coaching the defense — the game as
 // app/main.js actually creates it — with two arrows drawn on it.
 function drawn() {
-  const state = createGame({ ai: 'defense' });
+  const state = afterSnap(createGame({ ai: 'defense' }));
   setPlan(state, 'o-qb', { x: 0, y: -1 }, 0.5);
   setPlan(state, 'o-wr1', { x: 1, y: 0 }, 1);
   return state;
@@ -94,6 +106,7 @@ test('applying a play puts the arrows back', () => {
 test('applying a play wipes what was drawn before it', () => {
   const play = capturePlay(drawn(), 'Sweep');
   const other = createGame({ ai: 'defense' });
+  afterSnap(other);
   setPlan(other, 'o-rb', { x: -1, y: 0 }, 1);
   setMode(other, 'o-qb', 'tucked');
   setPass(other, 'o-qb', { x: 0, y: 1 }, 0.5);
@@ -116,6 +129,7 @@ test('applying restores a stance and the axis it locked', () => {
   setMode(state, 'o-qb', 'tucked');
   const play = capturePlay(state, 'QB keeper');
   const fresh = createGame({ ai: 'defense' });
+  afterSnap(fresh);
   applyPlay(fresh, play);
   const qb = getPlayer(fresh, 'o-qb');
   assert.equal(qb.mode, 'tucked');
@@ -128,6 +142,7 @@ test('a stance that is no longer legal is skipped, and the rest still loads', ()
   setMode(state, 'o-qb', 'tucked');
   const play = capturePlay(state, 'QB keeper');
   const fresh = createGame({ ai: 'defense' });
+  afterSnap(fresh);
   fresh.ball.carrierId = 'o-rb'; // the RB has it this time, so a QB tuck is illegal
   const { applied, skipped } = applyPlay(fresh, play);
   assert.equal(getPlayer(fresh, 'o-qb').mode, 'normal');
@@ -166,6 +181,7 @@ test('a throw is put back when the same man has the ball', () => {
   setPass(state, 'o-qb', { x: 0, y: 1 }, 0.8);
   const play = capturePlay(state, 'Post');
   const fresh = createGame({ ai: 'defense' });
+  afterSnap(fresh);
   applyPlay(fresh, play);
   assert.deepEqual(fresh.plannedPass, { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.8, target: null });
 });
@@ -175,6 +191,7 @@ test('a throw from someone who is not carrying the ball is skipped', () => {
   setPass(state, 'o-qb', { x: 0, y: 1 }, 0.8);
   const play = capturePlay(state, 'Post');
   const fresh = createGame({ ai: 'defense' });
+  afterSnap(fresh);
   fresh.ball.carrierId = 'o-rb';
   const { skipped } = applyPlay(fresh, play);
   assert.equal(fresh.plannedPass, null);

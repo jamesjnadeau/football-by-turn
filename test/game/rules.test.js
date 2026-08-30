@@ -7,11 +7,26 @@ import { SIDELINE_LEFT, SIDELINE_RIGHT } from '../../lib/field/geometry.js';
 import { NEARBY_RADIUS, PENALTY_YARDS } from '../../lib/game/constants.js';
 import { lobPoint } from '../../lib/game/lob.js';
 
+/**
+ * The snap taken: the ball in the quarterback's hands and nothing pending.
+ * A down now opens with the ball on the CENTRE and a lateral to the
+ * quarterback already planned, which is the state before the one these tests
+ * are about -- they start from a backfield carrier, so they say so.
+ */
+function afterSnap(s) {
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  return s;
+}
+
 /** A game trimmed to just the players a scenario names, carrier = QB. */
 function scenario(ids) {
   const s = createGame({ seed: 1 });
   s.players = s.players.filter((p) => ids.includes(p.id));
-  return s;
+  // These scenarios are about what happens once someone is running with the
+  // ball, so they start from the snap already taken. Left alone, the down
+  // opens with the ball on a centre this filter has usually thrown away.
+  return afterSnap(s);
 }
 
 test('spec: tucked runner vs one prepared defender, all else equal, is exactly 50/50', () => {
@@ -144,6 +159,7 @@ test('pickups: offense recovering keeps the play alive, defense recovering kills
 
 test('touchdown: the ball crossing the goal plane ends everything', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   const qb = getPlayer(s, 'o-qb');
   qb.pos = { x: 135, y: fieldPos(0, GOAL_YARD).y + 1 };
   const events = checkDeadBall(s);
@@ -156,6 +172,7 @@ test('touchdown: the ball crossing the goal plane ends everything', () => {
 
 test('the carrier stepping out of bounds kills the play', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   const qb = getPlayer(s, 'o-qb');
   qb.pos = { x: SIDELINE_LEFT - 1, y: fieldPos(0, 2).y };
   const events = checkDeadBall(s);
@@ -177,6 +194,7 @@ test('a loose ball out of bounds ends the play too, not just a carried one', () 
 
 test('between downs: ball is spotted where it died, down advances, formation resets there', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   const qb = getPlayer(s, 'o-qb');
   qb.pos = { x: 150, y: fieldPos(0, 4).y };
   s.deadReason = 'tackled';
@@ -186,7 +204,11 @@ test('between downs: ball is spotted where it died, down advances, formation res
   assert.equal(s.losYard, 4);
   assert.equal(s.phase, 'planning');
   assert.equal(s.turnIndex, 0);
-  assert.equal(s.ball.carrierId, 'o-qb');
+  // The next down comes up ready to snap, exactly as the first one did: the
+  // ball back on the centre, with the lateral to the quarterback re-aimed at
+  // the new line rather than left pointing at the old one.
+  assert.equal(s.ball.carrierId, 'o-c');
+  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true });
   assert.equal(s.deadReason, null);
   // the new formation is planted around the new LOS
   const c = getPlayer(s, 'o-c');
@@ -252,6 +274,7 @@ test('an unprepared defender gets no wedge at all', () => {
 
 test('an enforced flag wipes the play and spots the ball back from the previous line', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.losYard = 4;
   s.penalty = { foul: 'illegal-forward-pass', spot: 4 };
   s.deadReason = 'touchdown';      // he scored on the illegal throw
@@ -263,7 +286,9 @@ test('an enforced flag wipes the play and spots the ball back from the previous 
   assert.equal(s.losYard, 4 - PENALTY_YARDS);
   assert.equal(s.penalty, null, 'the flag is spent');
   assert.equal(s.forwardPasses, 0, 'a new down gets a new forward pass');
-  assert.equal(s.plannedPass, null);
+  // The throw that drew the flag is gone; what stands is the fresh snap, which
+  // is a lateral and so spends none of the new down's forward pass.
+  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true });
 });
 
 test('the defense declines the flag when it has just taken the ball', () => {
@@ -297,6 +322,7 @@ test('a flag on 4th down is a turnover on downs', () => {
 
 test('with no flag, an ordinary down is spotted exactly as it always was', () => {
   const s = createGame({ seed: 1 });
+  afterSnap(s);
   s.losYard = 0;
   s.deadReason = 'tackled';
   getPlayer(s, 'o-qb').pos = fieldPos(0, 6);

@@ -7,8 +7,9 @@ import {
 } from '../../lib/game/lob.js';
 import {
   LOB_LOCK_YARDS, LOB_CATCH_YARDS, LOB_SCATTER_PER_YARD, LOB_TIME_MULT,
-  LOB_BALL_SCALE, PASS_REACH_MAX, SUBSTEPS_PER_TURN,
+  LOB_BALL_SCALE, SUBSTEPS_PER_TURN,
 } from '../../lib/game/constants.js';
+import { PASS_REACH_MAX } from '../../lib/game/flight.js';
 import { UNITS_PER_YARD_X } from '../../lib/field/geometry.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { dist } from '../../lib/game/vec.js';

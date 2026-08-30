@@ -8,10 +8,10 @@ import { TEAM_SIZE, MAX_ARROW_UNITS, DEBUG_VELOCITY_SECONDS } from '../../lib/ga
 import { tackleReach } from '../../lib/game/modes.js';
 import { num } from '../../lib/field/geometry.js';
 
-test('the board shell has the field and three empty game layers', () => {
+test('the board shell has the field and four empty game layers', () => {
   const { viewBox, markup } = renderBoardShell(0);
   assert.match(viewBox, /^0 0 270 /);
-  for (const id of ['game-field', 'game-arrows', 'game-players', 'game-overlay']) {
+  for (const id of ['game-field', 'game-arrows', 'game-preview', 'game-players', 'game-overlay']) {
     assert.ok(markup.includes(`id="${id}"`), id);
   }
   assert.ok(markup.includes(STYLE_GAME));
@@ -125,6 +125,25 @@ test('plan arrows are green, half-weight, and carry the game arrowhead', () => {
   assert.ok(STYLE_GAME.includes('.arh-g{fill:#1a7f37}'), 'the arrowhead is green too');
 });
 
+test('the committed arrow and the live drag preview carry the same opacity', () => {
+  // app/main.js's drag preview writes a bare arrowMark() into `game-preview`
+  // with no `.plan-arrow` wrapper <g>, so the opacity has to live on the path
+  // class itself (`.plan-mv`) for the dragged and committed arrows to match.
+  const s = createGame({ seed: 1 });
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
+  const rb = getPlayer(s, 'o-rb');
+  const committed = renderArrows(s);
+  const tip = { x: rb.pos.x, y: rb.pos.y + MAX_ARROW_UNITS };
+  const preview = arrowMark(rb.pos, tip); // the same call app/main.js's drag handler makes
+  assert.ok(committed.includes('class="plan-mv"'));
+  assert.ok(preview.includes('class="plan-mv"'), 'the unwrapped preview still carries the styled class');
+  assert.ok(
+    STYLE_GAME.includes('.plan-mv{stroke:#1a7f37;stroke-width:.85;fill:none;stroke-dasharray:.1 2.2;stroke-linecap:round;opacity:.85}'),
+    'opacity travels with the path itself, not a wrapper <g>',
+  );
+  assert.ok(!STYLE_GAME.includes('.plan-arrow{'), 'the wrapper rule is gone now that it would be empty');
+});
+
 test('the board shell defines the game arrowhead at full marker width', () => {
   const { markup } = renderBoardShell(0);
   assert.match(markup, /<marker id="ar-g"[^>]*markerWidth="5"/, 'the head halves via stroke-width, not markerWidth');
@@ -155,11 +174,15 @@ test('velocity lines are off by default and drawn from the player centre when on
   assert.ok(svg.includes('<line x1="0" y1="0"'), 'from the centre of the player group');
 });
 
+// Scopes a regex to o-rb's own <g> so these tests don't depend on the
+// invariant (established elsewhere) that o-rb is the only moving player.
+const rbGroup = (svg) => svg.match(/data-id="o-rb"[\s\S]*?<\/g>/)[0];
+
 test('the velocity line pokes past the player edge in proportion to speed', () => {
   const s = createGame({ seed: 1 });
   const rb = getPlayer(s, 'o-rb'); // radius 2.5
   const drawnX = () => Number(
-    renderPlayers(s, { showVelocity: true }).match(/<line x1="0" y1="0" x2="([-\d.]+)"/)[1],
+    rbGroup(renderPlayers(s, { showVelocity: true })).match(/<line x1="0" y1="0" x2="([-\d.]+)"/)[1],
   );
   rb.vel = { x: 40, y: 0 };
   assert.equal(drawnX(), rb.radius + 40 * DEBUG_VELOCITY_SECONDS, '2.5 of body + 10 of speed');
@@ -172,7 +195,8 @@ test('the velocity line points along the velocity, not along the plan', () => {
   const rb = getPlayer(s, 'o-rb');
   rb.vel = { x: 0, y: -40 }; // drifting back upfield
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1); // told to go the other way
-  const line = renderPlayers(s, { showVelocity: true }).match(/<line x1="0" y1="0" x2="([-\d.]+)" y2="([-\d.]+)"/);
+  const line = rbGroup(renderPlayers(s, { showVelocity: true }))
+    .match(/<line x1="0" y1="0" x2="([-\d.]+)" y2="([-\d.]+)"/);
   assert.equal(Number(line[1]), 0);
   assert.equal(Number(line[2]), -(rb.radius + 40 * DEBUG_VELOCITY_SECONDS));
 });

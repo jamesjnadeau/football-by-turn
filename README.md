@@ -189,15 +189,22 @@ step — it uses Node's built-in test runner directly.
 A few calls made in turning the original one-paragraph spec into a playable
 game:
 
-- **Both teams are user-controlled.** There's no AI opponent — you draw the
-  arrows for offense *and* defense, every turn. This keeps the whole thing a
-  single-player sandbox for now rather than requiring any kind of opposing
-  strategy engine.
-- **No passing.** The ball only ever moves by a player carrying it (or a loose
-  ball rolling free after a fumble). The spec's "less friction going downfield,
-  such as for a pass release" line is implemented as a physics rule (a fast
-  release past a defender gets a lighter friction coefficient than a slow
-  grind), but there's no separate thrown-ball mechanic.
+- **The computer coaches the defense, but you can take it back.** The played
+  game starts with the computer running assignment defense against you. The
+  Defense button in the Coaches Menu cycles three settings: *computer (smart)*,
+  which rushes with contain, fills with the linebacker and plays man with help
+  over the top; *computer (basic)*, which sends every defender straight at the
+  ball; and *you*, a hot-seat game where you draw the arrows for both teams.
+  The library itself still defaults to hot-seat — `createGame` with no `ai`
+  coaches nobody — so the rules stay decidable without an opponent in the way,
+  and `app/main.js` is what opts the played game in.
+- **A throw is a loose ball with a much bigger initial speed.** Same shape, same
+  per-sub-step decay, same pickup check — which is what makes a catch, a dropped
+  handoff and an interception one code path instead of three, and why anyone on
+  the field can come down with a pass. Separately, the spec's "less friction
+  going downfield, such as for a pass release" line is implemented as a physics
+  rule of its own: a fast release past a defender gets a lighter friction
+  coefficient than a slow grind.
 - **`TEAM_SIZE` = 7-a-side**, not the full 11: three linemen, a QB, a
   running back, and two wide receivers/corners on offense; a matching
   three-lineman front, two corners, a linebacker, and a safety on defense.

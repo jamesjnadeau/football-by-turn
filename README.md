@@ -40,11 +40,13 @@ hand the defense back over.
   closes the menu as it acts, so you can watch the board. The play's status —
   the warning about unplanned players, `TOUCHDOWN!`, `FUMBLE!` — is drawn on the
   field itself, in the end zone, so it stays readable with the menu shut.
-- **Drag a player** to set their direction and how hard they run: point the drag
-  where you want them to go, and how far you drag sets the throttle (a longer
-  drag means a harder run, up to full speed). An arrow is drawn from the player
-  showing exactly that — direction and force — and stays visible until you
-  change it or run the turn.
+- **Drag a player** to say where you want him at the end of the turn: a filled
+  green circle appears on the spot he will actually be standing when the whistle
+  blows, and a longer drag still means a harder run. Half a second does not buy
+  much ground from a standing start — about two yards — so drag past what he can
+  cover and the circle gives way to the old green arrow, which means "full speed
+  that way, and you won't get all the way there this turn". Either mark stays
+  visible until you change it or run the turn.
 - **Long-press a player** to toggle their stance, shown by a quarter-circle arc
   around them facing their direction of travel:
   - The **ball carrier** long-pressed **tucks** the ball in — a little slower,

@@ -7,12 +7,13 @@ import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
-  arrowMark, passArrowMark, passArrowTip, renderMessage,
+  arrowMark, destinationMark, passArrowMark, passArrowTip, renderMessage,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
+import { planForDrag } from '../lib/game/predict.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import {
-  TURN_SECONDS, MAX_ARROW_UNITS, PENALTY_YARDS,
+  TURN_SECONDS, MAX_ARROW_UNITS, PENALTY_YARDS, PICK_SLOP_UNITS,
 } from '../lib/game/constants.js';
 import { attachInput } from './input.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
@@ -111,9 +112,23 @@ function hitTest(p) {
     // starts from a hit test that returns a player id.
     if (!isControllable(state, pl.id)) continue;
     const d = Math.hypot(pl.pos.x - p.x, pl.pos.y - p.y);
-    if (d <= pl.radius + 2 && d < bestD) { best = pl.id; bestD = d; }
+    if (d <= pl.radius + PICK_SLOP_UNITS && d < bestD) { best = pl.id; bestD = d; }
   }
   return best;
+}
+
+/**
+ * The mark for a run drag: the circle when the spot is reachable this turn, the
+ * old arrow when it is not. The live preview and the committed plan both come
+ * through here so a drag never changes shape at the moment it is released.
+ */
+function runMark(player, plan) {
+  return plan.target
+    ? destinationMark(plan.target, player.radius)
+    : arrowMark(player.pos, {
+      x: player.pos.x + plan.dir.x * plan.throttle * MAX_ARROW_UNITS,
+      y: player.pos.y + plan.dir.y * plan.throttle * MAX_ARROW_UNITS,
+    });
 }
 
 function onGesture(playerId, gesture, point) {
@@ -128,12 +143,14 @@ function onGesture(playerId, gesture, point) {
     if (setPass(state, playerId, gesture.dir, gesture.throttle)) {
       say(`${p.role} will throw.`);
     } else {
-      setPlan(state, playerId, gesture.dir, gesture.throttle);
+      const run = planForDrag(p, gesture.travel);
+      setPlan(state, playerId, run.dir, run.throttle, run.target);
       say(`${p.role} doesn't have the ball — running instead.`);
     }
     pendingWarning = false;
   } else if (gesture.kind === 'drag') {
-    setPlan(state, playerId, gesture.dir, gesture.throttle);
+    const run = planForDrag(p, gesture.travel);
+    setPlan(state, playerId, run.dir, run.throttle, run.target);
     pendingWarning = false;
     say('');
   } else if (gesture.kind === 'longpress') {
@@ -167,10 +184,7 @@ function onDragPreview(playerId, log, prevTapAt) {
   const throwing = g.kind === 'passdrag' && state.ball.carrierId === playerId;
   const mark = throwing
     ? passArrowMark(p.pos, passArrowTip(p.pos, g.dir, g.throttle))
-    : arrowMark(p.pos, {
-      x: p.pos.x + g.dir.x * g.throttle * MAX_ARROW_UNITS,
-      y: p.pos.y + g.dir.y * g.throttle * MAX_ARROW_UNITS,
-    });
+    : runMark(p, planForDrag(p, g.travel));
   layer('game-preview').clear().svg(mark);
 }
 

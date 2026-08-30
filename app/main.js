@@ -2,19 +2,23 @@ import { SVG } from './vendor/svg.esm.js';
 import {
   createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable, setPass,
 } from '../lib/game/state.js';
+import {
+  canReposition, placePlayer, spotFault, alignDefense, lineCount,
+} from '../lib/game/formation.js';
 import { clearAiPlans, AI_MODES, aiModeIndex, nextAiMode } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
-  planMark, coverMark, passArrowMark, passArrowTip, renderMessage,
+  planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
+  lineZoneMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import {
-  TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
+  TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS, MIN_ON_LINE,
 } from '../lib/game/constants.js';
 import { attachInput } from './input.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
@@ -32,6 +36,7 @@ const playSlotsEl = document.getElementById('play-slots');
 const runBtn = document.getElementById('run');
 const clearBtn = document.getElementById('clear');
 const aiBtn = document.getElementById('ai');
+const repositionBtn = document.getElementById('reposition');
 const debugBtn = document.getElementById('debug');
 const nextBtn = document.getElementById('next');
 const newBtn = document.getElementById('new');
@@ -52,6 +57,12 @@ let showVelocity = true;
 // Not game state: the playbook outlives New Game, and lives in the browser
 // rather than in `state`, which is replaced wholesale.
 let playbook = loadPlaybook();
+// Whether drags are moving players around the line rather than giving them
+// orders. A coaching input mode, like `showVelocity` — the game does not care
+// which one the coach is in, only where his players ended up standing. It is
+// switched off by anything that ends the huddle: the snap, the next down, a
+// new game.
+let repositioning = false;
 
 function layer(id) {
   return board.findOne(`#${id}`);
@@ -73,12 +84,19 @@ function rebuildBoard() {
  */
 function paint() {
   layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
+  // The band goes in `game-arrows`, beneath the players, so a man standing in
+  // it still reads as a man rather than as a man behind glass. While
+  // repositioning there are no arrows to draw anyway — that is the mode.
   layer('game-arrows').clear().svg(
-    state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state) : '',
+    repositioning ? lineZoneMark(state)
+    : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state)
+    : '',
   );
   hud.textContent = `Down ${state.down} of 4 — ${state.phase}`;
   aiBtn.textContent = AI_MODES[aiModeIndex(state)].label;
   aiBtn.disabled = animating || state.phase !== 'planning';
+  repositionBtn.textContent = `Reposition: ${repositioning ? 'on' : 'off'}`;
+  repositionBtn.disabled = animating || !canReposition(state);
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
   runBtn.disabled = animating || state.phase !== 'planning';
@@ -133,11 +151,74 @@ function runOrCoverMark(player, travel, point) {
     : planMark(player, planForDrag(player, travel));
 }
 
+/** What the referee announces, per foul. */
+const FOUL_WORDS = {
+  'second-forward-pass': 'two forward passes',
+  'illegal-forward-pass': 'forward pass from beyond the line',
+  'illegal-formation': 'illegal formation',
+};
+
+/** Why a spot was refused, in words the coach can act on. */
+const FAULT_WORDS = {
+  'past-line': (p) => `${p.role} can't line up past the line.`,
+  'out-of-bounds': (p) => `${p.role} would be out of bounds there.`,
+  occupied: (p) => `No room for ${p.role} there.`,
+};
+
+/**
+ * How the formation reads right now. Shown after every move, because the
+ * counting rule is the one thing a coach cannot see by looking at the board —
+ * and an illegal formation is allowed to happen, so it has to be said out loud
+ * before the snap rather than discovered by the flag afterwards.
+ */
+function formationNote() {
+  const n = lineCount(state, 'offense');
+  return n < MIN_ON_LINE
+    ? `${n} on the line — ILLEGAL FORMATION (needs ${MIN_ON_LINE}).`
+    : `${n} on the line.`;
+}
+
+/**
+ * Answer the offense's new look. Only when the computer is coaching the
+ * defense: in hot-seat the coach is placing both teams by hand, and aligning
+ * over the top of him would throw away the spots he just set.
+ */
+function realignDefense() {
+  if (state.aiTeam !== 'defense') return;
+  for (const { id, pos } of alignDefense(state)) getPlayer(state, id).pos = pos;
+}
+
+/**
+ * A drag while repositioning moves the man rather than ordering him about. The
+ * drop point is where he goes — not the drag vector, which is a force, and a
+ * force is exactly the thing this mode is not for.
+ */
+function reposition(playerId, point) {
+  const p = getPlayer(state, playerId);
+  const fault = spotFault(state, playerId, point);
+  if (fault) {
+    say(FAULT_WORDS[fault](p));
+    return;
+  }
+  if (!placePlayer(state, playerId, point)) return;
+  realignDefense();
+  pendingWarning = false;
+  say(formationNote());
+}
+
 function onGesture(playerId, gesture, point) {
   if (animating) return; // mid-animation pointer input is not for this turn
   layer('game-preview').clear();
   if (state.phase !== 'planning') return;
   const p = getPlayer(state, playerId);
+  if (repositioning) {
+    // Every verb but the drag is off in this mode: no arrows, no cover orders,
+    // no stances, and a tap-then-drag is a move like any other drag rather than
+    // a throw. You are setting a formation, which is one thing.
+    if (gesture.kind === 'drag' || gesture.kind === 'passdrag') reposition(playerId, point);
+    paint();
+    return;
+  }
   if (gesture.kind === 'passdrag') {
     // Tap-then-drag is a throw only from the man with the ball. From anyone
     // else it is an ordinary run arrow — which is what the drag preview showed
@@ -169,9 +250,9 @@ function onGesture(playerId, gesture, point) {
     if (!setMode(state, playerId, target)) say(`${p.role} can't do that.`);
     else say(target === 'normal' ? `${p.role} back to normal.` : `${p.role}: ${target}.`);
   }
-  // gesture.kind === 'click': a tap on a player does nothing (player
-  // placement is out of scope for this task — see lib/game/state.js's
-  // placePlayer, which is implemented and tested but not wired up here).
+  // gesture.kind === 'click': a tap on a player does nothing. Moving him is a
+  // drag, and only in reposition mode — a tap is how you arm a throw, and it
+  // cannot also be how you move somebody.
   paint();
 }
 
@@ -184,6 +265,16 @@ function onDragPreview(playerId, log, prevTapAt) {
   const g = classifyGesture(log, prevTapAt);
   if (g.kind !== 'drag' && g.kind !== 'passdrag') return;
   const p = getPlayer(state, playerId);
+  if (repositioning) {
+    // The same filled circle a destination gets, for the same reason: it is
+    // where this player ends up. Drawn only on spots he may actually take, so
+    // the mark under the finger is a promise and not a suggestion.
+    const point = log[log.length - 1];
+    layer('game-preview').clear().svg(
+      spotFault(state, playerId, point) ? '' : destinationMark(point, p.radius),
+    );
+    return;
+  }
   // A throw only previews as a throw from the man actually holding the ball;
   // from anyone else a tap-then-drag is an ordinary run. Both marks come from
   // render.js, so the arrow being dragged and the arrow committed are the same
@@ -369,6 +460,7 @@ runBtn.addEventListener('click', () => {
     return;
   }
   pendingWarning = false;
+  stopRepositioning();
   say('');
   // runTurn mutates state to the end-of-turn position and returns the
   // per-sub-step frames; the player groups are still painted at their
@@ -390,12 +482,13 @@ runBtn.addEventListener('click', () => {
       }
       if (e.type === 'incomplete') say('Incomplete.');
     }
-    // The flag is called after the down, not when it was thrown — the spec is
-    // explicit that an illegal throw is allowed to play out first.
+    // The flag is called after the down, not when it was committed — the spec
+    // is explicit that an illegal throw is allowed to play out first, and an
+    // illegal formation is the same bargain: the snap is when it is noticed,
+    // the whistle is when it costs you.
     if (state.phase === 'playOver' && state.penalty) {
-      say(state.penalty.foul === 'second-forward-pass'
-        ? `FLAG: two forward passes. ${PENALTY_YARDS} yards from the previous spot, loss of down.`
-        : `FLAG: forward pass from beyond the line. ${PENALTY_YARDS} yards from the previous spot, loss of down.`);
+      say(`FLAG: ${FOUL_WORDS[state.penalty.foul]}.`
+        + ` ${PENALTY_YARDS} yards from the previous spot, loss of down.`);
     }
     // A tackle or a touchdown moves the game on by itself after a beat; every
     // other way a play can die (out of bounds, incomplete, a fumble the
@@ -418,6 +511,7 @@ runBtn.addEventListener('click', () => {
     nextBtn.disabled = true;
     newBtn.disabled = true;
     aiBtn.disabled = true;
+    repositionBtn.disabled = true;
     debugBtn.disabled = true;
     animate(frames, finish);
   } else finish();
@@ -443,6 +537,27 @@ aiBtn.addEventListener('click', () => {
   if (state.aiTeam) clearAiPlans(state);
   pendingWarning = false;
   say(next.note);
+  paint();
+});
+
+/**
+ * A formation is what you come to the line with, so the mode switches itself
+ * off at every point the huddle is over — the snap, the next down, a new
+ * game — rather than lingering into a turn where a drag has to mean an arrow
+ * again.
+ */
+function stopRepositioning() {
+  repositioning = false;
+}
+
+repositionBtn.addEventListener('click', () => {
+  closeMenu();
+  if (animating || !canReposition(state)) return;
+  repositioning = !repositioning;
+  layer('game-preview').clear();
+  say(repositioning
+    ? `Drag your players to move them. ${formationNote()}`
+    : 'Back to drawing arrows.');
   paint();
 });
 
@@ -481,6 +596,7 @@ function scheduleAutoAdvance(advance) {
 
 function goToNextDown() {
   cancelAutoAdvance();
+  stopRepositioning();
   nextDown(state);
   if (state.phase === 'gameOver') {
     say(state.result === 'touchdown' ? 'TOUCHDOWN — you win!'
@@ -495,6 +611,7 @@ function goToNextDown() {
 
 function startNewGame() {
   cancelAutoAdvance();
+  stopRepositioning();
   state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
   random = mulberry32(state.seed);
   pendingWarning = false;

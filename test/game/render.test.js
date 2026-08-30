@@ -3,16 +3,17 @@ import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
-  coverMark, coverHaloMark,
+  coverMark, coverHaloMark, lineZoneMark,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
 import {
   TEAM_SIZE, MAX_ARROW_UNITS, MAX_PASS_ARROW_UNITS, DEBUG_VELOCITY_SECONDS,
-  DEBUG_VELOCITY_TRIANGLE_SCALE, COVER_HALO_UNITS,
+  DEBUG_VELOCITY_TRIANGLE_SCALE, COVER_HALO_UNITS, ON_LINE_YARDS,
 } from '../../lib/game/constants.js';
 import { tackleReach } from '../../lib/game/modes.js';
-import { num } from '../../lib/field/geometry.js';
+import { num, UNITS_PER_YARD_X } from '../../lib/field/geometry.js';
+import { fieldPos } from '../../lib/game/view.js';
 
 test('the board shell has the field and every game layer', () => {
   const { viewBox, markup } = renderBoardShell(0);
@@ -503,4 +504,24 @@ test('the halo is drawn before the line, so the line reads on top of it', () => 
   const s = createGame({ seed: 1 });
   const mark = coverMark(getPlayer(s, 'o-c'), getPlayer(s, 'd-nt'));
   assert.ok(mark.indexOf('cover-halo') < mark.indexOf('plan-mv'));
+});
+
+test('the line-zone band covers exactly the yard a man has to be inside to be on the line', () => {
+  const s = createGame({ seed: 1 });
+  const markup = lineZoneMark(s);
+  const y = Number(markup.match(/y="([-\d.]+)"/)[1]);
+  const height = Number(markup.match(/height="([-\d.]+)"/)[1]);
+  const losY = fieldPos(0, s.losYard).y;
+  // The offense lines up behind the ball, so the band runs a yard back from
+  // the line — the same yard onTheLine tests against.
+  assert.equal(height, ON_LINE_YARDS * UNITS_PER_YARD_X);
+  assert.equal(y + height, losY);
+  assert.ok(markup.includes('line-zone'), 'carries its own class');
+});
+
+test('the line-zone band follows the line of scrimmage down the field', () => {
+  const s = createGame({ seed: 1 });
+  s.losYard = 5;
+  const y = Number(lineZoneMark(s).match(/y="([-\d.]+)"/)[1]);
+  assert.equal(y + ON_LINE_YARDS * UNITS_PER_YARD_X, fieldPos(0, 5).y);
 });

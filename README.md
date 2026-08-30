@@ -113,6 +113,29 @@ within range to make the hit.
   a defender gets within reach of the ball carrier. If any player doesn't have
   an arrow set yet, you'll get a warning naming how many; press **Run Turn**
   again to run the turn anyway.
+- **Reposition** in the Coaches Menu switches between drawing arrows and
+  moving players around before the snap. With it on, dragging one of your
+  players *moves* him rather than ordering him about — no arrows, no cover
+  orders, no stances, and any orders he already had are dropped, because a
+  destination is a spot on the field and moving him makes it a lie. A green
+  band shows the two yards behind the ball that count as being **on the line**,
+  so you can see what you are lining up against — the formation comes out a
+  yard inside it, with room either side.
+
+  Three spots are simply refused, and the board says why: past the line of
+  scrimmage, outside a sideline, or on top of somebody. The formation *count*
+  is not refused — you may break the huddle however you like, and the board
+  keeps a running `5 on the line`. Come out with fewer than five and it reads
+  `ILLEGAL FORMATION`; snap it anyway and you get the flag when the down ends,
+  five yards from the previous spot.
+
+  The computer answers your formation as you set it: the front goes head-up on
+  your interior linemen, the corners take your two widest men, the linebacker
+  sits over the ball and the safety plays over the top of everything — all read
+  off where your players actually are, so splitting a receiver across the
+  formation drags his corner with him. In hot-seat you are coaching both teams,
+  so nothing is aligned for you; you place the defense yourself. Repositioning
+  is offered on the first turn of a down and switches itself off at the snap.
 - **Clear Arrows** wipes every plan for the current turn, in case you want to
   start over before running it.
 - The Coaches Menu has a **Plays** section. Draw the first set of arrows for a
@@ -132,10 +155,6 @@ within range to make the hit.
   game is over.
 - **New Game** resets everything and starts a fresh drive from the 10.
 
-One thing this version *doesn't* do: there's no click-to-reposition of players
-before the snap. Every formation starts at its default positions — you set
-destinations, cover orders and stances from there, but you can't drag a player
-to a new starting spot pre-snap.
 
 ## Running the tests
 
@@ -166,10 +185,13 @@ game:
   three-lineman front, two corners, a linebacker, and a safety on defense.
   Chosen to keep a turn-based, hand-drawn-arrow game legible — 22 players all
   needing an arrow every half-second turn would be a lot of drawing.
-- **Player placement before the snap was scoped out of this pass** (see "How
-  to play" above) — everything else in the original spec (drag-to-plan,
-  long-press stances, blocking friction, tackling, fumbles, downs, and
-  scoring) is implemented and playable.
+- **The formation rules are the real ones, scaled to seven a side.** Real
+  football wants seven of eleven on the line; 7/11 of a seven-man team rounds
+  to five, which is exactly what the drive-start formation shows. Eligible
+  receiver and covered/uncovered rules are deliberately left out, because this
+  game lets anyone catch a pass. An illegal formation is enforced with the
+  same machinery as an illegal forward pass — five yards from the previous
+  spot, and the down counts.
 
 ## Design notes
 

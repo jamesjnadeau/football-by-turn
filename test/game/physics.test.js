@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { stepPhysics } from '../../lib/game/physics.js';
 import { createGame, setPlan, setMode, getPlayer } from '../../lib/game/state.js';
+import { setCover } from '../../lib/game/cover.js';
 import { maxSpeed } from '../../lib/game/modes.js';
-import { DT, SUBSTEPS_PER_TURN, STANCE_LATERAL_MULT } from '../../lib/game/constants.js';
+import { DT, SUBSTEPS_PER_TURN, STANCE_LATERAL_MULT, COVER_GRAB_REACH } from '../../lib/game/constants.js';
 import { len } from '../../lib/game/vec.js';
 import { RELEASE_SPEED } from '../../lib/game/constants.js';
 
@@ -219,4 +220,38 @@ test('a holding blocker is likewise pinned to one line', () => {
   run(s, SUBSTEPS_PER_TURN * 4);
   const cap = maxSpeed(c) * STANCE_LATERAL_MULT;
   assert.ok(Math.abs(len(c.vel) - cap) < cap * 0.05, `sideways is capped at ${cap}, got ${len(c.vel)}`);
+});
+
+test('a blocker holds the man he covers off at arm\'s length', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => ['o-c', 'd-nt'].includes(p.id));
+  const c = getPlayer(s, 'o-c');
+  const nt = getPlayer(s, 'd-nt');
+  // Overlapping by a hair, both standing still, no plans: one step of
+  // positional correction is all this is measuring.
+  c.pos = { x: 135, y: 100 };
+  nt.pos = { x: 135, y: 100 + c.radius + nt.radius - 0.5 };
+  setCover(s, 'o-c', 'd-nt');
+  c.plan = null;
+  nt.plan = null;
+  stepPhysics(s, DT);
+  const gap = len({ x: nt.pos.x - c.pos.x, y: nt.pos.y - c.pos.y });
+  assert.ok(
+    Math.abs(gap - (c.radius + nt.radius + COVER_GRAB_REACH)) < 1e-6,
+    `pushed out to the grab distance, got ${gap}`,
+  );
+});
+
+test('two players with no cover order between them touch at their own radii', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => ['o-c', 'd-nt'].includes(p.id));
+  const c = getPlayer(s, 'o-c');
+  const nt = getPlayer(s, 'd-nt');
+  c.pos = { x: 135, y: 100 };
+  nt.pos = { x: 135, y: 100 + c.radius + nt.radius - 0.5 };
+  c.plan = null;
+  nt.plan = null;
+  stepPhysics(s, DT);
+  const gap = len({ x: nt.pos.x - c.pos.x, y: nt.pos.y - c.pos.y });
+  assert.ok(Math.abs(gap - (c.radius + nt.radius)) < 1e-6, `got ${gap}`);
 });

@@ -1,12 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  opponentAt, setCover, clearCover, coverAim, updateCoverPlans,
+  opponentAt, setCover, clearCover, coverAim, updateCoverPlans, grabBonus,
 } from '../../lib/game/cover.js';
 import { createGame, getPlayer, setPlan, clearAllPlans } from '../../lib/game/state.js';
 import { runTurn } from '../../lib/game/turn.js';
 import { mulberry32 } from '../../lib/game/rng.js';
-import { COVER_LEAD_MAX_SECONDS, PICK_SLOP_UNITS } from '../../lib/game/constants.js';
+import { effectiveMass } from '../../lib/game/modes.js';
+import {
+  COVER_LEAD_MAX_SECONDS, PICK_SLOP_UNITS, COVER_MASS_MULT, COVER_GRAB_REACH,
+  HOLD_MASS_MULT,
+} from '../../lib/game/constants.js';
 import { len, sub, dist } from '../../lib/game/vec.js';
 
 test('every player starts covering nobody', () => {
@@ -125,4 +129,35 @@ test('a player covering nobody is untouched by the assist', () => {
   updateCoverPlans(s);
   assert.equal(getPlayer(s, 'o-rb').plan.throttle, 0.5);
   assert.deepEqual(getPlayer(s, 'o-rb').plan.target, { x: 1, y: 2 });
+});
+
+test('covering a man makes him heavier to shove, slightly', () => {
+  const s = createGame({ seed: 1 });
+  const c = getPlayer(s, 'o-c');
+  const plain = effectiveMass(c);
+  setCover(s, 'o-c', 'd-nt');
+  assert.ok(Math.abs(effectiveMass(c) - plain * COVER_MASS_MULT) < 1e-9);
+  assert.ok(COVER_MASS_MULT < HOLD_MASS_MULT, 'a nudge, not the holding stance');
+});
+
+test('the boost is only worth having while the order stands', () => {
+  const s = createGame({ seed: 1 });
+  const c = getPlayer(s, 'o-c');
+  const plain = effectiveMass(c);
+  setCover(s, 'o-c', 'd-nt');
+  clearCover(s, 'o-c');
+  assert.equal(effectiveMass(c), plain);
+});
+
+test('grab reach is granted between the coverer and his man, and nobody else', () => {
+  const s = createGame({ seed: 1 });
+  setCover(s, 'o-c', 'd-nt');
+  const c = getPlayer(s, 'o-c');
+  const nt = getPlayer(s, 'd-nt');
+  const dt = getPlayer(s, 'd-dt1');
+  const lg = getPlayer(s, 'o-lg');
+  assert.equal(grabBonus(c, nt), COVER_GRAB_REACH);
+  assert.equal(grabBonus(nt, c), COVER_GRAB_REACH, 'symmetric: order of the pair is irrelevant');
+  assert.equal(grabBonus(c, dt), 0, 'not against the man he did not take');
+  assert.equal(grabBonus(lg, nt), 0, 'and not for the man who gave no order');
 });

@@ -50,6 +50,17 @@ hand the defense back over.
     harder to shove out of the way — useful for holding a block.
 
   Long-press the same player again to go back to normal.
+- **Tap the ball carrier, then drag** to throw. The dashed red arrow shows where
+  the ball is going and how hard — a short backward drag is a handoff to the man
+  beside you, a long forward one is a bomb. Anyone can catch a throw, including
+  the defense, so a forward pass into traffic is an interception waiting to
+  happen. You get **one forward pass per down, and only from behind the line of
+  scrimmage**; backward throws and handoffs are unlimited. Throw illegally and
+  the game lets you — then calls the flag once the down is over: 5 yards back
+  from the previous spot and the down still counts, unless the defense came away
+  with the ball, in which case they keep it. A forward pass nobody catches is
+  incomplete: dead ball, no gain. A backward throw nobody catches is a live ball,
+  same as a fumble.
 - Press **Run Turn** to play out half a second of simulated movement — everyone
   moves along their arrow at once, with blocking friction as players come
   together, and a chance of a tackle whenever a defender gets within reach of

@@ -4,7 +4,7 @@ import { tackleProbability, checkTackles, checkPickup, checkDeadBall, nextDown }
 import { createGame, getPlayer, setMode, setPlan } from '../../lib/game/state.js';
 import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
 import { SIDELINE_LEFT } from '../../lib/field/geometry.js';
-import { NEARBY_RADIUS } from '../../lib/game/constants.js';
+import { NEARBY_RADIUS, PENALTY_YARDS } from '../../lib/game/constants.js';
 
 /** A game trimmed to just the players a scenario names, carrier = QB. */
 function scenario(ids) {
@@ -162,6 +162,18 @@ test('the carrier stepping out of bounds kills the play', () => {
   assert.equal(s.deadReason, 'out-of-bounds');
 });
 
+test('a loose ball out of bounds ends the play too, not just a carried one', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = {
+    carrierId: null,
+    pos: { x: SIDELINE_LEFT - 1, y: fieldPos(0, 2).y },
+    vel: { x: 0, y: 0 },
+  };
+  const events = checkDeadBall(s);
+  assert.equal(events[0].type, 'out-of-bounds');
+  assert.equal(s.deadReason, 'out-of-bounds');
+});
+
 test('between downs: ball is spotted where it died, down advances, formation resets there', () => {
   const s = createGame({ seed: 1 });
   const qb = getPlayer(s, 'o-qb');
@@ -235,4 +247,59 @@ test('an unprepared defender gets no wedge at all', () => {
   const qb = getPlayer(s, 'o-qb'), lb = getPlayer(s, 'd-lb');
   qb.pos = { x: 135, y: 100 }; lb.pos = { x: 135, y: 112 };
   assert.deepEqual(checkTackles(s, rolls(0, 0.99)), [], 'still just a circle of radius 3');
+});
+
+test('an enforced flag wipes the play and spots the ball back from the previous line', () => {
+  const s = createGame({ seed: 1 });
+  s.losYard = 4;
+  s.penalty = { foul: 'illegal-forward-pass', spot: 4 };
+  s.deadReason = 'touchdown';      // he scored on the illegal throw
+  s.forwardPasses = 1;
+  nextDown(s);
+  assert.equal(s.phase, 'planning', 'the touchdown does not stand');
+  assert.equal(s.result, null);
+  assert.equal(s.down, 2, 'the down still counts');
+  assert.equal(s.losYard, 4 - PENALTY_YARDS);
+  assert.equal(s.penalty, null, 'the flag is spent');
+  assert.equal(s.forwardPasses, 0, 'a new down gets a new forward pass');
+  assert.equal(s.plannedPass, null);
+});
+
+test('the defense declines the flag when it has just taken the ball', () => {
+  const s = createGame({ seed: 1 });
+  s.penalty = { foul: 'second-forward-pass', spot: 0 };
+  s.deadReason = 'recovered';      // intercepted
+  nextDown(s);
+  assert.equal(s.phase, 'gameOver');
+  assert.equal(s.result, 'turnover-fumble', 'the defense keeps the football');
+});
+
+test('an incomplete pass is spotted at the previous line, and costs the down', () => {
+  const s = createGame({ seed: 1 });
+  s.losYard = 3;
+  s.deadReason = 'incomplete';
+  s.ball = { carrierId: null, pos: fieldPos(0, 9), vel: { x: 0, y: 0 } }; // it landed 6 on
+  nextDown(s);
+  assert.equal(s.down, 2);
+  assert.equal(s.losYard, 3, 'an incomplete pass gains nothing');
+});
+
+test('a flag on 4th down is a turnover on downs', () => {
+  const s = createGame({ seed: 1 });
+  s.down = 4;
+  s.penalty = { foul: 'second-forward-pass', spot: 0 };
+  s.deadReason = 'tackled';
+  nextDown(s);
+  assert.equal(s.phase, 'gameOver');
+  assert.equal(s.result, 'turnover-on-downs');
+});
+
+test('with no flag, an ordinary down is spotted exactly as it always was', () => {
+  const s = createGame({ seed: 1 });
+  s.losYard = 0;
+  s.deadReason = 'tackled';
+  getPlayer(s, 'o-qb').pos = fieldPos(0, 6);
+  nextDown(s);
+  assert.equal(s.down, 2);
+  assert.ok(Math.abs(s.losYard - 6) < 1e-9, 'spotted where the play died');
 });

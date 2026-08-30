@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createGame, setPlan, clearAllPlans, setMode, placePlayer, getPlayer, ballPos, carrier,
-  isControllable,
+  isControllable, setPass, clearPass,
 } from '../../lib/game/state.js';
 import { TEAM_SIZE } from '../../lib/game/constants.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -123,4 +123,38 @@ test('every special move locks an axis, and dropping back to normal releases it'
   const c = getPlayer(s, 'o-c');
   setMode(s, 'o-c', 'holding');
   assert.notEqual(c.facing, null, 'holding position commits to a line too');
+});
+
+test('a new game has no throw planned, no forward pass thrown, and no flag', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(s.plannedPass, null);
+  assert.equal(s.forwardPasses, 0);
+  assert.equal(s.penalty, null);
+});
+
+test('only the ball carrier can plan a throw, and a second throw replaces the first', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5), true);
+  assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.5 });
+  setPass(s, 'o-qb', { x: 1, y: 0 }, 0.9);
+  assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 1, y: 0 }, power: 0.9 });
+  // The bug this signature exists to prevent: a player who is not the carrier
+  // must be refused, not silently substituted with whoever is.
+  assert.equal(setPass(s, 'o-wr1', { x: 0, y: 1 }, 0.5), false);
+  assert.equal(s.plannedPass.from, 'o-qb', 'the QB\'s throw is untouched');
+  clearPass(s);
+  assert.equal(s.plannedPass, null);
+  // Nobody is carrying the ball, so there is nothing to throw.
+  s.ball = { carrierId: null, pos: { x: 100, y: 100 }, vel: { x: 0, y: 0 } };
+  assert.equal(setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5), false);
+  assert.equal(s.plannedPass, null);
+});
+
+test('Clear Arrows drops the planned throw along with the run arrows', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5);
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
+  clearAllPlans(s);
+  assert.equal(s.plannedPass, null);
+  assert.ok(s.players.every((p) => p.plan === null));
 });

@@ -1,16 +1,19 @@
 import { SVG } from './vendor/svg.esm.js';
 import {
-  createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable,
+  createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable, setPass,
 } from '../lib/game/state.js';
 import { clearAiPlans } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
-  renderBoardShell, renderPlayers, renderArrows, renderLooseBall, looseBallMark, arrowMark,
+  renderBoardShell, renderPlayers, renderArrows, renderPassArrow, renderLooseBall, looseBallMark,
+  arrowMark, passArrowMark, passArrowTip,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { mulberry32 } from '../lib/game/rng.js';
-import { TURN_SECONDS, MAX_ARROW_UNITS } from '../lib/game/constants.js';
+import {
+  TURN_SECONDS, MAX_ARROW_UNITS, PENALTY_YARDS,
+} from '../lib/game/constants.js';
 import { attachInput } from './input.js';
 
 // SVG(el) adopts the existing <svg id="board"> node rather than creating a
@@ -57,7 +60,9 @@ function rebuildBoard() {
  */
 function paint() {
   layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
-  layer('game-arrows').clear().svg(state.phase === 'planning' ? renderArrows(state) : '');
+  layer('game-arrows').clear().svg(
+    state.phase === 'planning' ? renderArrows(state) + renderPassArrow(state) : '',
+  );
   hud.textContent = `Down ${state.down} of 4 — ${state.phase}`;
   aiBtn.textContent = state.aiTeam ? 'Defense: computer' : 'Defense: you';
   aiBtn.disabled = animating || state.phase !== 'planning';
@@ -93,7 +98,18 @@ function onGesture(playerId, gesture, point) {
   layer('game-preview').clear();
   if (state.phase !== 'planning') return;
   const p = getPlayer(state, playerId);
-  if (gesture.kind === 'drag') {
+  if (gesture.kind === 'passdrag') {
+    // Tap-then-drag is a throw only from the man with the ball. From anyone
+    // else it is an ordinary run arrow — which is what the drag preview showed
+    // him, so committing anything less would break that promise.
+    if (setPass(state, playerId, gesture.dir, gesture.throttle)) {
+      say(`${p.role} will throw.`);
+    } else {
+      setPlan(state, playerId, gesture.dir, gesture.throttle);
+      say(`${p.role} doesn't have the ball — running instead.`);
+    }
+    pendingWarning = false;
+  } else if (gesture.kind === 'drag') {
     setPlan(state, playerId, gesture.dir, gesture.throttle);
     pendingWarning = false;
     say('');
@@ -112,20 +128,27 @@ function onGesture(playerId, gesture, point) {
   paint();
 }
 
-function onDragPreview(playerId, log) {
+function onDragPreview(playerId, log, prevTapAt) {
   if (animating) return; // the board belongs to the turn being drawn right now
   if (!playerId || !log || state.phase !== 'planning') {
     layer('game-preview').clear();
     return;
   }
-  const g = classifyGesture(log);
-  if (g.kind !== 'drag') return;
+  const g = classifyGesture(log, prevTapAt);
+  if (g.kind !== 'drag' && g.kind !== 'passdrag') return;
   const p = getPlayer(state, playerId);
-  const tip = {
-    x: p.pos.x + g.dir.x * g.throttle * MAX_ARROW_UNITS,
-    y: p.pos.y + g.dir.y * g.throttle * MAX_ARROW_UNITS,
-  };
-  layer('game-preview').clear().svg(arrowMark(p.pos, tip));
+  // A throw only previews as a throw from the man actually holding the ball;
+  // from anyone else a tap-then-drag is an ordinary run. Both marks come from
+  // render.js, so the arrow being dragged and the arrow committed are the same
+  // picture either way.
+  const throwing = g.kind === 'passdrag' && state.ball.carrierId === playerId;
+  const mark = throwing
+    ? passArrowMark(p.pos, passArrowTip(p.pos, g.dir, g.throttle))
+    : arrowMark(p.pos, {
+      x: p.pos.x + g.dir.x * g.throttle * MAX_ARROW_UNITS,
+      y: p.pos.y + g.dir.y * g.throttle * MAX_ARROW_UNITS,
+    });
+  layer('game-preview').clear().svg(mark);
 }
 
 /**
@@ -190,6 +213,7 @@ runBtn.addEventListener('click', () => {
   // pre-turn spots, so animating the frames walks them to where state says.
   const { frames, events } = runTurn(state, random);
   layer('game-arrows').clear();
+  const thrown = events.some((e) => e.type === 'pass');
   const finish = () => {
     animating = false;
     paint();
@@ -198,7 +222,18 @@ runBtn.addEventListener('click', () => {
       if (e.type === 'fumble') say('FUMBLE! The ball is loose!');
       if (e.type === 'touchdown') say('TOUCHDOWN!');
       if (e.type === 'out-of-bounds') say('Out of bounds.');
-      if (e.type === 'pickup') say(`Recovered by ${e.team}.`);
+      if (e.type === 'pickup') {
+        if (!thrown) say(`Recovered by ${e.team}.`);
+        else say(e.team === 'defense' ? 'INTERCEPTED!' : 'Caught!');
+      }
+      if (e.type === 'incomplete') say('Incomplete.');
+    }
+    // The flag is called after the down, not when it was thrown — the spec is
+    // explicit that an illegal throw is allowed to play out first.
+    if (state.phase === 'playOver' && state.penalty) {
+      say(state.penalty.foul === 'second-forward-pass'
+        ? `FLAG: two forward passes. ${PENALTY_YARDS} yards from the previous spot, loss of down.`
+        : `FLAG: forward pass from beyond the line. ${PENALTY_YARDS} yards from the previous spot, loss of down.`);
     }
   };
   if (frames.length > 0) {

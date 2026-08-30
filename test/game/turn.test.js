@@ -6,9 +6,9 @@ import { createGame, setPlan, getPlayer, setPass } from '../../lib/game/state.js
 import { mulberry32 } from '../../lib/game/rng.js';
 import { SUBSTEPS_PER_TURN, TEAM_SIZE } from '../../lib/game/constants.js';
 import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
-import { norm, dist } from '../../lib/game/vec.js';
+import { norm, dist, sub } from '../../lib/game/vec.js';
 import { lobLanded, isLob } from '../../lib/game/lob.js';
-import { passReach } from '../../lib/game/pass.js';
+import { passReach, lockOnPass, powerForTravel } from '../../lib/game/pass.js';
 
 /**
  * The snap taken: the ball in the quarterback's hands and nothing pending.
@@ -369,4 +369,52 @@ test('the frames carry the ball\'s drawn size, so the animation can swell it', (
   const biggest = Math.max(...scales);
   assert.ok(biggest > 1, `it swells as it climbs (${biggest.toFixed(2)})`);
   assert.equal(scales[scales.length - 1], 1, 'and is back to size where it came down');
+});
+
+test('a receiver on a route catches a throw locked onto him', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'o-wr1');
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x + 20, y: qb.pos.y + 10 };
+  setPlan(s, 'o-wr1', { x: 0, y: 1 }, 1); // gone downfield the moment the ball is thrown
+  const lock = lockOnPass(qb, wr);
+  setPass(s, 'o-qb', lock.dir, lock.power, 'o-wr1');
+  const { events } = runTurn(s, mulberry32(1));
+  assert.ok(events.some((e) => e.type === 'pickup' && e.by === 'o-wr1'),
+    'the ball was thrown to where he was going');
+  assert.equal(s.ball.carrierId, 'o-wr1');
+});
+
+test('the same throw aimed at where he was standing sails behind him', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'o-wr1');
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x + 20, y: qb.pos.y + 10 };
+  setPlan(s, 'o-wr1', { x: 0, y: 1 }, 1);
+  // No target on the throw, so nothing re-aims it: this is the flat throw at
+  // his feet that the lead exists to replace.
+  const flat = norm(sub(wr.pos, qb.pos));
+  setPass(s, 'o-qb', flat, powerForTravel(dist(qb.pos, wr.pos) - 4.5));
+  const { events } = runTurn(s, mulberry32(1));
+  assert.ok(!events.some((e) => e.type === 'pickup'), 'he had already left');
+});
+
+test('a receiver running flat across in front of the passer is still found', () => {
+  // The case the meeting solve exists for: the gap is short, the ball cannot be
+  // thrown gently enough to loiter, and he is moving sideways out of its path.
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'o-wr1');
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + 10 };
+  setPlan(s, 'o-wr1', { x: 1, y: 0 }, 1);
+  const lock = lockOnPass(qb, wr);
+  setPass(s, 'o-qb', lock.dir, lock.power, 'o-wr1');
+  const { events } = runTurn(s, mulberry32(1));
+  assert.ok(events.some((e) => e.type === 'pickup' && e.by === 'o-wr1'), 'he was met, not led past');
 });

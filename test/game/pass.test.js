@@ -5,7 +5,7 @@ import {
   passSpeed, passReach, passTravel, powerForTravel, passOrigin, passAim,
   receiverAt, lockOnPass, passLanding,
 } from '../../lib/game/pass.js';
-import { createGame, getPlayer, setPass } from '../../lib/game/state.js';
+import { createGame, getPlayer, setPass, setPlan } from '../../lib/game/state.js';
 import { fieldPos } from '../../lib/game/view.js';
 import { len } from '../../lib/game/vec.js';
 import {
@@ -15,7 +15,8 @@ import {
 import { PASS_REACH_MAX } from '../../lib/game/flight.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { isLob, lobSubsteps, scatterRadius, LOCK_UNITS } from '../../lib/game/lob.js';
-import { dist } from '../../lib/game/vec.js';
+import { dist, norm, sub } from '../../lib/game/vec.js';
+import { predictRoute } from '../../lib/game/predict.js';
 
 /**
  * The snap taken: the ball in the quarterback's hands and nothing pending.
@@ -284,9 +285,18 @@ test('a lock-on is aimed at the man and thrown hard enough to reach him this tur
   wr.pos = { x: qb.pos.x, y: qb.pos.y + 40 };
   const { dir, power } = lockOnPass(qb, wr);
   assert.ok(Math.abs(dir.x) < 1e-9 && Math.abs(dir.y - 1) < 1e-9, 'straight at him');
+  // The promise is a MEETING, not an arrival at the whistle: some sub-step of
+  // this turn puts the ball inside his reach. Solving it that way is what lets
+  // a short throw find a man moving across it, where a ball timed to land on
+  // the whistle would cross the spot before he got there.
   const gap = dist(passOrigin(qb, dir), wr.pos);
-  assert.ok(Math.abs(passTravel(power, SUBSTEPS_PER_TURN) - gap) < 1e-6,
-    'the ball is on him before the whistle, not 84% of the way');
+  const reach = wr.radius + PICKUP_RADIUS_BONUS;
+  let meets = 0;
+  for (let n = 1; n <= SUBSTEPS_PER_TURN; n++) {
+    if (Math.abs(passTravel(power, n) - gap) <= reach) meets += 1;
+  }
+  assert.ok(meets > 0, 'the ball is on him inside the turn, not 84% of the way');
+  assert.ok(passTravel(power, SUBSTEPS_PER_TURN) >= gap - reach, 'it does get all the way there');
 });
 
 test('a throw short of the lock zone has no landing circle; a lob has one that grows', () => {
@@ -298,4 +308,50 @@ test('a throw short of the lock zone has no landing circle; a lob has one that g
   assert.deepEqual(land.pos, passAim(qb, dir, 1));
   assert.ok(Math.abs(land.radius - scatterRadius(passReach(1))) < 1e-9);
   assert.ok(land.radius > passLanding(qb, dir, 0.6).radius, 'the longer the throw, the bigger the guess');
+});
+
+test('a lock-on aims where the receiver will be, not where he is standing', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x + 20, y: qb.pos.y + 10 };
+  setPlan(s, 'o-wr1', { x: 0, y: 1 }, 1); // he is running downfield
+  const led = lockOnPass(qb, wr);
+  const flat = norm(sub(wr.pos, qb.pos));
+  assert.ok(led.dir.y > flat.y, 'the throw is aimed ahead of him, not at him');
+  // And precisely: at one of the spots his own route actually puts him.
+  const onRoute = predictRoute(wr).some((spot) => {
+    const d = norm(sub(spot, qb.pos));
+    return Math.abs(d.x - led.dir.x) < 1e-9 && Math.abs(d.y - led.dir.y) < 1e-9;
+  });
+  assert.ok(onRoute, 'the ball is thrown at a place he is going to be');
+});
+
+test('a receiver standing still is thrown at where he stands', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + 30 };
+  const led = lockOnPass(qb, wr);
+  assert.ok(Math.abs(led.dir.x) < 1e-9 && Math.abs(led.dir.y - 1) < 1e-9, 'straight at him');
+});
+
+test('the lock is re-aimed at the whistle, so the route can be drawn after the throw', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  const wr = getPlayer(s, 'o-wr1');
+  const qb = getPlayer(s, 'o-qb');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + 20 };
+  // The coach locks on first, with a direction that means nothing...
+  setPass(s, 'o-qb', { x: 1, y: 0 }, 0, 'o-wr1');
+  // ...and only then sends the man deep.
+  setPlan(s, 'o-wr1', { x: 0, y: 1 }, 1);
+  const solved = lockOnPass(qb, wr);
+  releasePass(s, mulberry32(1));
+  const flew = norm(s.ball.vel);
+  assert.ok(Math.abs(flew.x - solved.dir.x) < 1e-9, 'thrown at the man, not along the drag');
+  assert.ok(Math.abs(flew.y - solved.dir.y) < 1e-9);
+  assert.ok(Math.abs(len(s.ball.vel) - passSpeed(solved.power)) < 1e-9, 'and at the solved pace');
 });

@@ -134,10 +134,13 @@ within range to make the hit.
   scaled by power: it is thrown as gently as the game allows, so its length
   would say nothing, and where it is going is the useful thing to see.
   - **Drop the drag on one of your own within 15 yards** and the throw locks
-    onto him: it goes where he is standing, thrown exactly hard enough to arrive
-    this turn. He gets a red halo, the way a covered man gets a green one. He is
-    free to move between now and the whistle, though — a lock-on is an aim, not
-    a guarantee.
+    onto him. It leads him: the ball goes to where his own route puts him, not
+    to where he is standing, and it is thrown at the pace that meets him there
+    rather than at whatever force you happened to drag. Draw his route after
+    locking on if you like — the aim is taken at the snap, from the orders as
+    they finally stand. He gets a red halo, the way a covered man gets a green
+    one. What can still beat it is what beats a real pass: a defender who gets
+    to the ball first, or a receiver who is knocked off his route on the way.
   - **Drag further than that** and you are throwing a **lob**. Nothing locks on;
     a red circle shows where the ball is coming down instead, and it grows the
     longer the throw — the ball lands *somewhere* inside it, not on the middle.

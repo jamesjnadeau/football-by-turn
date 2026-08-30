@@ -111,9 +111,12 @@ test('a lob is live for its first fifteen yards, dead over the middle, live agai
 });
 
 test('a lob too short to have a dead zone is catchable the whole way', () => {
-  // 17 yards: the lock zone (15) and the catch window (3) overlap, so the ball
-  // never gets out of reach — and never gets drawn any bigger either.
-  const total = 17 * UNITS_PER_YARD_X;
+  // Long enough to arc, short enough that the lock zone and the catch window
+  // still overlap: the ball never gets out of reach, and never gets drawn any
+  // bigger either. Derived from the two constants rather than written as a
+  // number, so retuning either of them cannot quietly make this fixture a
+  // lob with a dead zone and leave the test asserting the opposite.
+  const total = (LOB_LOCK_YARDS + LOB_CATCH_YARDS / 2) * UNITS_PER_YARD_X;
   const lob = { from: { x: 0, y: 0 }, to: { x: 0, y: total }, substeps: 30, elapsed: 0 };
   for (let i = 0; i <= 30; i++) {
     lob.elapsed = i;

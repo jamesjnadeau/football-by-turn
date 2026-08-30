@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runTurn, unplannedPlayers } from '../../lib/game/turn.js';
 import { nextDown } from '../../lib/game/rules.js';
-import { createGame, setPlan, getPlayer } from '../../lib/game/state.js';
+import { createGame, setPlan, getPlayer, setPass } from '../../lib/game/state.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { SUBSTEPS_PER_TURN, TEAM_SIZE } from '../../lib/game/constants.js';
 import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
@@ -159,4 +159,70 @@ test('a real computer-coached game: hidden plans hold, aiTeam survives the down,
   nextDown(s);
   assert.equal(s.aiTeam, 'defense', 'aiTeam survives the wholesale player rebuild between downs');
   assert.equal(s.phase, 'planning');
+});
+
+test('a planned throw goes up at the snap of the turn, and the ball flies', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb'); // nobody out there to catch it
+  setPass(s, { x: 0, y: 1 }, 1);
+  const { frames, events } = runTurn(s, mulberry32(1));
+  assert.ok(events.some((e) => e.type === 'pass'), 'the throw was reported');
+  assert.equal(s.ball.carrierId, null, 'the ball is out of his hands');
+  assert.ok(frames[0].looseBall, 'loose from the very first sub-step');
+  const first = frames[0].ball;
+  const last = frames[frames.length - 1].ball;
+  const travelled = Math.hypot(last.x - first.x, last.y - first.y);
+  assert.ok(travelled > 40, `the throw covered ground (${travelled.toFixed(1)} units)`);
+  assert.equal(s.plannedPass, null, 'a throw is planned for one turn only');
+});
+
+test('a forward pass nobody catches is incomplete: dead ball, play over', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb');
+  setPass(s, { x: 0, y: 1 }, 1);
+  let turns = 0;
+  while (s.phase !== 'playOver' && turns < 8) { runTurn(s, mulberry32(1)); turns += 1; }
+  assert.equal(s.deadReason, 'incomplete');
+  assert.equal(s.phase, 'playOver');
+});
+
+test('a backward throw nobody catches stays live — a lateral on the ground is a fumble', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb');
+  setPass(s, { x: 0, y: -1 }, 1);
+  let turns = 0;
+  while (s.phase !== 'playOver' && turns < 8) { runTurn(s, mulberry32(1)); turns += 1; }
+  assert.equal(s.deadReason, null, 'still live after the ball has stopped');
+  assert.equal(s.ball.carrierId, null);
+});
+
+test('a teammate downfield catches the throw', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'o-wr1');
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  // Park him straight downfield of the QB, inside the first turn's flight.
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + 40 };
+  setPass(s, { x: 0, y: 1 }, 1);
+  const { events } = runTurn(s, mulberry32(1));
+  assert.deepEqual(
+    events.find((e) => e.type === 'pickup'),
+    { type: 'pickup', by: 'o-wr1', team: 'offense' },
+  );
+  assert.equal(s.ball.carrierId, 'o-wr1');
+  assert.equal(s.deadReason, null, 'a completion keeps the down alive');
+});
+
+test('a defender in the throwing lane intercepts it — the play is over', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'd-cb1');
+  const qb = getPlayer(s, 'o-qb');
+  const cb = getPlayer(s, 'd-cb1');
+  cb.pos = { x: qb.pos.x, y: qb.pos.y + 40 };
+  cb.plan = null;
+  s.aiTeam = null; // hot-seat: he stands where he is put, so the throw finds him
+  setPass(s, { x: 0, y: 1 }, 1);
+  const { events } = runTurn(s, mulberry32(1));
+  assert.ok(events.some((e) => e.type === 'pickup' && e.team === 'defense'));
+  assert.equal(s.deadReason, 'recovered');
 });

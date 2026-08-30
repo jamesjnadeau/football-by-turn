@@ -14,7 +14,7 @@ import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import {
-  TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS,
+  TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
 } from '../lib/game/constants.js';
 import { attachInput } from './input.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
@@ -397,6 +397,17 @@ runBtn.addEventListener('click', () => {
         ? `FLAG: two forward passes. ${PENALTY_YARDS} yards from the previous spot, loss of down.`
         : `FLAG: forward pass from beyond the line. ${PENALTY_YARDS} yards from the previous spot, loss of down.`);
     }
+    // A tackle or a touchdown moves the game on by itself after a beat; every
+    // other way a play can die (out of bounds, incomplete, a fumble the
+    // defense fell on) still waits for the button. A touchdown restarts the
+    // game because scoring is how this one is won — unless a flag is being
+    // enforced, which wipes the score and makes it an ordinary next down.
+    if (state.phase === 'playOver'
+      && (state.deadReason === 'tackled' || state.deadReason === 'touchdown')) {
+      scheduleAutoAdvance(
+        state.deadReason === 'touchdown' && !state.penalty ? startNewGame : goToNextDown,
+      );
+    }
   };
   if (frames.length > 0) {
     // Lock the controls now, not at the next paint() — paint() does not run
@@ -446,9 +457,30 @@ debugBtn.addEventListener('click', () => {
   paint();
 });
 
-nextBtn.addEventListener('click', () => {
-  closeMenu();
-  if (animating) return;
+/**
+ * A finished play moves the game on by itself after DEAD_BALL_PAUSE_SECONDS —
+ * the coach reads the call, sees where everyone stopped, and the next down
+ * comes up without a button press. The timer id is kept so that a coach who
+ * doesn't want to wait can press Next Down or New Game and have the pending
+ * one thrown away rather than fire a second advance on top of his.
+ */
+let autoAdvanceTimer = null;
+
+function cancelAutoAdvance() {
+  if (autoAdvanceTimer !== null) clearTimeout(autoAdvanceTimer);
+  autoAdvanceTimer = null;
+}
+
+function scheduleAutoAdvance(advance) {
+  cancelAutoAdvance();
+  autoAdvanceTimer = setTimeout(() => {
+    autoAdvanceTimer = null;
+    advance();
+  }, DEAD_BALL_PAUSE_SECONDS * 1000);
+}
+
+function goToNextDown() {
+  cancelAutoAdvance();
   nextDown(state);
   if (state.phase === 'gameOver') {
     say(state.result === 'touchdown' ? 'TOUCHDOWN — you win!'
@@ -459,17 +491,28 @@ nextBtn.addEventListener('click', () => {
     rebuildBoard();
   }
   paint();
-});
+}
 
-newBtn.addEventListener('click', () => {
-  closeMenu();
-  if (animating) return;
+function startNewGame() {
+  cancelAutoAdvance();
   state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
   random = mulberry32(state.seed);
   pendingWarning = false;
   say('New game. 1st and goal from the 10.');
   rebuildBoard();
   paint();
+}
+
+nextBtn.addEventListener('click', () => {
+  closeMenu();
+  if (animating) return;
+  goToNextDown();
+});
+
+newBtn.addEventListener('click', () => {
+  closeMenu();
+  if (animating) return;
+  startNewGame();
 });
 
 attachInput(board, { hitTest, onGesture, onDragPreview });

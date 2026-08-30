@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   positionGroup, defendDir, losY, pastLine, groupMates,
-  interceptPoint, leverageAim,
+  interceptPoint, leverageAim, containSide, rushLineman,
 } from '../../lib/game/defense.js';
 import { createGame, getPlayer } from '../../lib/game/state.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -106,4 +106,36 @@ test('leverage is off once he is close enough to go and get him', () => {
   const qb = getPlayer(s, 'o-qb');
   lb.pos = { x: 135, y: 80 };           // 10 units off him
   assert.deepEqual(leverageAim(lb, { x: 140, y: 70 }, qb), { x: 140, y: 70 });
+});
+
+test('the front works out its own edges from where it is standing', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  assert.equal(containSide(s, getPlayer(s, 'd-dt1')), -1, 'left edge');
+  assert.equal(containSide(s, getPlayer(s, 'd-nt')), 0, 'straight down the middle');
+  assert.equal(containSide(s, getPlayer(s, 'd-dt2')), 1, 'right edge');
+});
+
+test('a lone lineman contains nothing — he just goes', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  s.players = s.players.filter((p) => p.id !== 'd-dt1' && p.id !== 'd-dt2');
+  assert.equal(containSide(s, getPlayer(s, 'd-nt')), 0);
+});
+
+test('an edge rusher keeps his side of the ball', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  // QB (135, 70) standing still; the right tackle is at (144.375, 88.75), well
+  // outside attack range, so both leverage and contain are live.
+  assert.deepEqual(rushLineman(s, getPlayer(s, 'd-dt2')),
+    { aim: { x: 141, y: 74 }, cover: null }, 'stays 6 units to the right of him');
+  assert.deepEqual(rushLineman(s, getPlayer(s, 'd-dt1')),
+    { aim: { x: 129, y: 74 }, cover: null }, 'and 6 to the left');
+  assert.deepEqual(rushLineman(s, getPlayer(s, 'd-nt')),
+    { aim: { x: 135, y: 74 }, cover: null }, 'the middle man goes straight at him');
+});
+
+test('contain is given up at contact range — then he attacks the man', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const dt = getPlayer(s, 'd-dt2');
+  dt.pos = { x: 140, y: 76 };   // ~7.8 units off the QB, inside AI_ATTACK_UNITS
+  assert.deepEqual(rushLineman(s, dt), { aim: { x: 135, y: 70 }, cover: null });
 });

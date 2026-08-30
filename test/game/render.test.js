@@ -1,10 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  renderBoardShell, renderPlayers, renderArrows, renderLooseBall, facingAngle, arrowMark, STYLE_GAME,
+  renderBoardShell, renderPlayers, renderArrows, renderLooseBall, renderPassArrow,
+  facingAngle, arrowMark, STYLE_GAME,
 } from '../../lib/game/render.js';
-import { createGame, setPlan, setMode, getPlayer } from '../../lib/game/state.js';
-import { TEAM_SIZE, MAX_ARROW_UNITS, DEBUG_VELOCITY_SECONDS } from '../../lib/game/constants.js';
+import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
+import {
+  TEAM_SIZE, MAX_ARROW_UNITS, MAX_PASS_ARROW_UNITS, DEBUG_VELOCITY_SECONDS,
+} from '../../lib/game/constants.js';
 import { tackleReach } from '../../lib/game/modes.js';
 import { num } from '../../lib/field/geometry.js';
 
@@ -203,4 +206,33 @@ test('the velocity line points along the velocity, not along the plan', () => {
 
 test('the velocity line is a thin blue hairline', () => {
   assert.ok(STYLE_GAME.includes('.vel{stroke:#1668dc;stroke-width:.4;'));
+});
+
+test('the planned throw draws its own arrow, distinct from a run arrow', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(renderPassArrow(s), '', 'nothing planned, nothing drawn');
+  setPass(s, { x: 0, y: 1 }, 1);
+  const svg = renderPassArrow(s);
+  assert.ok(svg.includes('data-pass="o-qb"'));
+  assert.ok(svg.includes('class="pass"'), 'its own class, not the run arrow\'s');
+  assert.ok(!svg.includes('class="plan-mv"'), 'not the run arrow\'s class');
+  assert.ok(svg.includes('marker-end="url(#ar-r)"'), 'its own red arrowhead');
+  const qb = getPlayer(s, 'o-qb');
+  assert.ok(svg.includes(`${qb.pos.y + MAX_PASS_ARROW_UNITS}`), 'full power = full length');
+});
+
+test('a throw arrow is longer than a run arrow at the same throttle', () => {
+  assert.ok(MAX_PASS_ARROW_UNITS > MAX_ARROW_UNITS);
+});
+
+test('no throw arrow once the man who planned it no longer has the ball', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, { x: 0, y: 1 }, 1);
+  s.ball = { carrierId: 'o-rb', pos: null, vel: null };
+  assert.equal(renderPassArrow(s), '');
+});
+
+test('the throw arc style is registered in the game stylesheet', () => {
+  const { markup } = renderBoardShell(0);
+  assert.ok(markup.includes('.pass{'), 'the pass arrow has a style rule');
 });

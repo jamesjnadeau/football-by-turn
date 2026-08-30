@@ -380,7 +380,7 @@ function savePlay() {
   if (animating || !canUsePlays(state)) return;
   if (isEmptyPlay(capturePlay(state, ''))) {
     closeMenu();
-    say('Nothing to save yet. Draw some arrows first.');
+    say('Nothing to save yet. Move someone or draw some arrows first.');
     return;
   }
   const name = (window.prompt('Name this play:', '') ?? '').trim();
@@ -406,21 +406,28 @@ function savePlay() {
 }
 
 /**
- * Calling a play replaces whatever is drawn — it is a huddle, not an edit. Any
- * of it that could not be given (a defender in a play saved in hot-seat, a tuck
- * by a man who does not have the ball this time) is counted out loud rather
- * than passed over in silence.
+ * Calling a play replaces whatever is drawn, and whoever is standing where —
+ * it is a huddle, not an edit. Any of it that could not be given (a defender
+ * in a play saved in hot-seat, a spot this down has no room for, a tuck by a
+ * man who does not have the ball this time) is counted out loud rather than
+ * passed over in silence. The defense answers the formation this leaves,
+ * exactly as it answers a drag.
  */
 function callPlay(i) {
   if (animating || !canUsePlays(state)) return;
   const play = playbook[i];
   if (!play) return;
   const { applied, skipped } = applyPlay(state, play);
+  // A called play sets a formation, and a formation is a question the defense
+  // has to answer — the same answer a drag gets. Without this the corners stay
+  // lined up over the last play's receivers.
+  realignDefense();
   pendingWarning = false; // a new plan gets a fresh warning, like any drag does
   closeMenu();
+  const note = formationNote();
   say(skipped.length === 0
-    ? `"${play.name}" called. ${applied.length} player(s) set.`
-    : `"${play.name}" called. ${applied.length} set, ${skipped.length} skipped.`);
+    ? `"${play.name}" called. ${applied.length} player(s) set. ${note}`
+    : `"${play.name}" called. ${applied.length} set, ${skipped.length} skipped. ${note}`);
   paint();
 }
 

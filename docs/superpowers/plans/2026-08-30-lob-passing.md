@@ -1076,7 +1076,7 @@ landed lob, and the sideline.
 - Consumes: `lobCatchable`, `lobLanded`, `lobPoint` (Task 2).
 - Produces: no new exports; three changed behaviours.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `test/game/rules.test.js`, add `checkIncomplete` to the existing
 `rules.js` import, add `SIDELINE_RIGHT` to the existing `geometry.js` import,
@@ -1168,13 +1168,13 @@ test('the air over the sideline is not out of bounds', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test test/game/rules.test.js`
 Expected: FAIL — the dead-zone pickup succeeds, `checkIncomplete` rules an
 airborne lob incomplete at the whistle, and the sideline claims the forward one.
 
-- [ ] **Step 3: Gate the catch**
+- [x] **Step 3: Gate the catch**
 
 In `lib/game/rules.js`, add the import:
 
@@ -1191,7 +1191,7 @@ and add one guard to `checkPickup`, right after the `loose` grace check:
   if (state.ball.lob && !lobCatchable(state.ball.lob)) return [];
 ```
 
-- [ ] **Step 4: Rule it where it lands**
+- [x] **Step 4: Rule it where it lands**
 
 Replace the body of `checkIncomplete` (keep the existing doc comment and append
 the new paragraph):
@@ -1212,7 +1212,7 @@ export function checkIncomplete(state, { endOfTurn = false } = {}) {
 }
 ```
 
-- [ ] **Step 5: Let it fly over the paint**
+- [x] **Step 5: Let it fly over the paint**
 
 In `checkDeadBall`, replace the loose-ball sideline check:
 
@@ -1230,12 +1230,12 @@ In `checkDeadBall`, replace the loose-ball sideline check:
   }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add lib/game/rules.js test/game/rules.test.js && git commit -m "Rule the lob: uncatchable over the middle, decided where it lands"

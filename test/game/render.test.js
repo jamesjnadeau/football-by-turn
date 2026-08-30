@@ -3,16 +3,17 @@ import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
-  coverMark, coverHaloMark, renderFieldButtons,
+  coverMark, coverHaloMark, lineZoneMark, renderFieldButtons,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
 import {
   TEAM_SIZE, MAX_ARROW_UNITS, MAX_PASS_ARROW_UNITS, DEBUG_VELOCITY_SECONDS,
-  DEBUG_VELOCITY_TRIANGLE_SCALE, COVER_HALO_UNITS,
+  DEBUG_VELOCITY_TRIANGLE_SCALE, COVER_HALO_UNITS, ON_LINE_YARDS,
 } from '../../lib/game/constants.js';
 import { tackleReach } from '../../lib/game/modes.js';
-import { num } from '../../lib/field/geometry.js';
+import { num, UNITS_PER_YARD_X } from '../../lib/field/geometry.js';
+import { fieldPos } from '../../lib/game/view.js';
 
 test('the board shell has the field and every game layer', () => {
   const { viewBox, markup } = renderBoardShell(0);
@@ -505,6 +506,26 @@ test('the halo is drawn before the line, so the line reads on top of it', () => 
   assert.ok(mark.indexOf('cover-halo') < mark.indexOf('plan-mv'));
 });
 
+test('the line-zone band covers exactly the yard a man has to be inside to be on the line', () => {
+  const s = createGame({ seed: 1 });
+  const markup = lineZoneMark(s);
+  const y = Number(markup.match(/y="([-\d.]+)"/)[1]);
+  const height = Number(markup.match(/height="([-\d.]+)"/)[1]);
+  const losY = fieldPos(0, s.losYard).y;
+  // The offense lines up behind the ball, so the band runs a yard back from
+  // the line — the same yard onTheLine tests against.
+  assert.equal(height, ON_LINE_YARDS * UNITS_PER_YARD_X);
+  assert.equal(y + height, losY);
+  assert.ok(markup.includes('line-zone'), 'carries its own class');
+});
+
+test('the line-zone band follows the line of scrimmage down the field', () => {
+  const s = createGame({ seed: 1 });
+  s.losYard = 5;
+  const y = Number(lineZoneMark(s).match(/y="([-\d.]+)"/)[1]);
+  assert.equal(y + ON_LINE_YARDS * UNITS_PER_YARD_X, fieldPos(0, 5).y);
+});
+
 
 /**
  * The x/y/width/height of the one rect in a mark, as numbers. The leading
@@ -524,8 +545,7 @@ function buttonGroup(markup, attr) {
 }
 
 test('the board carries both quick-press buttons before the snap', () => {
-  const s = createGame({ seed: 1 });
-  const markup = renderFieldButtons(s, { repositioning: false, animating: false });
+  const markup = renderFieldButtons(createGame({ seed: 1 }));
   assert.ok(markup.includes('data-reposition-button'), 'the shuffle is offered');
   assert.ok(markup.includes('data-run-button'), 'the run button is offered');
   assert.ok(markup.includes('\u{1F500}'), 'shuffle icon');
@@ -536,7 +556,7 @@ test('the shuffle button goes away once the play has started, but Run stays put'
   const s = createGame({ seed: 1 });
   const before = rectBox(buttonGroup(renderFieldButtons(s), 'data-run-button'));
 
-  s.turnIndex = 1; // the play is under way
+  s.turnIndex = 1; // the play is under way, so canReposition() is shut
   const running = renderFieldButtons(s);
   assert.ok(!running.includes('data-reposition-button'), 'nobody repositions mid-play');
   assert.ok(running.includes('data-run-button'), 'the turn can still be run');
@@ -546,17 +566,17 @@ test('the shuffle button goes away once the play has started, but Run stays put'
 
 test('the run button greys rather than vanishing when there is no turn to run', () => {
   const s = createGame({ seed: 1 });
-  const live = buttonGroup(renderFieldButtons(s), 'data-run-button');
-  assert.ok(!live.includes('fbtn-off'));
-  assert.ok(!live.includes('aria-disabled'));
+  assert.ok(!buttonGroup(renderFieldButtons(s), 'data-run-button').includes('fbtn-off'));
 
   s.phase = 'playOver';
   const dead = buttonGroup(renderFieldButtons(s), 'data-run-button');
   assert.ok(dead.includes('fbtn-off'), 'greyed');
   assert.ok(dead.includes('aria-disabled="true"'), 'and says so to a screen reader');
 
-  const drawing = buttonGroup(renderFieldButtons(createGame({ seed: 1 }), { animating: true }), 'data-run-button');
-  assert.ok(drawing.includes('fbtn-off'), 'dead while the turn is being drawn, like every other control');
+  const drawing = buttonGroup(
+    renderFieldButtons(createGame({ seed: 1 }), { animating: true }), 'data-run-button',
+  );
+  assert.ok(drawing.includes('fbtn-off'), 'dead while the turn is drawn, like every other control');
 });
 
 test('the shuffle button shows which way it is set', () => {

@@ -69,13 +69,16 @@ within range to make the hit.
   the warning about unplanned players, `TOUCHDOWN!`, `FUMBLE!` — is drawn on the
   field itself, in the end zone, so it stays readable with the menu shut.
 - **Two buttons sit on the board itself**, in the same right-hand margin as the
-  menu label, for the two things you do over and over. They are shortcuts, not
-  extra features: each does exactly what its twin in the menu does.
-  - 🔀 **above** the label toggles repositioning on and off (see below). It is
-    only there while you are setting up, and disappears once the play starts.
-  - ⏩ **below** the label runs the turn, exactly as **Run Turn** does — the
-    same warning if someone has no direction set, and the same second press to
-    run anyway. It greys out while there is no turn to run.
+  menu label, for the two things you do over and over. They are shortcuts to
+  buttons already in the menu, not extra features — each calls exactly what its
+  twin calls, so the two can never say different things.
+  - 🔀 **above** the label is **Reposition** (see below). It shows green and
+    pressed-in while the mode is on, and is only there while you are setting
+    up: it disappears at the snap, which is also your cue that the play has
+    started.
+  - ⏩ **below** the label is **Run Turn** — the same warning if someone has no
+    direction set, and the same second press to run anyway. It greys out rather
+    than vanishing when there is no turn to run, so it never moves.
 
   Both are ordinary buttons to a keyboard: tab to one and press Enter or Space.
 - **Drag a player** to say where you want him at the end of the turn: a filled
@@ -123,6 +126,30 @@ within range to make the hit.
   a defender gets within reach of the ball carrier. If any player doesn't have
   an arrow set yet, you'll get a warning naming how many; press **Run Turn**
   again to run the turn anyway.
+- **Reposition** — the 🔀 button on the board, or **Reposition** in the Coaches
+  Menu — switches between drawing arrows and moving players around before the
+  snap. With it on, dragging one of your
+  players *moves* him rather than ordering him about — no arrows, no cover
+  orders, no stances, and any orders he already had are dropped, because a
+  destination is a spot on the field and moving him makes it a lie. A green
+  band shows the two yards behind the ball that count as being **on the line**,
+  so you can see what you are lining up against — the formation comes out a
+  yard inside it, with room either side.
+
+  Three spots are simply refused, and the board says why: past the line of
+  scrimmage, outside a sideline, or on top of somebody. The formation *count*
+  is not refused — you may break the huddle however you like, and the board
+  keeps a running `5 on the line`. Come out with fewer than five and it reads
+  `ILLEGAL FORMATION`; snap it anyway and you get the flag when the down ends,
+  five yards from the previous spot.
+
+  The computer answers your formation as you set it: the front goes head-up on
+  your interior linemen, the corners take your two widest men, the linebacker
+  sits over the ball and the safety plays over the top of everything — all read
+  off where your players actually are, so splitting a receiver across the
+  formation drags his corner with him. In hot-seat you are coaching both teams,
+  so nothing is aligned for you; you place the defense yourself. Repositioning
+  is offered on the first turn of a down and switches itself off at the snap.
 - **Clear Arrows** wipes every plan for the current turn, in case you want to
   start over before running it.
 - The Coaches Menu has a **Plays** section. Draw the first set of arrows for a
@@ -142,18 +169,6 @@ within range to make the hit.
   game is over.
 - **New Game** resets everything and starts a fresh drive from the 10.
 
-**Repositioning before the snap.** Press 🔀 and dragging a player carries him
-to a new starting spot instead of drawing him an arrow; a ghost shows where he
-will come to rest. Press it again to go back to drawing arrows. It is a mode
-rather than a separate gesture because a plain tap is already spoken for — a
-tap arms the next drag on that player as a throw.
-
-The rules are the game's, not the button's: you may only reposition before the
-play's first turn, only on your own side of the line of scrimmage (the offense
-behind the ball, the defense past it), and only somewhere the whole player fits
-on the field. A move that breaks one of those is refused and says why, and the
-arrows and stances you have already set are left alone — moving a man is not
-the same as changing his mind.
 
 ## Running the tests
 
@@ -184,13 +199,13 @@ game:
   three-lineman front, two corners, a linebacker, and a safety on defense.
   Chosen to keep a turn-based, hand-drawn-arrow game legible — 22 players all
   needing an arrow every half-second turn would be a lot of drawing.
-- **Player placement before the snap is a mode rather than a click.** The spec
-  asks for "click to move position"; a click is already the throw-arming tap,
-  and a click can only ever land a player within a few units of where he
-  already stands, so it is the 🔀 button and a drag instead (see "How to
-  play" above). Everything else in the original spec (drag-to-plan, long-press
-  stances, blocking friction, tackling, fumbles, downs, and scoring) is
-  implemented and playable.
+- **The formation rules are the real ones, scaled to seven a side.** Real
+  football wants seven of eleven on the line; 7/11 of a seven-man team rounds
+  to five, which is exactly what the drive-start formation shows. Eligible
+  receiver and covered/uncovered rules are deliberately left out, because this
+  game lets anyone catch a pass. An illegal formation is enforced with the
+  same machinery as an illegal forward pass — five yards from the previous
+  spot, and the down counts.
 
 ## Design notes
 

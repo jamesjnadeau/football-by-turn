@@ -244,3 +244,37 @@ test('a defender in the throwing lane intercepts it — the play is over', () =>
   assert.ok(events.some((e) => e.type === 'pickup' && e.team === 'defense'));
   assert.equal(s.deadReason, 'recovered');
 });
+
+test('breaking the huddle a man short of the line draws a flag on the snap', () => {
+  const s = createGame({ seed: 1 });
+  getPlayer(s, 'o-wr1').pos = fieldPos(-20, -6); // four on the line, three backs
+  runTurn(s, mulberry32(1));
+  assert.deepEqual(s.penalty, { foul: 'illegal-formation', spot: s.losYard });
+});
+
+test('a legal formation draws no flag', () => {
+  const s = createGame({ seed: 1 });
+  runTurn(s, mulberry32(1));
+  assert.equal(s.penalty, null);
+});
+
+test('the formation is judged at the snap only, not on every turn of the down', () => {
+  const s = createGame({ seed: 1 });
+  runTurn(s, mulberry32(1)); // legal at the snap
+  // Everyone has scattered by now; that is a play, not a formation.
+  getPlayer(s, 'o-wr1').pos = fieldPos(-20, -6);
+  runTurn(s, mulberry32(1));
+  assert.equal(s.penalty, null);
+});
+
+test('an illegal formation costs five yards from the previous spot', () => {
+  const s = createGame({ seed: 1 });
+  getPlayer(s, 'o-wr1').pos = fieldPos(-20, -6);
+  const spot = s.losYard;
+  runTurn(s, mulberry32(1));
+  s.phase = 'playOver';
+  s.deadReason = 'tackled';
+  nextDown(s);
+  assert.equal(s.losYard, spot - 5);
+  assert.equal(s.down, 2);
+});

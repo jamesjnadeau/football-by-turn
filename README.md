@@ -23,9 +23,16 @@ step.
 ## How to play
 
 Each drive starts 1st and goal from the offense's own 10-yard line, and the
-offense has **4 downs** to score before the ball turns over. You control both
-teams — every player on the field, offense and defense, needs an arrow before
-you run a turn.
+offense has **4 downs** to score before the ball turns over.
+
+**The computer coaches the defense.** You draw arrows for your seven offensive
+players; each turn the computer sends every defender at the ball — leading the
+carrier rather than chasing where he just was — and breaks a defender down into
+the tackling stance once he is within range to make the hit. You never see what
+it has planned: no defensive arrows are drawn, ever, because the computer does
+not decide until you press **Run Turn**. Press **Defense: computer** to take the
+defense back and play hot-seat, coaching both teams yourself; press it again to
+hand the defense back over.
 
 - **Drag a player** to set their direction and how hard they run: point the drag
   where you want them to go, and how far you drag sets the throttle (a longer

@@ -1,7 +1,8 @@
 import { SVG } from './vendor/svg.esm.js';
 import {
-  createGame, setPlan, setMode, getPlayer, clearAllPlans,
+  createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable,
 } from '../lib/game/state.js';
+import { clearAiPlans } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
@@ -19,10 +20,11 @@ const hud = document.getElementById('hud');
 const message = document.getElementById('message');
 const runBtn = document.getElementById('run');
 const clearBtn = document.getElementById('clear');
+const aiBtn = document.getElementById('ai');
 const nextBtn = document.getElementById('next');
 const newBtn = document.getElementById('new');
 
-let state = createGame({ seed: (Math.random() * 2 ** 31) | 0 });
+let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense' });
 let random = mulberry32(state.seed);
 let pendingWarning = false;
 // runTurn is synchronous — state is already at the end of the turn while the
@@ -53,6 +55,8 @@ function paint() {
   layer('game-players').clear().svg(renderPlayers(state) + renderLooseBall(state));
   layer('game-arrows').clear().svg(state.phase === 'planning' ? renderArrows(state) : '');
   hud.textContent = `Down ${state.down} of 4 — ${state.phase}`;
+  aiBtn.textContent = state.aiTeam ? 'Defense: computer' : 'Defense: you';
+  aiBtn.disabled = animating || state.phase !== 'planning';
   runBtn.disabled = animating || state.phase !== 'planning';
   clearBtn.disabled = animating;
   nextBtn.disabled = animating;
@@ -68,6 +72,10 @@ function hitTest(p) {
   let best = null;
   let bestD = Infinity;
   for (const pl of state.players) {
+    // The computer's players take no orders. Gating here covers all three ways
+    // in — drag, drag preview, and long-press — because every one of them
+    // starts from a hit test that returns a player id.
+    if (!isControllable(state, pl.id)) continue;
     const d = Math.hypot(pl.pos.x - p.x, pl.pos.y - p.y);
     if (d <= pl.radius + 2 && d < bestD) { best = pl.id; bestD = d; }
   }
@@ -206,6 +214,19 @@ clearBtn.addEventListener('click', () => {
   paint();
 });
 
+aiBtn.addEventListener('click', () => {
+  if (animating || state.phase !== 'planning') return;
+  state.aiTeam = state.aiTeam === null ? 'defense' : null;
+  // Handing the defense back to the computer drops whatever arrows the human
+  // had already drawn for it — they are not his to give any more.
+  if (state.aiTeam) clearAiPlans(state);
+  pendingWarning = false;
+  say(state.aiTeam
+    ? 'The computer coaches the defense.'
+    : 'Hot-seat: you coach both teams.');
+  paint();
+});
+
 nextBtn.addEventListener('click', () => {
   if (animating) return;
   nextDown(state);
@@ -222,7 +243,7 @@ nextBtn.addEventListener('click', () => {
 
 newBtn.addEventListener('click', () => {
   if (animating) return;
-  state = createGame({ seed: (Math.random() * 2 ** 31) | 0 });
+  state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense' });
   random = mulberry32(state.seed);
   pendingWarning = false;
   say('New game. 1st and goal from the 10.');

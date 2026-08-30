@@ -6,7 +6,9 @@ import { createGame, setPlan, getPlayer, setPass } from '../../lib/game/state.js
 import { mulberry32 } from '../../lib/game/rng.js';
 import { SUBSTEPS_PER_TURN, TEAM_SIZE } from '../../lib/game/constants.js';
 import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
-import { norm, dist } from '../../lib/game/vec.js';
+import { norm, dist, sub } from '../../lib/game/vec.js';
+import { lobLanded, isLob } from '../../lib/game/lob.js';
+import { passReach, lockOnPass, powerForTravel } from '../../lib/game/pass.js';
 
 /**
  * The snap taken: the ball in the quarterback's hands and nothing pending.
@@ -202,11 +204,12 @@ test('a planned throw goes up at the snap of the turn, and the ball flies', () =
   assert.equal(s.plannedPass, null, 'a throw is planned for one turn only');
 });
 
-test('a forward pass nobody catches is incomplete in the turn it was thrown', () => {
+test('an ordinary forward pass nobody catches is incomplete in the turn it was thrown', () => {
   const s = createGame({ seed: 1 });
   afterSnap(s);
   s.players = s.players.filter((p) => p.id === 'o-qb'); // nobody out there to catch it
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  assert.ok(!isLob(passReach(0.4)), '0.4 is a flat throw, not a lob');
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4);
   const { events } = runTurn(s, mulberry32(1));
   assert.ok(events.some((e) => e.type === 'incomplete'), 'ruled incomplete');
   assert.equal(s.deadReason, 'incomplete');
@@ -244,7 +247,9 @@ test('a teammate downfield catches the throw', () => {
   const wr = getPlayer(s, 'o-wr1');
   // Park him straight downfield of the QB, inside the first turn's flight.
   wr.pos = { x: qb.pos.x, y: qb.pos.y + 40 };
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  // A flat throw, not a lob: this test is about the catch, and a lob would put
+  // the ball down somewhere inside a six-yard circle instead of on his chest.
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4);
   const { events } = runTurn(s, mulberry32(1));
   assert.deepEqual(
     events.find((e) => e.type === 'pickup'),
@@ -263,7 +268,9 @@ test('a defender in the throwing lane intercepts it — the play is over', () =>
   cb.pos = { x: qb.pos.x, y: qb.pos.y + 40 };
   cb.plan = null;
   s.aiTeam = null; // hot-seat: he stands where he is put, so the throw finds him
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  // A flat throw, not a lob: this test is about the catch, and a lob would put
+  // the ball down somewhere inside a six-yard circle instead of on his chest.
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4);
   const { events } = runTurn(s, mulberry32(1));
   assert.ok(events.some((e) => e.type === 'pickup' && e.team === 'defense'));
   assert.equal(s.deadReason, 'recovered');
@@ -301,4 +308,113 @@ test('an illegal formation costs five yards from the previous spot', () => {
   nextDown(s);
   assert.equal(s.losYard, spot - 5);
   assert.equal(s.down, 2);
+});
+
+test('a lob hangs past the whistle and is ruled where it lands', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
+  s.players = s.players.filter((p) => p.id === 'o-qb'); // nobody out there to catch it
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  const random = mulberry32(1);
+  runTurn(s, random);
+  assert.equal(s.phase, 'planning', 'the turn ended with the ball still up');
+  assert.equal(s.deadReason, null, 'nothing is ruled while it is in the air');
+  assert.ok(s.ball.lob && !lobLanded(s.ball.lob), 'still flying');
+  assert.equal(s.plannedPass, null, 'and the throw is not re-thrown next turn');
+  let turns = 1;
+  while (s.phase !== 'playOver' && turns < 8) { runTurn(s, random); turns += 1; }
+  assert.equal(s.deadReason, 'incomplete');
+  assert.ok(turns >= 2, `it took more than the turn it was thrown in (${turns})`);
+});
+
+test('a receiver who gets under a hanging lob catches it on the next turn', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
+  s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'o-wr1');
+  // Deep in his own end, and two thirds power: a lob that comes down SHORT of
+  // the goal line, so the catch is a catch rather than a touchdown.
+  getPlayer(s, 'o-qb').pos = fieldPos(0, -18);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.67);
+  const random = mulberry32(1);
+  runTurn(s, random);
+  assert.ok(s.ball.lob && !lobLanded(s.ball.lob), 'still in the air at the whistle');
+  // The coach can see where it is coming down, so he puts his man on the spot.
+  getPlayer(s, 'o-wr1').pos = { ...s.ball.lob.to };
+  let turns = 1;
+  while (s.phase === 'planning' && s.ball.carrierId === null && turns < 8) {
+    runTurn(s, random);
+    turns += 1;
+  }
+  assert.equal(s.ball.carrierId, 'o-wr1', 'he was standing where it came down');
+  assert.equal(s.deadReason, null, 'a completion short of the goal keeps the down alive');
+});
+
+test('the frames carry the ball\'s drawn size, so the animation can swell it', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s); // the centre starts with it now; this is about the throw
+  s.players = s.players.filter((p) => p.id === 'o-qb'); // nobody out there to catch it
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  const random = mulberry32(1);
+  // Every frame of the whole flight, which is more than one turn's worth: a
+  // bomb is barely half way there when the first whistle blows, so a single
+  // turn's frames need never have reached the top of the arc.
+  const scales = [];
+  let turns = 0;
+  while (s.phase === 'planning' && turns < 8) {
+    const { frames } = runTurn(s, random);
+    for (const f of frames) if (f.looseBall) scales.push(f.looseBall.scale);
+    turns += 1;
+  }
+  assert.equal(scales[0], 1, 'ordinary size out of the hand');
+  const biggest = Math.max(...scales);
+  assert.ok(biggest > 1, `it swells as it climbs (${biggest.toFixed(2)})`);
+  assert.equal(scales[scales.length - 1], 1, 'and is back to size where it came down');
+});
+
+test('a receiver on a route catches a throw locked onto him', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'o-wr1');
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x + 20, y: qb.pos.y + 10 };
+  setPlan(s, 'o-wr1', { x: 0, y: 1 }, 1); // gone downfield the moment the ball is thrown
+  const lock = lockOnPass(qb, wr);
+  setPass(s, 'o-qb', lock.dir, lock.power, 'o-wr1');
+  const { events } = runTurn(s, mulberry32(1));
+  assert.ok(events.some((e) => e.type === 'pickup' && e.by === 'o-wr1'),
+    'the ball was thrown to where he was going');
+  assert.equal(s.ball.carrierId, 'o-wr1');
+});
+
+test('the same throw aimed at where he was standing sails behind him', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'o-wr1');
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x + 20, y: qb.pos.y + 10 };
+  setPlan(s, 'o-wr1', { x: 0, y: 1 }, 1);
+  // No target on the throw, so nothing re-aims it: this is the flat throw at
+  // his feet that the lead exists to replace.
+  const flat = norm(sub(wr.pos, qb.pos));
+  setPass(s, 'o-qb', flat, powerForTravel(dist(qb.pos, wr.pos) - 4.5));
+  const { events } = runTurn(s, mulberry32(1));
+  assert.ok(!events.some((e) => e.type === 'pickup'), 'he had already left');
+});
+
+test('a receiver running flat across in front of the passer is still found', () => {
+  // The case the meeting solve exists for: the gap is short, the ball cannot be
+  // thrown gently enough to loiter, and he is moving sideways out of its path.
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'o-wr1');
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + 10 };
+  setPlan(s, 'o-wr1', { x: 1, y: 0 }, 1);
+  const lock = lockOnPass(qb, wr);
+  setPass(s, 'o-qb', lock.dir, lock.power, 'o-wr1');
+  const { events } = runTurn(s, mulberry32(1));
+  assert.ok(events.some((e) => e.type === 'pickup' && e.by === 'o-wr1'), 'he was met, not led past');
 });

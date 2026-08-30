@@ -11,12 +11,14 @@ import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
   planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
-  lineZoneMark, renderFieldButtons,
+  lineZoneMark, renderFieldButtons, passLandingMark, passLockMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
+import { receiverAt, lockOnPass, passLanding } from '../lib/game/pass.js';
+import { lobLanded } from '../lib/game/lob.js';
 import {
   TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS, MIN_ON_LINE,
 } from '../lib/game/constants.js';
@@ -160,6 +162,21 @@ function runOrCoverMark(player, travel, point) {
     : planMark(player, planForDrag(player, travel));
 }
 
+/**
+ * What a throw drag should draw, given where the pointer is: the lock-on mark
+ * when it has landed on one of your own inside the lock zone, otherwise the
+ * arrow — plus the landing circle when the throw is long enough to arc. The
+ * live preview and the committed throw draw from the same marks, so the
+ * picture never changes shape at the moment the finger comes up.
+ */
+function throwMark(player, g, point) {
+  const lock = receiverAt(state, point, player.id);
+  if (lock) return passLockMark(player, getPlayer(state, lock));
+  const land = passLanding(player, g.dir, g.throttle);
+  return (land ? passLandingMark(land.pos, land.radius) : '')
+    + passArrowMark(player.pos, passArrowTip(player.pos, g.dir, g.throttle));
+}
+
 /** What the referee announces, per foul. */
 const FOUL_WORDS = {
   'second-forward-pass': 'two forward passes',
@@ -233,8 +250,18 @@ function onGesture(playerId, gesture, point) {
     // Tap-then-drag is a throw only from the man with the ball. From anyone
     // else it is an ordinary run arrow — which is what the drag preview showed
     // him, so committing anything less would break that promise.
-    if (setPass(state, playerId, gesture.dir, gesture.throttle)) {
-      say(`${p.role} will throw.`);
+    //
+    // Dropping it on one of your own inside the lock zone aims the throw at
+    // HIM: direction and power both come from where he is standing, and the
+    // drag's own length stops mattering. That is the same bargain a run drag
+    // onto an opponent already makes when it becomes a cover order.
+    const lock = state.ball.carrierId === playerId ? receiverAt(state, point, playerId) : null;
+    const rec = lock ? getPlayer(state, lock) : null;
+    const aim = rec ? lockOnPass(p, rec) : { dir: gesture.dir, power: gesture.throttle };
+    if (setPass(state, playerId, aim.dir, aim.power, lock)) {
+      say(rec ? `${p.role} will throw to ${rec.role}.`
+        : passLanding(p, aim.dir, aim.power) ? `${p.role} will lob it deep.`
+        : `${p.role} will throw.`);
     } else {
       const run = planForDrag(p, gesture.travel);
       setPlan(state, playerId, run.dir, run.throttle, run.target, run.short);
@@ -291,7 +318,7 @@ function onDragPreview(playerId, log, prevTapAt) {
   // picture either way.
   const throwing = g.kind === 'passdrag' && state.ball.carrierId === playerId;
   const mark = throwing
-    ? passArrowMark(p.pos, passArrowTip(p.pos, g.dir, g.throttle))
+    ? throwMark(p, g, log[log.length - 1])
     : runOrCoverMark(p, g.travel, log[log.length - 1]);
   layer('game-preview').clear().svg(mark);
 }
@@ -330,7 +357,11 @@ function animate(frames, done) {
       if (g) g.transform({ translate: [fp.x, fp.y] });
     }
     if (ballNode && frame.ball) {
-      ballNode.setAttribute('transform', `translate(${frame.ball.x}, ${frame.ball.y})`);
+      // Size as well as position: a lob is over everyone's heads in the middle
+      // of its flight, and on a board with no z axis that is said by drawing it
+      // bigger. A ball that is not lobbing reports a scale of 1 every frame.
+      const size = frame.looseBall ? frame.looseBall.scale : 1;
+      ballNode.setAttribute('transform', `translate(${frame.ball.x}, ${frame.ball.y}) scale(${size})`);
     }
     i += 1;
     if (i < frames.length) setTimeout(() => requestAnimationFrame(tick), perFrame);
@@ -517,6 +548,12 @@ function pressRun() {
         else say(e.team === 'defense' ? 'INTERCEPTED!' : 'Caught!');
       }
       if (e.type === 'incomplete') say('Incomplete.');
+    }
+    // A ball still in the air when the whistle goes is the newest fact on the
+    // board, so it gets the last word over whatever the events said. The
+    // coach's next job is to get somebody under it.
+    if (state.phase === 'planning' && state.ball.lob && !lobLanded(state.ball.lob)) {
+      say('The ball is in the air — get someone under it.');
     }
     // The flag is called after the down, not when it was committed — the spec
     // is explicit that an illegal throw is allowed to play out first, and an

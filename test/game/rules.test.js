@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tackleProbability, checkTackles, checkPickup, checkDeadBall, nextDown } from '../../lib/game/rules.js';
+import { checkIncomplete, tackleProbability, checkTackles, checkPickup, checkDeadBall, nextDown } from '../../lib/game/rules.js';
 import { createGame, getPlayer, setMode, setPlan } from '../../lib/game/state.js';
 import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
-import { SIDELINE_LEFT } from '../../lib/field/geometry.js';
+import { SIDELINE_LEFT, SIDELINE_RIGHT } from '../../lib/field/geometry.js';
 import { NEARBY_RADIUS, PENALTY_YARDS } from '../../lib/game/constants.js';
+import { lobPoint } from '../../lib/game/lob.js';
 
 /**
  * The snap taken: the ball in the quarterback's hands and nothing pending.
@@ -328,4 +329,80 @@ test('with no flag, an ordinary down is spotted exactly as it always was', () =>
   nextDown(s);
   assert.equal(s.down, 2);
   assert.ok(Math.abs(s.losYard - 6) < 1e-9, 'spotted where the play died');
+});
+
+/**
+ * A 21-yard lob straight downfield: long enough to have a dead zone (18+). It
+ * flies down x = 100 rather than down the middle, which is a lane no player in
+ * the drive-start formation is standing in — so the only man near the ball in
+ * any of these tests is the one the test itself put there.
+ */
+function deepLob(state, elapsed, { forward = true } = {}) {
+  const lob = { from: { x: 100, y: 70 }, to: { x: 100, y: 150 }, substeps: 40, elapsed };
+  state.ball = {
+    carrierId: null, pos: lobPoint(lob), vel: { x: 0, y: 0 }, loose: 0, forward, lob,
+  };
+  return lob;
+}
+
+test('a lob over everyone\'s heads cannot be taken, by either team', () => {
+  const s = createGame({ seed: 1 });
+  const lob = deepLob(s, 30); // 60 units flown: past the lock zone, short of the window
+  getPlayer(s, 'd-s').pos = { ...s.ball.pos };
+  assert.deepEqual(checkPickup(s), [], 'the safety is standing under it and cannot have it');
+  getPlayer(s, 'o-wr1').pos = { ...s.ball.pos };
+  assert.deepEqual(checkPickup(s), [], 'and neither can the receiver');
+  assert.equal(lob.elapsed, 30, 'nothing about the flight was touched');
+});
+
+test('the same lob is caught as normal once it has come down', () => {
+  const s = createGame({ seed: 1 });
+  const lob = deepLob(s, 40); // landed
+  getPlayer(s, 'o-wr1').pos = { ...s.ball.pos };
+  const events = checkPickup(s);
+  assert.deepEqual(events, [{ type: 'pickup', by: 'o-wr1', team: 'offense' }]);
+  assert.equal(s.ball.carrierId, 'o-wr1');
+  assert.equal(s.ball.lob, undefined, 'a caught ball is no longer a flight');
+  assert.ok(lob);
+});
+
+test('a lob is live in the first fifteen yards of its flight, the same as any throw', () => {
+  const s = createGame({ seed: 1 });
+  deepLob(s, 20); // 40 units flown: inside the lock zone
+  getPlayer(s, 'd-cb1').pos = { ...s.ball.pos };
+  assert.equal(checkPickup(s)[0].by, 'd-cb1', 'a defender can still pick one off early');
+});
+
+test('a lob in the air is not incomplete, not even at the whistle', () => {
+  const s = createGame({ seed: 1 });
+  deepLob(s, 30);
+  assert.deepEqual(checkIncomplete(s), []);
+  assert.deepEqual(checkIncomplete(s, { endOfTurn: true }), [], 'it hangs into the next turn');
+  assert.equal(s.deadReason, null);
+});
+
+test('a lob nobody caught is incomplete the moment it lands', () => {
+  const s = createGame({ seed: 1 });
+  deepLob(s, 40);
+  assert.deepEqual(checkIncomplete(s), [{ type: 'incomplete' }]);
+  assert.equal(s.deadReason, 'incomplete');
+});
+
+test('a backward lob on the ground is live, like any other lateral', () => {
+  const s = createGame({ seed: 1 });
+  deepLob(s, 40, { forward: false });
+  assert.deepEqual(checkIncomplete(s, { endOfTurn: true }), []);
+  assert.equal(s.deadReason, null);
+});
+
+test('the air over the sideline is not out of bounds', () => {
+  const s = createGame({ seed: 1 });
+  const lob = deepLob(s, 30);
+  s.ball.pos = { x: SIDELINE_RIGHT + 20, y: lobPoint(lob).y };
+  assert.deepEqual(checkDeadBall(s), [], 'a forward lob is ruled where it lands, not where it flies');
+  // Backward, it is an ordinary loose ball and the sideline still applies.
+  const b = createGame({ seed: 1 });
+  const bl = deepLob(b, 30, { forward: false });
+  b.ball.pos = { x: SIDELINE_RIGHT + 20, y: lobPoint(bl).y };
+  assert.deepEqual(checkDeadBall(b), [{ type: 'out-of-bounds' }]);
 });

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  predictDestination, travelAlong, maxTravelAlong, throttleForDistance, planForDrag,
+  predictDestination, travelAlong, maxTravelAlong, throttleForDistance, planForDrag, predictOwnDestination,
 } from '../../lib/game/predict.js';
 import { createGame, getPlayer, setPlan } from '../../lib/game/state.js';
 import { stepPhysics } from '../../lib/game/physics.js';
@@ -118,4 +118,22 @@ test('a moving player cannot be asked to stop short of his own coast', () => {
   assert.equal(plan.throttle, 0);
   assert.ok(plan.target, 'still a destination, just further out than asked');
   assert.ok(plan.target.y > rb.pos.y + 1, 'the circle shows the truth');
+});
+
+test('a player\'s own plan predicts where the whistle leaves him', () => {
+  const s = createGame({ seed: 1 });
+  const wr = getPlayer(s, 'o-wr1');
+  setPlan(s, 'o-wr1', { x: 0, y: 1 }, 1);
+  const end = predictOwnDestination(wr);
+  assert.ok(end.y > wr.pos.y, 'the arrow carried him downfield');
+  assert.deepEqual(end, predictDestination(wr, { x: 0, y: 1 }, 1), 'his own arrow, replayed');
+});
+
+test('a man with no arrow at all coasts to a stop rather than sprinting', () => {
+  const s = createGame({ seed: 1 });
+  const wr = getPlayer(s, 'o-wr1');
+  wr.vel = { x: 0, y: 40 };
+  const end = predictOwnDestination(wr);
+  assert.ok(end.y > wr.pos.y, 'his momentum still carries him');
+  assert.ok(end.y < predictDestination(wr, { x: 0, y: 1 }, 1).y, 'but nothing is driving him on');
 });

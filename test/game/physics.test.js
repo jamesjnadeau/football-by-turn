@@ -258,3 +258,29 @@ test('two players with no cover order between them touch at their own radii', ()
   const gap = len({ x: nt.pos.x - c.pos.x, y: nt.pos.y - c.pos.y });
   assert.ok(Math.abs(gap - (c.radius + nt.radius)) < 1e-6, `got ${gap}`);
 });
+
+test('a lob flies its scripted path and pays no attention to friction', () => {
+  const s = createGame({ seed: 1 });
+  const lob = { from: { x: 135, y: 70 }, to: { x: 135, y: 150 }, substeps: 40, elapsed: 0 };
+  s.ball = { carrierId: null, pos: { ...lob.from }, vel: { x: 0, y: 400 }, loose: 0, forward: true, lob };
+  stepPhysics(s, DT);
+  assert.equal(lob.elapsed, 1, 'the flight clock ran');
+  assert.ok(Math.abs(s.ball.pos.y - (70 + 80 / 40)) < 1e-9, 'one fortieth of the way');
+  assert.ok(Math.abs(len(s.ball.vel) - 400) < 1e-9, 'its release speed is left alone');
+});
+
+test('a lob that has landed stays where it landed', () => {
+  const s = createGame({ seed: 1 });
+  const lob = { from: { x: 135, y: 70 }, to: { x: 135, y: 150 }, substeps: 2, elapsed: 0 };
+  s.ball = { carrierId: null, pos: { ...lob.from }, vel: { x: 0, y: 400 }, loose: 0, forward: true, lob };
+  for (let i = 0; i < 10; i++) stepPhysics(s, DT);
+  assert.deepEqual(s.ball.pos, lob.to, 'it does not roll on past the spot');
+});
+
+test('an ordinary loose ball still rolls and decays', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: null, pos: { x: 135, y: 100 }, vel: { x: 10, y: 0 }, loose: 0, lob: null };
+  stepPhysics(s, DT);
+  assert.ok(s.ball.pos.x > 135, 'rolled');
+  assert.ok(len(s.ball.vel) < 10, 'slowed');
+});

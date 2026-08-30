@@ -132,7 +132,26 @@ within range to make the hit.
   beside you, a long forward one is a bomb. The automatic snap is drawn in the
   same red, but running all the way to the quarterback rather than at a length
   scaled by power: it is thrown as gently as the game allows, so its length
-  would say nothing, and where it is going is the useful thing to see. Anyone can catch a throw, including
+  would say nothing, and where it is going is the useful thing to see.
+  - **Drop the drag on one of your own within 15 yards** and the throw locks
+    onto him. It leads him: the ball goes to where his own route puts him, not
+    to where he is standing, and it is thrown at the pace that meets him there
+    rather than at whatever force you happened to drag. Draw his route after
+    locking on if you like — the aim is taken at the snap, from the orders as
+    they finally stand. He gets a red halo, the way a covered man gets a green
+    one. What can still beat it is what beats a real pass: a defender who gets
+    to the ball first, or a receiver who is knocked off his route on the way.
+  - **Drag further than that** and you are throwing a **lob**. Nothing locks on;
+    a red circle shows where the ball is coming down instead, and it grows the
+    longer the throw — the ball lands *somewhere* inside it, not on the middle.
+    A lob goes up as well as out, so it takes about twice as long to arrive and
+    is usually still in the air when the turn ends: you get a whole planning
+    phase to run somebody under it. While it is over everyone's heads it is
+    drawn bigger and **nobody can catch it** — not your receiver, not the
+    defense. It is live for the first 15 yards of its flight, and again for the
+    last 3 as it comes down.
+
+  Anyone can catch a throw, including
   the defense, so a forward pass into traffic is an interception waiting to
   happen. You get **one forward pass per down, and only from behind the line of
   scrimmage**; backward throws and handoffs are unlimited. Throw illegally and
@@ -210,15 +229,22 @@ step — it uses Node's built-in test runner directly.
 A few calls made in turning the original one-paragraph spec into a playable
 game:
 
-- **Both teams are user-controlled.** There's no AI opponent — you draw the
-  arrows for offense *and* defense, every turn. This keeps the whole thing a
-  single-player sandbox for now rather than requiring any kind of opposing
-  strategy engine.
-- **No passing.** The ball only ever moves by a player carrying it (or a loose
-  ball rolling free after a fumble). The spec's "less friction going downfield,
-  such as for a pass release" line is implemented as a physics rule (a fast
-  release past a defender gets a lighter friction coefficient than a slow
-  grind), but there's no separate thrown-ball mechanic.
+- **The computer coaches the defense, but you can take it back.** The played
+  game starts with the computer running assignment defense against you. The
+  Defense button in the Coaches Menu cycles three settings: *computer (smart)*,
+  which rushes with contain, fills with the linebacker and plays man with help
+  over the top; *computer (basic)*, which sends every defender straight at the
+  ball; and *you*, a hot-seat game where you draw the arrows for both teams.
+  The library itself still defaults to hot-seat — `createGame` with no `ai`
+  coaches nobody — so the rules stay decidable without an opponent in the way,
+  and `app/main.js` is what opts the played game in.
+- **A throw is a loose ball with a much bigger initial speed.** Same shape, same
+  per-sub-step decay, same pickup check — which is what makes a catch, a dropped
+  handoff and an interception one code path instead of three, and why anyone on
+  the field can come down with a pass. Separately, the spec's "less friction
+  going downfield, such as for a pass release" line is implemented as a physics
+  rule of its own: a fast release past a defender gets a lighter friction
+  coefficient than a slow grind.
 - **`TEAM_SIZE` = 7-a-side**, not the full 11: three linemen, a QB, a
   running back, and two wide receivers/corners on offense; a matching
   three-lineman front, two corners, a linebacker, and a safety on defense.

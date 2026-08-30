@@ -5,7 +5,7 @@ import {
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
-  renderBoardShell, renderPlayers, renderArrows, renderLooseBall,
+  renderBoardShell, renderPlayers, renderArrows, renderLooseBall, looseBallMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { mulberry32 } from '../lib/game/rng.js';
@@ -25,6 +25,11 @@ const newBtn = document.getElementById('new');
 let state = createGame({ seed: (Math.random() * 2 ** 31) | 0 });
 let random = mulberry32(state.seed);
 let pendingWarning = false;
+// runTurn is synchronous — state is already at the end of the turn while the
+// animation is still walking the frames. Without this flag every control is
+// live during that window and a second click runs a whole extra turn on top
+// of the one being drawn. Set when animate() starts, cleared in finish().
+let animating = false;
 
 function layer(id) {
   return board.findOne(`#${id}`);
@@ -37,11 +42,21 @@ function rebuildBoard() {
   board.svg(markup); // parses the markup string from render.js and inserts it as real SVG nodes
 }
 
+/**
+ * Every button is dead while the turn is being drawn: Run Turn and Clear
+ * Arrows would edit a plan for a turn that has already been simulated, and
+ * Next Down / New Game would swap the state (and rebuild the board) out from
+ * under the in-flight animate() loop. paint() runs again at the end of the
+ * animation, which is what re-enables them.
+ */
 function paint() {
   layer('game-players').clear().svg(renderPlayers(state) + renderLooseBall(state));
   layer('game-arrows').clear().svg(state.phase === 'planning' ? renderArrows(state) : '');
   hud.textContent = `Down ${state.down} of 4 — ${state.phase}`;
-  runBtn.disabled = state.phase !== 'planning';
+  runBtn.disabled = animating || state.phase !== 'planning';
+  clearBtn.disabled = animating;
+  nextBtn.disabled = animating;
+  newBtn.disabled = animating;
   nextBtn.hidden = state.phase !== 'playOver';
 }
 
@@ -60,6 +75,7 @@ function hitTest(p) {
 }
 
 function onGesture(playerId, gesture, point) {
+  if (animating) return; // mid-animation pointer input is not for this turn
   layer('game-overlay').clear();
   if (state.phase !== 'planning') return;
   const p = getPlayer(state, playerId);
@@ -83,6 +99,7 @@ function onGesture(playerId, gesture, point) {
 }
 
 function onDragPreview(playerId, log) {
+  if (animating) return; // the overlay belongs to the loose ball right now
   if (!playerId || !log || state.phase !== 'planning') {
     layer('game-overlay').clear();
     return;
@@ -97,24 +114,54 @@ function onDragPreview(playerId, log) {
   );
 }
 
+/**
+ * Walk the frames runTurn handed back. Player groups move by `transform`.
+ *
+ * The football is normally drawn INSIDE the carrier's group, so it rides
+ * along for free — correct, and it keeps the ball on the carrier's leading
+ * edge. But a turn containing a fumble breaks that: the ball is no longer the
+ * carrier's, and it has its own per-frame position in `frame.ball`. For those
+ * turns only, hide the football inside the player groups and give the ball a
+ * node of its own in the overlay, driven from `frame.ball` every frame — so
+ * it pops out, rolls, and ends up on whoever recovered it, instead of staying
+ * glued to the former carrier until the post-turn paint().
+ */
 function animate(frames, done) {
   const perFrame = (TURN_SECONDS * 1000) / frames.length;
+  const playersLayer = layer('game-players');
+  const overlay = layer('game-overlay');
+  // Either the ball comes loose during this turn, or it was already loose when
+  // the turn started (the last paint drew it as its own node in game-players).
+  const ballComesLoose = frames.some((f) => f.looseBall)
+    || playersLayer.node.querySelector('[data-loose-ball]') !== null;
+  let ballNode = null;
+  if (ballComesLoose) {
+    for (const fb of playersLayer.node.querySelectorAll('.fb')) fb.style.display = 'none';
+    overlay.clear().svg(looseBallMark(frames[0].ball || { x: 0, y: 0 }));
+    ballNode = overlay.node.querySelector('[data-loose-ball]');
+  }
   let i = 0;
   function tick() {
     const frame = frames[i];
     for (const fp of frame.players) {
-      const g = layer('game-players').findOne(`[data-id="${fp.id}"]`);
+      const g = playersLayer.findOne(`[data-id="${fp.id}"]`);
       if (g) g.transform({ translate: [fp.x, fp.y] });
+    }
+    if (ballNode && frame.ball) {
+      ballNode.setAttribute('transform', `translate(${frame.ball.x}, ${frame.ball.y})`);
     }
     i += 1;
     if (i < frames.length) setTimeout(() => requestAnimationFrame(tick), perFrame);
-    else done();
+    else {
+      if (ballNode) overlay.clear(); // paint() redraws the ball in its resting place
+      done();
+    }
   }
   requestAnimationFrame(tick);
 }
 
 runBtn.addEventListener('click', () => {
-  if (state.phase !== 'planning') return;
+  if (animating || state.phase !== 'planning') return;
   const missing = unplannedPlayers(state);
   if (missing.length > 0 && !pendingWarning) {
     // Spec: warn when not every player has a direction. Second press runs anyway.
@@ -130,6 +177,7 @@ runBtn.addEventListener('click', () => {
   const { frames, events } = runTurn(state, random);
   layer('game-arrows').clear();
   const finish = () => {
+    animating = false;
     paint();
     for (const e of events) {
       if (e.type === 'tackled') say('Tackled!');
@@ -139,18 +187,27 @@ runBtn.addEventListener('click', () => {
       if (e.type === 'pickup') say(`Recovered by ${e.team}.`);
     }
   };
-  if (frames.length > 0) animate(frames, finish);
-  else finish();
+  if (frames.length > 0) {
+    // Lock the controls now, not at the next paint() — paint() does not run
+    // again until finish(), and until then every button is still live.
+    animating = true;
+    runBtn.disabled = true;
+    clearBtn.disabled = true;
+    nextBtn.disabled = true;
+    newBtn.disabled = true;
+    animate(frames, finish);
+  } else finish();
 });
 
 clearBtn.addEventListener('click', () => {
-  if (state.phase !== 'planning') return;
+  if (animating || state.phase !== 'planning') return;
   clearAllPlans(state);
   pendingWarning = false;
   paint();
 });
 
 nextBtn.addEventListener('click', () => {
+  if (animating) return;
   nextDown(state);
   if (state.phase === 'gameOver') {
     say(state.result === 'touchdown' ? 'TOUCHDOWN — you win!'
@@ -164,6 +221,7 @@ nextBtn.addEventListener('click', () => {
 });
 
 newBtn.addEventListener('click', () => {
+  if (animating) return;
   state = createGame({ seed: (Math.random() * 2 ** 31) | 0 });
   random = mulberry32(state.seed);
   pendingWarning = false;

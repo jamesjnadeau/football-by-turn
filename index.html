@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Football By Turn</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; display: flex; gap: 1rem; }
+    #board { flex: 1; max-height: 100vh; touch-action: none; }
+    #panel { width: 16rem; padding: 1rem; }
+    #message { min-height: 3rem; font-weight: bold; }
+    button { display: block; width: 100%; margin: .25rem 0; padding: .5rem; }
+  </style>
+</head>
+<body>
+  <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div id="panel">
+    <h1>Football By Turn</h1>
+    <div id="hud"></div>
+    <div id="message"></div>
+    <button id="run">Run Turn</button>
+    <button id="clear">Clear Arrows</button>
+    <button id="next" hidden>Next Down</button>
+    <button id="new">New Game</button>
+  </div>
+  <script type="module" src="app/main.js"></script>
+</body>
+</html>

@@ -21,6 +21,10 @@ test('the scrimmage line follows the losYard argument', () => {
   assert.equal(gameView(4.5).scrimmage.yard, 4.5);
 });
 
+test('the scrimmage line carries no label', () => {
+  assert.equal(gameView(0).scrimmage.label, undefined);
+});
+
 test('fieldPos and yardsOfY invert each other and agree with geometry.js', () => {
   const view = gameView(0);
   const p = fieldPos(-10, 3);

@@ -23,6 +23,12 @@ test('the board shell has the field and every game layer', () => {
   assert.ok(markup.includes(STYLE_GAME));
 });
 
+test('the scrimmage line draws dashed but unlabelled', () => {
+  const { markup } = renderBoardShell(0);
+  assert.ok(markup.includes('class="rl"'), 'dashed scrimmage line survives');
+  assert.ok(!markup.includes('LOS'), 'no LOS text prints over the yard numbers');
+});
+
 test('every player renders as a positioned group with a team-classed circle of its own radius', () => {
   const s = createGame({ seed: 1 });
   const svg = renderPlayers(s);

@@ -34,6 +34,12 @@ not decide until you press **Run Turn**. Press **Defense: computer** to take the
 defense back and play hot-seat, coaching both teams yourself; press it again to
 hand the defense back over.
 
+- All the controls live in the **Coaches Menu**. Press the vertical green
+  **COACHES MENU** text down the right-hand side of the field to open it; press
+  Esc, click outside it, or press **Close** to dismiss it. Every button in it
+  closes the menu as it acts, so you can watch the board. The play's status —
+  the warning about unplanned players, `TOUCHDOWN!`, `FUMBLE!` — is drawn on the
+  field itself, in the end zone, so it stays readable with the menu shut.
 - **Drag a player** to set their direction and how hard they run: point the drag
   where you want them to go, and how far you drag sets the throttle (a longer
   drag means a harder run, up to full speed). An arrow is drawn from the player

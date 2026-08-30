@@ -7,7 +7,7 @@ import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderArrows, renderPassArrow, renderLooseBall, looseBallMark,
-  arrowMark, passArrowMark, passArrowTip,
+  arrowMark, passArrowMark, passArrowTip, renderMessage,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { mulberry32 } from '../lib/game/rng.js';
@@ -20,7 +20,8 @@ import { attachInput } from './input.js';
 // nested one — every read/write below goes through this wrapper.
 const board = SVG(document.getElementById('board'));
 const hud = document.getElementById('hud');
-const message = document.getElementById('message');
+const menu = document.getElementById('menu');
+const closeMenuBtn = document.getElementById('close-menu');
 const runBtn = document.getElementById('run');
 const clearBtn = document.getElementById('clear');
 const aiBtn = document.getElementById('ai');
@@ -31,6 +32,7 @@ const newBtn = document.getElementById('new');
 let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense' });
 let random = mulberry32(state.seed);
 let pendingWarning = false;
+let messageText = '';
 // runTurn is synchronous — state is already at the end of the turn while the
 // animation is still walking the frames. Without this flag every control is
 // live during that window and a second click runs a whole extra turn on top
@@ -73,10 +75,22 @@ function paint() {
   nextBtn.disabled = animating;
   newBtn.disabled = animating;
   nextBtn.hidden = state.phase !== 'playOver';
+  drawMessage();
+}
+
+/**
+ * The message lives on the board now, in the end zone. It is kept in a
+ * variable rather than read back out of the DOM because `rebuildBoard()`
+ * throws the whole layer away on every new down — `paint()` repaints it from
+ * here afterwards.
+ */
+function drawMessage() {
+  layer('game-message').clear().svg(renderMessage(messageText));
 }
 
 function say(text) {
-  message.textContent = text;
+  messageText = text;
+  drawMessage();
 }
 
 function hitTest(p) {
@@ -197,7 +211,30 @@ function animate(frames, done) {
   requestAnimationFrame(tick);
 }
 
+function openMenu() {
+  if (!menu.open) menu.showModal();
+}
+
+function closeMenu() {
+  if (menu.open) menu.close();
+}
+
+// The hit rect is re-created by every rebuildBoard(), so the listener goes on
+// the board and matches on the way up rather than on the rect itself.
+board.on('click', (e) => {
+  if (e.target.closest && e.target.closest('[data-menu-button]')) openMenu();
+});
+
+// Content is inside .menu-body, so a click whose target IS the dialog landed
+// on the backdrop. Esc is handled natively by showModal().
+menu.addEventListener('click', (e) => {
+  if (e.target === menu) closeMenu();
+});
+
+closeMenuBtn.addEventListener('click', closeMenu);
+
 runBtn.addEventListener('click', () => {
+  closeMenu();
   if (animating || state.phase !== 'planning') return;
   const missing = unplannedPlayers(state);
   if (missing.length > 0 && !pendingWarning) {
@@ -251,6 +288,7 @@ runBtn.addEventListener('click', () => {
 });
 
 clearBtn.addEventListener('click', () => {
+  closeMenu();
   if (animating || state.phase !== 'planning') return;
   clearAllPlans(state);
   pendingWarning = false;
@@ -258,6 +296,7 @@ clearBtn.addEventListener('click', () => {
 });
 
 aiBtn.addEventListener('click', () => {
+  closeMenu();
   if (animating || state.phase !== 'planning') return;
   state.aiTeam = state.aiTeam === null ? 'defense' : null;
   // Handing the defense back to the computer drops whatever arrows the human
@@ -271,6 +310,7 @@ aiBtn.addEventListener('click', () => {
 });
 
 debugBtn.addEventListener('click', () => {
+  closeMenu();
   // Dead while a turn is being drawn, like every other control: paint()
   // rewrites the player layer, which would throw away the transforms the
   // animation loop is driving. The lines a running turn shows are the
@@ -281,6 +321,7 @@ debugBtn.addEventListener('click', () => {
 });
 
 nextBtn.addEventListener('click', () => {
+  closeMenu();
   if (animating) return;
   nextDown(state);
   if (state.phase === 'gameOver') {
@@ -295,6 +336,7 @@ nextBtn.addEventListener('click', () => {
 });
 
 newBtn.addEventListener('click', () => {
+  closeMenu();
   if (animating) return;
   state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense' });
   random = mulberry32(state.seed);
@@ -307,3 +349,4 @@ newBtn.addEventListener('click', () => {
 attachInput(board, { hitTest, onGesture, onDragPreview });
 rebuildBoard();
 paint();
+say('Drag your players, then open the Coaches Menu to run the turn.');

@@ -5,27 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Football By Turn</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; display: flex; gap: 1rem; }
-    #board { flex: 1; max-height: 100vh; touch-action: none; }
-    #panel { width: 16rem; padding: 1rem; }
-    #message { min-height: 3rem; font-weight: bold; }
-    button { display: block; width: 100%; margin: .25rem 0; padding: .5rem; }
-    button[hidden] { display: none; } /* author `button{display:block}` above would otherwise beat the UA [hidden] rule */
+    html, body { height: 100%; }
+    /* The board owns the viewport; the menu floats above it. */
+    body { font-family: system-ui, sans-serif; margin: 0; overflow: hidden; }
+    #board { display: block; width: 100vw; height: 100vh; touch-action: none; }
+
+    /* Padding lives on .menu-body, not the dialog, so a click landing on the
+       dialog element itself is unambiguously a backdrop click. */
+    #menu { padding: 0; border: 1px solid #999; border-radius: .5rem; }
+    #menu::backdrop { background: rgba(0, 0, 0, .45); }
+    .menu-body { width: 16rem; padding: 1rem; }
+    .menu-body h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+    #hud { margin-bottom: .5rem; }
+    .menu-body button { display: block; width: 100%; margin: .25rem 0; padding: .5rem; }
+    .menu-body button[hidden] { display: none; } /* author `button{display:block}` above would otherwise beat the UA [hidden] rule */
+    #close-menu { margin-top: .75rem; }
   </style>
 </head>
 <body>
   <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
-  <div id="panel">
-    <h1>Football By Turn</h1>
-    <div id="hud"></div>
-    <div id="message"></div>
-    <button id="run">Run Turn</button>
-    <button id="clear">Clear Arrows</button>
-    <button id="ai">Defense: computer</button>
-    <button id="debug">Velocity lines: off</button>
-    <button id="next" hidden>Next Down</button>
-    <button id="new">New Game</button>
-  </div>
+  <dialog id="menu">
+    <div class="menu-body">
+      <h1>Coaches Menu</h1>
+      <div id="hud"></div>
+      <button id="run">Run Turn</button>
+      <button id="clear">Clear Arrows</button>
+      <button id="ai">Defense: computer</button>
+      <button id="debug">Velocity lines: off</button>
+      <button id="next" hidden>Next Down</button>
+      <button id="new">New Game</button>
+      <button id="close-menu">Close</button>
+    </div>
+  </dialog>
   <script type="module" src="app/main.js"></script>
 </body>
 </html>

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   isForward, passFoul, releasePass,
   passSpeed, passReach, passTravel, powerForTravel, passOrigin, passAim,
+  receiverAt, lockOnPass, passLanding,
 } from '../../lib/game/pass.js';
 import { createGame, getPlayer, setPass } from '../../lib/game/state.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -12,7 +13,7 @@ import {
   PICKUP_RADIUS_BONUS, PASS_REACH_MAX, DT, BALL_FRICTION, SUBSTEPS_PER_TURN,
 } from '../../lib/game/constants.js';
 import { mulberry32 } from '../../lib/game/rng.js';
-import { isLob, lobSubsteps, scatterRadius } from '../../lib/game/lob.js';
+import { isLob, lobSubsteps, scatterRadius, LOCK_UNITS } from '../../lib/game/lob.js';
 import { dist } from '../../lib/game/vec.js';
 
 test('forward means toward the goal the offense attacks; a flat lateral is not', () => {
@@ -219,4 +220,55 @@ test('a short throw draws no dice at all, so it cannot shift a seeded game', () 
   setPass(s, 'o-qb', { x: 0, y: 1 }, 0.2);
   releasePass(s, random);
   assert.equal(random(), mulberry32(2)(), 'the stream is exactly where it was');
+});
+
+test('a throw drag onto one of your own inside the lock zone picks him out', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x + 20, y: qb.pos.y + 20 }; // 28 units: comfortably inside
+  assert.equal(receiverAt(s, { ...wr.pos }, 'o-qb'), 'o-wr1');
+  assert.equal(receiverAt(s, { x: wr.pos.x + 30, y: wr.pos.y }, 'o-qb'), null, 'nobody there');
+});
+
+test('nothing locks on but your own men, and never the passer himself', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  const cb = getPlayer(s, 'd-cb1');
+  cb.pos = { x: qb.pos.x + 20, y: qb.pos.y + 20 };
+  assert.equal(receiverAt(s, { ...cb.pos }, 'o-qb'), null, 'you cannot throw it to them');
+  assert.equal(receiverAt(s, { ...qb.pos }, 'o-qb'), null, 'nor to yourself');
+});
+
+test('a man past the lock zone cannot be locked onto, however close the drag lands', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + LOCK_UNITS - 1 };
+  assert.equal(receiverAt(s, { ...wr.pos }, 'o-qb'), 'o-wr1', 'a yard inside: fine');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + LOCK_UNITS + 1 };
+  assert.equal(receiverAt(s, { ...wr.pos }, 'o-qb'), null, 'a yard outside: throw a lob instead');
+});
+
+test('a lock-on is aimed at the man and thrown hard enough to reach him this turn', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + 40 };
+  const { dir, power } = lockOnPass(qb, wr);
+  assert.ok(Math.abs(dir.x) < 1e-9 && Math.abs(dir.y - 1) < 1e-9, 'straight at him');
+  const gap = dist(passOrigin(qb, dir), wr.pos);
+  assert.ok(Math.abs(passTravel(power, SUBSTEPS_PER_TURN) - gap) < 1e-6,
+    'the ball is on him before the whistle, not 84% of the way');
+});
+
+test('a throw short of the lock zone has no landing circle; a lob has one that grows', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  const dir = { x: 0, y: 1 };
+  assert.equal(passLanding(qb, dir, 0.4), null, 'a flat throw lands where it is aimed');
+  const land = passLanding(qb, dir, 1);
+  assert.deepEqual(land.pos, passAim(qb, dir, 1));
+  assert.ok(Math.abs(land.radius - scatterRadius(passReach(1))) < 1e-9);
+  assert.ok(land.radius > passLanding(qb, dir, 0.6).radius, 'the longer the throw, the bigger the guess');
 });

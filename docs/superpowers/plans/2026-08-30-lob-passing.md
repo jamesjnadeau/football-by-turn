@@ -1454,7 +1454,7 @@ doing throw arithmetic of its own.
   - `lockOnPass(passer, receiver) -> {dir: {x,y}, power: number}`
   - `passLanding(player, dir, power) -> {pos: {x,y}, radius: number} | null`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `test/game/pass.test.js`'s imports: `receiverAt`, `lockOnPass`,
 `passLanding` from `pass.js`; `LOCK_UNITS`, `scatterRadius` from `lob.js`;
@@ -1513,12 +1513,12 @@ test('a throw short of the lock zone has no landing circle; a lob has one that g
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npm test`
 Expected: FAIL — `does not provide an export named 'receiverAt'`.
 
-- [ ] **Step 3: Write the three functions**
+- [x] **Step 3: Write the three functions**
 
 In `lib/game/pass.js`, extend three import lines that are already there:
 
@@ -1591,12 +1591,12 @@ export function passLanding(player, dir, power) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/game/pass.js test/game/pass.test.js && git commit -m "Add lock-on: the receiver a throw drag lands on, and the throw that reaches him"

@@ -10,6 +10,11 @@ import { classifyGesture } from '../lib/game/gesture.js';
 export function attachInput(board, { hitTest, onGesture, onDragPreview }) {
   let log = null;
   let playerId = null;
+  // When each player was last tapped. A tap arms the NEXT drag on that same
+  // player as a throw (the spec's double-tap-then-drag); anything else disarms
+  // him, so a tap from ten seconds ago can never turn a run into a throw.
+  // classifyGesture owns the timing rule; this map only remembers the tap.
+  const lastTapAt = new Map();
 
   board.on('pointerdown', (e) => {
     const p = board.point(e.clientX, e.clientY);
@@ -24,14 +29,17 @@ export function attachInput(board, { hitTest, onGesture, onDragPreview }) {
     if (!log) return;
     const p = board.point(e.clientX, e.clientY);
     log.push({ t: e.timeStamp, ...p });
-    onDragPreview(playerId, log);
+    onDragPreview(playerId, log, lastTapAt.get(playerId) ?? null);
   });
 
   board.on('pointerup', (e) => {
     if (!log) return;
     const p = board.point(e.clientX, e.clientY);
     log.push({ t: e.timeStamp, ...p });
-    onGesture(playerId, classifyGesture(log), p);
+    const gesture = classifyGesture(log, lastTapAt.get(playerId) ?? null);
+    if (gesture.kind === 'click') lastTapAt.set(playerId, log[log.length - 1].t);
+    else lastTapAt.delete(playerId);
+    onGesture(playerId, gesture, p);
     log = null;
     playerId = null;
   });
@@ -39,6 +47,6 @@ export function attachInput(board, { hitTest, onGesture, onDragPreview }) {
   board.on('pointercancel', () => {
     log = null;
     playerId = null;
-    onDragPreview(null, null);
+    onDragPreview(null, null, null);
   });
 }

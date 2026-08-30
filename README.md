@@ -79,10 +79,11 @@ hand the defense back over.
   incomplete: dead ball, no gain. A backward throw nobody catches is a live ball,
   same as a fumble.
 - Press **Run Turn** to play out half a second of simulated movement — everyone
-  moves along their arrow at once, with blocking friction as players come
-  together, and a chance of a tackle whenever a defender gets within reach of
-  the ball carrier. If any player doesn't have an arrow set yet, you'll get a
-  warning naming how many; press **Run Turn** again to run the turn anyway.
+  moves along their arrow (or toward the man they were put on) at once, with
+  blocking friction as players come together, and a chance of a tackle whenever
+  a defender gets within reach of the ball carrier. If any player doesn't have
+  an arrow set yet, you'll get a warning naming how many; press **Run Turn**
+  again to run the turn anyway.
 - **Clear Arrows** wipes every plan for the current turn, in case you want to
   start over before running it.
 - The Coaches Menu has a **Plays** section. Draw the first set of arrows for a
@@ -104,8 +105,8 @@ hand the defense back over.
 
 One thing this version *doesn't* do: there's no click-to-reposition of players
 before the snap. Every formation starts at its default positions — you set
-direction and stance from there, but you can't drag a player to a new starting
-spot pre-snap.
+destinations, cover orders and stances from there, but you can't drag a player
+to a new starting spot pre-snap.
 
 ## Running the tests
 

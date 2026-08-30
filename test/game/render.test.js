@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderArrows, renderLooseBall, renderPassArrow,
-  facingAngle, arrowMark, STYLE_GAME, menuButtonMark,
+  facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import {
@@ -11,10 +11,10 @@ import {
 import { tackleReach } from '../../lib/game/modes.js';
 import { num } from '../../lib/field/geometry.js';
 
-test('the board shell has the field and four empty game layers', () => {
+test('the board shell has the field and every game layer', () => {
   const { viewBox, markup } = renderBoardShell(0);
   assert.match(viewBox, /^0 0 270 /);
-  for (const id of ['game-field', 'game-arrows', 'game-preview', 'game-players', 'game-overlay']) {
+  for (const id of ['game-field', 'game-arrows', 'game-preview', 'game-players', 'game-overlay', 'game-menu', 'game-message']) {
     assert.ok(markup.includes(`id="${id}"`), id);
   }
   assert.ok(markup.includes(STYLE_GAME));
@@ -254,4 +254,76 @@ test('the menu hit target sits over the label and inside the frame', () => {
   assert.ok(x + rw <= w, 'inside the viewBox width');
   assert.ok(y0 > 0 && y0 + rh <= h, 'inside the viewBox height');
   assert.ok(y0 < 85 && y0 + rh > 85, 'straddles the label centre at y=85');
+});
+
+test('wrapWords breaks greedily at the character budget', () => {
+  assert.deepEqual(wrapWords('', 34), []);
+  assert.deepEqual(wrapWords('   ', 34), []);
+  assert.deepEqual(wrapWords('TOUCHDOWN!', 34), ['TOUCHDOWN!']);
+  assert.deepEqual(
+    wrapWords('Fumble recovered by the defense. Game over.', 34),
+    ['Fumble recovered by the defense.', 'Game over.'],
+  );
+  // A word that cannot fit gets a line to itself rather than being broken.
+  assert.deepEqual(wrapWords('a supercalifragilistic b', 8), ['a', 'supercalifragilistic', 'b']);
+  // Runs of whitespace collapse.
+  assert.deepEqual(wrapWords('a   b', 34), ['a b']);
+});
+
+test('an empty message draws nothing', () => {
+  assert.equal(renderMessage(''), '');
+  assert.equal(renderMessage('   '), '');
+});
+
+test('a one-line message is a plate and a tspan centred in the end zone', () => {
+  assert.equal(
+    renderMessage('TOUCHDOWN!'),
+    '<rect class="msg-plate" x="104" y="129.75" width="62" height="23" rx="2"/>' +
+    '<text class="msg"><tspan x="135" y="144">TOUCHDOWN!</tspan></text>',
+  );
+});
+
+test('a two-line message stacks tspans and grows the plate, staying in the end zone', () => {
+  const svg = renderMessage('Fumble recovered by the defense. Game over.');
+  assert.equal((svg.match(/<tspan /g) || []).length, 2);
+  assert.ok(svg.includes('<tspan x="135" y="138.5">Fumble recovered by the defense.</tspan>'));
+  assert.ok(svg.includes('<tspan x="135" y="149.5">Game over.</tspan>'));
+  const plate = svg.match(/y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/);
+  const [py, pw, ph] = plate.slice(1).map(Number);
+  assert.ok(py >= 122.5, 'the plate starts at or below the goal line');
+  assert.ok(py + ph <= 160, 'and ends at or above the end line');
+  assert.ok(pw <= 200, 'and never runs wider than the sidelines');
+});
+
+test('a long message grows past the end zone but never off the board', () => {
+  // The real penalty message: three lines, taller than the 37.5-unit end zone.
+  const flag = 'FLAG: forward pass from beyond the line. 5 yards from the previous spot, loss of down.';
+  const svg = renderMessage(flag);
+  assert.equal((svg.match(/<tspan /g) || []).length, 3, 'three lines at this budget');
+  const [py, ph] = svg.match(/y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/).slice(1).map(Number);
+  assert.ok(py > 0, 'still on the board at the top');
+  assert.ok(py + ph <= 170, 'and still on the board at the bottom');
+  // Ten lines could not be centred and stay on the board; the clamp catches it.
+  const huge = renderMessage(new Array(40).fill('word').join(' '));
+  const [hy, hh] = huge.match(/y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/).slice(1).map(Number);
+  assert.ok(hy >= 0 && hy + hh <= 170, 'clamped inside the viewBox');
+});
+
+test('message text is escaped', () => {
+  assert.ok(renderMessage("QB can't do that.").includes('can&#39;t'));
+  assert.ok(renderMessage('A & B').includes('A &amp; B'));
+});
+
+test('the message layer is the topmost layer on the board', () => {
+  const { markup } = renderBoardShell(0);
+  const at = (id) => markup.indexOf(`id="${id}"`);
+  assert.ok(at('game-message') > -1, 'the message has a layer of its own');
+  assert.ok(at('game-message') > at('game-overlay'), 'above the loose-ball overlay');
+  assert.ok(at('game-message') > at('game-menu'), 'and above the menu button');
+  // Both message rules must be click-through — the plate covers the end zone.
+  // Checked per-rule on purpose: `pointer-events:none` is already in STYLE_GAME
+  // for .gp-role and .vel, so a bare substring check would pass without them.
+  const msgRules = STYLE_GAME.split('}').filter((r) => r.startsWith('.msg'));
+  assert.equal(msgRules.length, 2, '.msg-plate and .msg');
+  for (const rule of msgRules) assert.ok(rule.includes('pointer-events:none'), rule);
 });

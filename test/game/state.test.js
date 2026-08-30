@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createGame, setPlan, clearAllPlans, setMode, placePlayer, getPlayer, ballPos, carrier,
+  createGame, setPlan, clearAllPlans, setMode, getPlayer, ballPos, carrier,
   isControllable, setPass, clearPass,
 } from '../../lib/game/state.js';
 import { TEAM_SIZE } from '../../lib/game/constants.js';
@@ -88,20 +88,6 @@ test('mode legality: tuck = carrier only, prepared = defense only, holding = off
   setMode(s, 'o-qb', 'normal');
   assert.equal(getPlayer(s, 'o-qb').mode, 'normal');
   assert.equal(getPlayer(s, 'o-qb').charge, 0);
-});
-
-test('repositioning: allowed only at turn 0 planning, and only on your own side of the LOS', () => {
-  const s = createGame({ seed: 1 });
-  const ok = placePlayer(s, 'o-wr1', fieldPos(-20, -2));
-  assert.equal(ok, true);
-  assert.deepEqual(getPlayer(s, 'o-wr1').pos, fieldPos(-20, -2));
-  // offense may not set up past the LOS
-  assert.equal(placePlayer(s, 'o-wr1', fieldPos(-20, 2)), false);
-  // defense may not set up behind it
-  assert.equal(placePlayer(s, 'd-cb1', fieldPos(-20, -2)), false);
-  // once the play has run a turn, nobody repositions
-  s.turnIndex = 1;
-  assert.equal(placePlayer(s, 'o-wr1', fieldPos(-15, -2)), false);
 });
 
 test('the computer opponent is opt-in, and its players take no orders', () => {

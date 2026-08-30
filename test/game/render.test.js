@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderArrows, renderLooseBall, renderPassArrow,
-  facingAngle, arrowMark, STYLE_GAME,
+  facingAngle, arrowMark, STYLE_GAME, menuButtonMark,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import {
@@ -231,4 +231,27 @@ test('no throw arrow once the man who planned it no longer has the ball', () => 
 test('the throw arc style is registered in the game stylesheet', () => {
   const { markup } = renderBoardShell(0);
   assert.ok(markup.includes('.pass{'), 'the pass arrow has a style rule');
+});
+
+test('the COACHES MENU label carries a transparent hit target of its own', () => {
+  const { markup } = renderBoardShell(0);
+  assert.ok(markup.includes('>COACHES MENU</text>'), 'the field says COACHES MENU');
+  assert.ok(markup.includes('id="game-menu"'), 'the button gets a layer of its own');
+  assert.equal(
+    menuButtonMark(),
+    '<rect data-menu-button="1" class="menu-hit" x="247" y="37" width="20" height="96"/>',
+  );
+  assert.ok(STYLE_GAME.includes('.menu-hit{fill:transparent;pointer-events:all;cursor:pointer}'));
+  assert.ok(STYLE_GAME.includes('.pb{fill:#1a7f37;cursor:pointer}'), 'the label reads as pressable');
+});
+
+test('the menu hit target sits over the label and inside the frame', () => {
+  const { viewBox } = renderBoardShell(0);
+  const [, , w, h] = viewBox.split(' ').map(Number);
+  const m = menuButtonMark().match(/x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/);
+  const [x, y0, rw, rh] = m.slice(1).map(Number);
+  assert.ok(x < 257 && x + rw > 257, 'straddles the label column at x=257');
+  assert.ok(x + rw <= w, 'inside the viewBox width');
+  assert.ok(y0 > 0 && y0 + rh <= h, 'inside the viewBox height');
+  assert.ok(y0 < 85 && y0 + rh > 85, 'straddles the label centre at y=85');
 });

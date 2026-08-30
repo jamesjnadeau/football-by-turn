@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  aiPlayers, pursuitTarget, defensePlans, coachAi, clearAiPlans,
+  aiPlayers, pursuitTarget, defensePlans, coachAi, clearAiPlans, applyAiModes,
 } from '../../lib/game/ai.js';
-import { createGame, getPlayer, setPlan } from '../../lib/game/state.js';
-import { TEAM_SIZE, AI_LEAD_MAX_SECONDS } from '../../lib/game/constants.js';
+import { createGame, getPlayer, setPlan, setMode } from '../../lib/game/state.js';
+import { TEAM_SIZE, AI_LEAD_MAX_SECONDS, AI_BREAKDOWN_UNITS } from '../../lib/game/constants.js';
 
 test('with no computer opponent there is nothing to coach', () => {
   const s = createGame({ seed: 1 });
@@ -88,4 +88,60 @@ test('coachAi writes the plans; clearAiPlans wipes them and leaves the human\'s 
   clearAiPlans(s);
   assert.ok(s.players.filter((p) => p.team === 'defense').every((p) => p.plan === null));
   assert.deepEqual(getPlayer(s, 'o-rb').plan, { dir: { x: 0, y: 1 }, throttle: 0.5 });
+});
+
+test('a defender breaks down only once he is close enough to make the hit', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const qb = getPlayer(s, 'o-qb');
+  const near = getPlayer(s, 'd-lb');
+  const far = getPlayer(s, 'd-s');
+  near.pos = { x: qb.pos.x, y: qb.pos.y + AI_BREAKDOWN_UNITS - 1 };
+  far.pos = { x: qb.pos.x, y: qb.pos.y + AI_BREAKDOWN_UNITS + 1 };
+  applyAiModes(s);
+  assert.equal(near.mode, 'prepared');
+  assert.equal(far.mode, 'normal');
+});
+
+test('a defender who gets left behind stands back up', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const qb = getPlayer(s, 'o-qb');
+  const lb = getPlayer(s, 'd-lb');
+  lb.pos = { x: qb.pos.x, y: qb.pos.y + 1 };
+  applyAiModes(s);
+  assert.equal(lb.mode, 'prepared');
+  lb.pos = { x: qb.pos.x, y: qb.pos.y + AI_BREAKDOWN_UNITS + 5 };
+  applyAiModes(s);
+  assert.equal(lb.mode, 'normal', 'no point breaking down with nobody to hit');
+});
+
+test('holding the stance does not re-arm the charge every turn', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const qb = getPlayer(s, 'o-qb');
+  const lb = getPlayer(s, 'd-lb');
+  lb.pos = { x: qb.pos.x, y: qb.pos.y + 1 };
+  applyAiModes(s);
+  assert.equal(lb.charge, 1, 'setting the stance arms the burst, once');
+  lb.charge = 0;   // what runTurn does at the end of every turn
+  applyAiModes(s); // still close, still prepared — nothing changed
+  assert.equal(lb.charge, 0, 'no free burst for standing in the stance he is already in');
+});
+
+test('nobody stays broken down for a loose ball — everyone sprints at it', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const lb = getPlayer(s, 'd-lb');
+  setMode(s, 'd-lb', 'prepared'); // he had broken down on the carrier a moment ago
+  assert.equal(lb.mode, 'prepared');
+  s.ball = { carrierId: null, pos: { ...lb.pos }, vel: { x: 0, y: 0 }, loose: 0 };
+  applyAiModes(s);
+  assert.ok(aiPlayers(s).every((p) => p.mode === 'normal'), 'a loose ball is a footrace');
+});
+
+test('coachAi sets the stance as well as the arrow', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const qb = getPlayer(s, 'o-qb');
+  const lb = getPlayer(s, 'd-lb');
+  lb.pos = { x: qb.pos.x, y: qb.pos.y + 1 };
+  coachAi(s);
+  assert.equal(lb.mode, 'prepared');
+  assert.ok(lb.plan !== null);
 });

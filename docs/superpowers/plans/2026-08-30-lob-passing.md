@@ -1620,7 +1620,7 @@ The landing circle, the lock-on halo, and a ball that can be drawn bigger.
   - `looseBallMark(pos, scale = 1) -> string` — **one new optional argument**
   - `renderPassArrow(state)` now draws the lock or the circle as well as the arrow.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add two lines to `test/game/render.test.js`'s imports:
 
@@ -1691,12 +1691,12 @@ test('the lob\'s two marks are styled in the game stylesheet', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test test/game/render.test.js`
 Expected: FAIL — `does not provide an export named 'passLandingMark'`.
 
-- [ ] **Step 3: Add the two styles**
+- [x] **Step 3: Add the two styles**
 
 In `lib/game/render.js`, in `STYLE_GAME` immediately after the `.arh-r` rule:
 
@@ -1713,7 +1713,7 @@ In `lib/game/render.js`, in `STYLE_GAME` immediately after the `.arh-r` rule:
   '.pass-halo{fill:#b3261e;fill-opacity:.55;stroke:#b3261e;stroke-width:.5;pointer-events:none}',
 ```
 
-- [ ] **Step 4: Make the ball scalable**
+- [x] **Step 4: Make the ball scalable**
 
 Replace `looseBallMark` and `renderLooseBall`:
 
@@ -1746,7 +1746,7 @@ export function renderLooseBall(state) {
 
 with the import `import { ballScale } from './lob.js';` at the top.
 
-- [ ] **Step 5: Add the two marks and rework the throw arrow**
+- [x] **Step 5: Add the two marks and rework the throw arrow**
 
 Below `passArrowTip`, replacing `renderPassArrow`:
 
@@ -1810,12 +1810,12 @@ export function renderPassArrow(state) {
 
 and add `import { passLanding } from './pass.js';` at the top of `render.js`.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add lib/game/render.js test/game/render.test.js && git commit -m "Draw the landing circle, the lock-on halo, and a ball that swells"

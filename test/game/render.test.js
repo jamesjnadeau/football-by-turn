@@ -14,6 +14,8 @@ import {
 import { tackleReach } from '../../lib/game/modes.js';
 import { num, UNITS_PER_YARD_X } from '../../lib/field/geometry.js';
 import { fieldPos } from '../../lib/game/view.js';
+import { passLanding } from '../../lib/game/pass.js';
+import { lobPoint } from '../../lib/game/lob.js';
 
 test('the board shell has the field and every game layer', () => {
   const { viewBox, markup } = renderBoardShell(0);
@@ -637,4 +639,62 @@ test('the button column clears the yard numbers and the edge of the frame', () =
     assert.ok(boardWidth - (box.x + box.w) >= 3,
       `clears the edge of the frame by ${(boardWidth - (box.x + box.w)).toFixed(2)}`);
   }
+});
+
+test('a lob draws a landing circle as well as its arrow', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  const svg = renderPassArrow(s);
+  assert.ok(svg.includes('class="pass"'), 'the arrow is still drawn');
+  assert.ok(svg.includes('class="pass-land"'), 'and the landing circle with it');
+  const land = passLanding(getPlayer(s, 'o-qb'), { x: 0, y: 1 }, 1);
+  assert.ok(svg.includes(`r="${num(land.radius)}"`), 'as big as the guess is');
+  assert.ok(svg.includes(`cy="${num(land.pos.y)}"`), 'centred where it is aimed');
+});
+
+test('a throw inside the lock zone draws no landing circle at all', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4);
+  assert.ok(!renderPassArrow(s).includes('pass-land'), 'a flat throw goes where it is pointed');
+});
+
+test('a locked-on throw draws a halo under the receiver and an arrow to his edge', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + 30 };
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5, 'o-wr1');
+  const svg = renderPassArrow(s);
+  assert.ok(svg.includes('class="pass-halo"'), 'the lock reads like a cover halo, in red');
+  assert.ok(svg.includes(`r="${num(wr.radius + COVER_HALO_UNITS)}"`), 'and is sized like one');
+  assert.ok(svg.includes('class="pass"'), 'with the throw arrow on top of it');
+  assert.ok(svg.includes(`L ${num(qb.pos.x)} ${num(wr.pos.y - wr.radius)}`), 'stopping at his edge');
+  assert.ok(!svg.includes('pass-land'), 'a locked throw never lobs, so there is no circle');
+  assert.ok(svg.indexOf('pass-halo') < svg.indexOf('class="pass"'), 'halo first, line on top');
+});
+
+test('a lock on a man who is no longer on the field falls back to the plain arrow', () => {
+  const s = createGame({ seed: 1 });
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5, 'o-nobody');
+  const svg = renderPassArrow(s);
+  assert.ok(svg.includes('class="pass"'));
+  assert.ok(!svg.includes('pass-halo'));
+});
+
+test('the loose ball is drawn bigger while it is over everyone\'s heads', () => {
+  const s = createGame({ seed: 1 });
+  const lob = { from: { x: 135, y: 70 }, to: { x: 135, y: 150 }, substeps: 40, elapsed: 30 };
+  s.ball = { carrierId: null, pos: lobPoint(lob), vel: { x: 0, y: 0 }, loose: 0, forward: true, lob };
+  const svg = renderLooseBall(s);
+  assert.ok(svg.includes('data-loose-ball="1"'));
+  assert.match(svg, /scale\(/, 'swollen at the top of the arc');
+  lob.elapsed = 40;
+  s.ball.pos = lobPoint(lob);
+  assert.ok(!renderLooseBall(s).includes('scale('), 'and its ordinary size on the ground');
+});
+
+test('the lob\'s two marks are styled in the game stylesheet', () => {
+  const { markup } = renderBoardShell(0);
+  assert.ok(markup.includes('.pass-land{'), 'the landing circle has a style rule');
+  assert.ok(markup.includes('.pass-halo{'), 'and so does the lock halo');
 });

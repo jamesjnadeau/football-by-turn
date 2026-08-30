@@ -4,6 +4,7 @@ import {
   positionGroup, defendDir, losY, pastLine, groupMates,
   interceptPoint, leverageAim, containSide, rushLineman, flowLinebacker,
   deepestThreat, deepMan, deepAim, coverAssignments, coverBack,
+  smartOrder, smartOrders,
 } from '../../lib/game/defense.js';
 import { createGame, getPlayer } from '../../lib/game/state.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -210,4 +211,39 @@ test('coverBack hands out a man to cover and a spot to the free man', () => {
   assert.deepEqual(coverBack(s, getPlayer(s, 'd-cb1')), { aim: null, cover: 'o-wr1' });
   assert.deepEqual(coverBack(s, getPlayer(s, 'd-s')),
     { aim: { x: 135, y: 101.25 }, cover: null });
+});
+
+test('a loose ball is a footrace — nobody keeps an assignment', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  s.ball = { carrierId: null, pos: { x: 135, y: 100 }, vel: { x: 0, y: 0 }, loose: 0 };
+  for (const id of ['d-nt', 'd-lb', 'd-cb1', 'd-s']) {
+    assert.deepEqual(smartOrder(s, getPlayer(s, id)),
+      { aim: { x: 135, y: 100 }, cover: null }, id);
+  }
+});
+
+test('once the carrier is past the line everybody converges on him', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  getPlayer(s, 'o-qb').pos = { x: 135, y: 95 }; // 10 units past the line
+  assert.deepEqual(smartOrder(s, getPlayer(s, 'd-dt2')),
+    { aim: { x: 135, y: 95 }, cover: null }, 'no contain: he is inside attack range');
+  assert.deepEqual(smartOrder(s, getPlayer(s, 'd-cb1')),
+    { aim: { x: 135, y: 99 }, cover: null }, 'the corner leaves his man to make the tackle');
+});
+
+test('behind the line, each position does its own job', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  assert.deepEqual(smartOrder(s, getPlayer(s, 'd-dt2')), rushLineman(s, getPlayer(s, 'd-dt2')));
+  assert.deepEqual(smartOrder(s, getPlayer(s, 'd-lb')), flowLinebacker(s, getPlayer(s, 'd-lb')));
+  assert.deepEqual(smartOrder(s, getPlayer(s, 'd-cb1')), coverBack(s, getPlayer(s, 'd-cb1')));
+});
+
+test('smartOrders covers the whole team and writes nothing into the state', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const orders = smartOrders(s, 'defense');
+  assert.deepEqual(orders.map((o) => o.id),
+    ['d-nt', 'd-dt1', 'd-dt2', 'd-cb1', 'd-cb2', 'd-lb', 'd-s']);
+  assert.equal(orders.find((o) => o.id === 'd-cb1').cover, 'o-wr1');
+  assert.ok(s.players.every((p) => p.plan === null && p.cover === null),
+    'pure: nothing was written');
 });

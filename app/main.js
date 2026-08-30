@@ -44,8 +44,9 @@ let messageText = '';
 // of the one being drawn. Set when animate() starts, cleared in finish().
 let animating = false;
 // A debug read-out, not game state: New Game replaces `state` wholesale, and
-// having asked to see velocities should survive that.
-let showVelocity = false;
+// the player's choice of whether to see velocities — on by default, but
+// including having turned it off — should survive that.
+let showVelocity = true;
 // Not game state: the playbook outlives New Game, and lives in the browser
 // rather than in `state`, which is replaced wholesale.
 let playbook = loadPlaybook();

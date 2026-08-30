@@ -284,6 +284,18 @@ test('the velocity triangle is filled in the same blue the line used to be', () 
   assert.ok(STYLE_GAME.includes('.vel{fill:#1668dc'));
 });
 
+test('a moving carrier draws his football on top of his own velocity triangle', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-rb', pos: null, vel: null };
+  getPlayer(s, 'o-rb').vel = { x: 40, y: 0 };
+  const group = rbGroup(renderPlayers(s, { showVelocity: true }));
+  const velIndex = group.indexOf('class="vel"');
+  const fbIndex = group.indexOf('class="fb"');
+  assert.ok(velIndex > -1, 'the velocity triangle is drawn');
+  assert.ok(fbIndex > -1, 'the football is drawn');
+  assert.ok(fbIndex > velIndex, 'the ball is emitted after the triangle, so it paints over it');
+});
+
 test('the planned throw draws its own arrow, distinct from a run arrow', () => {
   const s = createGame({ seed: 1 });
   assert.equal(renderPassArrow(s), '', 'nothing planned, nothing drawn');

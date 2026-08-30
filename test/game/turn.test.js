@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runTurn, unplannedPlayers } from '../../lib/game/turn.js';
+import { nextDown } from '../../lib/game/rules.js';
 import { createGame, setPlan, getPlayer } from '../../lib/game/state.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { SUBSTEPS_PER_TURN, TEAM_SIZE } from '../../lib/game/constants.js';
 import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
-import { norm } from '../../lib/game/vec.js';
+import { norm, dist } from '../../lib/game/vec.js';
 
 test('a turn produces one frame per sub-step and moves planned players', () => {
   const s = createGame({ seed: 1 });
@@ -116,4 +117,46 @@ test('the unplanned warning counts only the players the human is coaching', () =
   const ids = unplannedPlayers(s);
   assert.equal(ids.length, TEAM_SIZE, 'the offense, and nobody else');
   assert.ok(ids.every((id) => id.startsWith('o-')));
+});
+
+test('a real computer-coached game: hidden plans hold, aiTeam survives the down, and the defense closes', () => {
+  // Seed 1, everyone on offense charging straight downfield: three turns to
+  // a tackle (not a touchdown or a fumble recovery), so nextDown actually
+  // rebuilds state.players from formationPlayers rather than short-circuiting
+  // to gameOver — which is what exercises (b). Confirmed by running this
+  // exact scenario repeatedly: same three turns, same tackle, every time.
+  const s = createGame({ seed: 1, ai: 'defense' });
+  for (const p of s.players) {
+    if (p.team === 'offense') setPlan(s, p.id, { x: 0, y: 1 }, 1);
+  }
+  const random = mulberry32(1);
+
+  const carrierDist = () => {
+    const car = getPlayer(s, s.ball.carrierId);
+    const defense = s.players.filter((p) => p.team === 'defense');
+    return Math.min(...defense.map((d) => dist(d.pos, car.pos)));
+  };
+  const snapDist = carrierDist();
+
+  let turns = 0;
+  let lastDist = snapDist;
+  while (s.phase !== 'playOver' && turns < 15) {
+    runTurn(s, random);
+    turns += 1;
+    assert.ok(
+      s.players.filter((p) => p.team === 'defense').every((p) => p.plan === null),
+      `no computer plan should survive turn ${turns}`,
+    );
+    lastDist = carrierDist();
+  }
+  assert.equal(s.phase, 'playOver');
+  assert.equal(s.deadReason, 'tackled', 'a real tackle, not a touchdown or a fumble recovery');
+  assert.ok(
+    lastDist < snapDist * 0.5,
+    `the defense should have closed a lot of ground: ${snapDist.toFixed(2)} at the snap, ${lastDist.toFixed(2)} at the whistle`,
+  );
+
+  nextDown(s);
+  assert.equal(s.aiTeam, 'defense', 'aiTeam survives the wholesale player rebuild between downs');
+  assert.equal(s.phase, 'planning');
 });

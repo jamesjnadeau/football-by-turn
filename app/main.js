@@ -203,6 +203,7 @@ runBtn.addEventListener('click', () => {
     clearBtn.disabled = true;
     nextBtn.disabled = true;
     newBtn.disabled = true;
+    aiBtn.disabled = true;
     animate(frames, finish);
   } else finish();
 });

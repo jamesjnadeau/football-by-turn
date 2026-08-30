@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  renderBoardShell, renderPlayers, renderArrows, renderLooseBall, renderPassArrow,
+  renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
@@ -55,14 +55,35 @@ test('prepared and holding players get the quarter-circle stance arc', () => {
   assert.equal((svg.match(/class="stance"/g) || []).length, 2);
 });
 
-test('arrows render only for planned players, scaled by throttle', () => {
+test('a plan with no reachable target still renders as the old arrow', () => {
   const s = createGame({ seed: 1 });
-  assert.equal(renderArrows(s), '');
+  assert.equal(renderPlans(s), '');
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
-  const full = renderArrows(s);
-  assert.ok(full.includes('marker-end="url(#ar-g)"'));
+  const svg = renderPlans(s);
+  assert.equal((svg.match(/data-for="/g) || []).length, 1);
+  assert.ok(svg.includes('class="plan-mv"'), 'the arrow, not a circle');
+  assert.ok(!svg.includes('class="plan-dest"'));
   const rb = getPlayer(s, 'o-rb');
-  assert.ok(full.includes(`${rb.pos.y + MAX_ARROW_UNITS}`), 'full throttle = full length');
+  assert.ok(svg.includes(`L ${num(rb.pos.x)} ${num(rb.pos.y + MAX_ARROW_UNITS)}`));
+});
+
+test('a plan that knows where it lands renders as a filled circle there', () => {
+  const s = createGame({ seed: 1 });
+  const rb = getPlayer(s, 'o-rb');
+  const target = { x: rb.pos.x, y: rb.pos.y + 6 };
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 0.7, target);
+  const svg = renderPlans(s);
+  assert.ok(svg.includes('class="plan-dest"'), 'the circle');
+  assert.ok(!svg.includes('class="plan-mv"'), 'and no arrow');
+  assert.ok(svg.includes(`cx="${num(target.x)}" cy="${num(target.y)}"`), 'at the landing spot');
+  assert.ok(svg.includes(`r="${num(rb.radius)}"`), 'drawn at his own size');
+});
+
+test('the destination circle is a bare mark, so the preview and the plan match', () => {
+  assert.equal(
+    destinationMark({ x: 10, y: 20 }, 2.5),
+    '<circle cx="10" cy="20" r="2.5" class="plan-dest"/>',
+  );
 });
 
 test('a loose ball renders on its own; a carried one does not', () => {
@@ -91,7 +112,7 @@ test('the computer\'s arrows are never drawn', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
   setPlan(s, 'd-lb', { x: 0, y: -1 }, 1); // as if one had leaked into a planning phase
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
-  const svg = renderArrows(s);
+  const svg = renderPlans(s);
   assert.ok(!svg.includes('data-for="d-lb"'), 'the defense keeps its plans to itself');
   assert.ok(svg.includes('data-for="o-rb"'), 'the human still sees his own');
 });
@@ -119,7 +140,7 @@ test('the stance arc is drawn at the reach it actually tackles from', () => {
 test('plan arrows are green, half-weight, and carry the game arrowhead', () => {
   const s = createGame({ seed: 1 });
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
-  const svg = renderArrows(s);
+  const svg = renderPlans(s);
   assert.ok(svg.includes('class="plan-mv"'), 'the game arrow class, not the shared .mv');
   assert.ok(svg.includes('marker-end="url(#ar-g)"'));
   assert.ok(!svg.includes('url(#ar)"'), 'not the shared black arrowhead');
@@ -136,7 +157,7 @@ test('the committed arrow and the live drag preview carry the same opacity', () 
   const s = createGame({ seed: 1 });
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
   const rb = getPlayer(s, 'o-rb');
-  const committed = renderArrows(s);
+  const committed = renderPlans(s);
   const tip = { x: rb.pos.x, y: rb.pos.y + MAX_ARROW_UNITS };
   const preview = arrowMark(rb.pos, tip); // the same call app/main.js's drag handler makes
   assert.ok(committed.includes('class="plan-mv"'));

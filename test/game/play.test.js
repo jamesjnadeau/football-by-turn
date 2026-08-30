@@ -86,7 +86,7 @@ test('applying a play puts the arrows back', () => {
   const { applied, skipped } = applyPlay(fresh, play);
   assert.deepEqual(applied.sort(), ['o-qb', 'o-wr1']);
   assert.deepEqual(skipped, []);
-  assert.deepEqual(getPlayer(fresh, 'o-wr1').plan, { dir: { x: 1, y: 0 }, throttle: 1 });
+  assert.deepEqual(getPlayer(fresh, 'o-wr1').plan, { dir: { x: 1, y: 0 }, throttle: 1, target: null });
 });
 
 test('applying a play wipes what was drawn before it', () => {

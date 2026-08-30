@@ -6,7 +6,7 @@ import { clearAiPlans } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
-  renderBoardShell, renderPlayers, renderArrows, renderPassArrow, renderLooseBall, looseBallMark,
+  renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
   arrowMark, passArrowMark, passArrowTip, renderMessage,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
@@ -71,7 +71,7 @@ function rebuildBoard() {
 function paint() {
   layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
   layer('game-arrows').clear().svg(
-    state.phase === 'planning' ? renderArrows(state) + renderPassArrow(state) : '',
+    state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state) : '',
   );
   hud.textContent = `Down ${state.down} of 4 — ${state.phase}`;
   aiBtn.textContent = state.aiTeam ? 'Defense: computer' : 'Defense: you';

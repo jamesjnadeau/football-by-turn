@@ -87,7 +87,7 @@ test('coachAi writes the plans; clearAiPlans wipes them and leaves the human\'s 
 
   clearAiPlans(s);
   assert.ok(s.players.filter((p) => p.team === 'defense').every((p) => p.plan === null));
-  assert.deepEqual(getPlayer(s, 'o-rb').plan, { dir: { x: 0, y: 1 }, throttle: 0.5 });
+  assert.deepEqual(getPlayer(s, 'o-rb').plan, { dir: { x: 0, y: 1 }, throttle: 0.5, target: null });
 });
 
 test('a defender breaks down only once he is close enough to make the hit', () => {

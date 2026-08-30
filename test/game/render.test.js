@@ -7,6 +7,7 @@ import {
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import {
   TEAM_SIZE, MAX_ARROW_UNITS, MAX_PASS_ARROW_UNITS, DEBUG_VELOCITY_SECONDS,
+  DEBUG_VELOCITY_TRIANGLE_SCALE,
 } from '../../lib/game/constants.js';
 import { tackleReach } from '../../lib/game/modes.js';
 import { num } from '../../lib/field/geometry.js';
@@ -199,10 +200,18 @@ test('the velocity triangle grows past the player edge in proportion to speed', 
   const rb = getPlayer(s, 'o-rb'); // radius 2.5
   rb.vel = { x: 40, y: 0 };
   const [x1] = apexOf(renderPlayers(s, { showVelocity: true }));
-  assert.equal(x1, rb.radius + 40 * DEBUG_VELOCITY_SECONDS, '2.5 of body + 10 of speed');
+  assert.equal(
+    x1,
+    (rb.radius + 40 * DEBUG_VELOCITY_SECONDS) * DEBUG_VELOCITY_TRIANGLE_SCALE,
+    '2.5 of body + 10 of speed, scaled down',
+  );
   rb.vel = { x: 80, y: 0 };
   const [x2] = apexOf(renderPlayers(s, { showVelocity: true }));
-  assert.equal(x2, rb.radius + 80 * DEBUG_VELOCITY_SECONDS, 'twice the speed, twice the reach');
+  assert.equal(
+    x2,
+    (rb.radius + 80 * DEBUG_VELOCITY_SECONDS) * DEBUG_VELOCITY_TRIANGLE_SCALE,
+    'twice the speed, twice the reach',
+  );
   assert.ok(x2 > x1, 'doubling the speed makes a strictly bigger triangle');
 });
 
@@ -215,7 +224,7 @@ test('the velocity triangle points along the velocity, not along the plan', () =
   const EPS = 1e-9;
   assert.ok(Math.abs(apexX) < EPS, 'no sideways drift in the apex');
   assert.ok(
-    Math.abs(apexY - -(rb.radius + 40 * DEBUG_VELOCITY_SECONDS)) < EPS,
+    Math.abs(apexY - -(rb.radius + 40 * DEBUG_VELOCITY_SECONDS) * DEBUG_VELOCITY_TRIANGLE_SCALE) < EPS,
     'apex reaches upfield, along the velocity',
   );
 });
@@ -231,7 +240,14 @@ test('the velocity triangle is equilateral: three equidistant vertices, 120 degr
   rb.vel = { x: 30, y: 40 }; // an off-axis heading, so 120-degree spacing can't be mistaken for a right angle
   const points = allPointsOf(renderPlayers(s, { showVelocity: true }));
   assert.equal(points.length, 3);
-  const EPS = 0.02; // num()'s two-decimal rounding is the only source of slop here
+  // num()'s two-decimal rounding is the only source of slop here, but it no
+  // longer absorbs as cleanly as it did: at this heading the circumradius is
+  // now (2.5 + 50 * DEBUG_VELOCITY_SECONDS) * DEBUG_VELOCITY_TRIANGLE_SCALE =
+  // 3.0, down from 15 pre-scale-down, and the angular slop rounding a vertex
+  // introduces is proportional to 1/r — five times bigger at a fifth the
+  // radius. EPS is widened by the same factor so the check still absorbs
+  // exactly the rounding, not the geometry.
+  const EPS = 0.1;
   const radii = points.map(([x, y]) => Math.hypot(x, y));
   for (const r of radii) assert.ok(Math.abs(r - radii[0]) < EPS, 'every vertex is the same distance from the centre');
   const twoPi = 2 * Math.PI;

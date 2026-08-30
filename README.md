@@ -20,6 +20,17 @@ Then open **http://localhost:8080** in a browser. `npm run serve` just starts a
 static file server (`python3 -m http.server 8080`); there's no build or bundling
 step.
 
+## Deploying
+
+Pushes to `main` publish the game to GitHub Pages via
+`.github/workflows/deploy.yml`. The workflow runs the test suite, copies
+`index.html`, `app/`, and `lib/` into the Pages artifact, and deploys — no
+build step, same files the local server hands out.
+
+Enabling it once per repo: **Settings → Pages → Build and deployment → Source:
+GitHub Actions**. The site then lives at
+https://jamesjnadeau.github.io/football-by-turn/.
+
 ## How to play
 
 Each drive starts 1st and goal from the offense's own 10-yard line, and the

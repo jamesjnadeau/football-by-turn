@@ -127,8 +127,7 @@ test('plan arrows are green, half-weight, and carry the game arrowhead', () => {
 
 test('the board shell defines the game arrowhead at full marker width', () => {
   const { markup } = renderBoardShell(0);
-  assert.ok(markup.includes('id="ar-g"'), 'the green marker is defined');
-  assert.ok(markup.includes('markerWidth="5"'), 'the head halves via stroke-width, not markerWidth');
+  assert.match(markup, /<marker id="ar-g"[^>]*markerWidth="5"/, 'the head halves via stroke-width, not markerWidth');
 });
 
 test('arrowMark draws a rounded path between two points', () => {

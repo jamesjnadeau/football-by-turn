@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   positionGroup, defendDir, losY, pastLine, groupMates,
+  interceptPoint, leverageAim,
 } from '../../lib/game/defense.js';
 import { createGame, getPlayer } from '../../lib/game/state.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -50,4 +51,59 @@ test('group mates are the teammates who play the same position', () => {
     'himself included, in formation order',
   );
   assert.deepEqual(groupMates(s, getPlayer(s, 'd-lb')).map((p) => p.id), ['d-lb']);
+});
+
+test('a standing man is intercepted where he stands', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  assert.deepEqual(
+    interceptPoint(getPlayer(s, 'd-lb'), getPlayer(s, 'o-qb')),
+    getPlayer(s, 'o-qb').pos,
+  );
+});
+
+test('a moving man is intercepted where the two of them arrive together', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const cb = getPlayer(s, 'd-cb1');
+  const qb = getPlayer(s, 'o-qb');
+  cb.pos = { x: 135, y: 100 };          // a skill player: 60 units/s
+  qb.pos = { x: 135, y: 130 };          // 30 units away, running away at 30
+  qb.vel = { x: 0, y: 30 };
+  // One second: the carrier reaches y 160 and so does the corner. Solved, not
+  // guessed — the old brain would have aimed at a flat one-second lead here
+  // and been right only by coincidence.
+  assert.deepEqual(interceptPoint(cb, qb), { x: 135, y: 160 });
+});
+
+test('a man who cannot be caught is chased on a capped lead instead', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const cb = getPlayer(s, 'd-cb1');
+  const qb = getPlayer(s, 'o-qb');
+  cb.pos = { x: 135, y: 100 };
+  qb.pos = { x: 135, y: 130 };
+  qb.vel = { x: 0, y: 200 };            // faster than anybody, straight away
+  // No solution exists, so he falls back to the time it takes to cover the gap
+  // he can see: 30 / 60 = half a second of the runner's velocity.
+  assert.deepEqual(interceptPoint(cb, qb), { x: 135, y: 230 });
+});
+
+test('leverage holds an aim point on the goal side of the man', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const lb = getPlayer(s, 'd-lb');      // (135, 100)
+  const qb = getPlayer(s, 'o-qb');      // (135, 70) — 30 units away
+  assert.deepEqual(
+    leverageAim(lb, { x: 140, y: 70 }, qb), { x: 140, y: 74 },
+    'aiming level with him would let him run straight past',
+  );
+  assert.deepEqual(
+    leverageAim(lb, { x: 140, y: 90 }, qb), { x: 140, y: 90 },
+    'an aim already goal-side of him is left alone',
+  );
+});
+
+test('leverage is off once he is close enough to go and get him', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const lb = getPlayer(s, 'd-lb');
+  const qb = getPlayer(s, 'o-qb');
+  lb.pos = { x: 135, y: 80 };           // 10 units off him
+  assert.deepEqual(leverageAim(lb, { x: 140, y: 70 }, qb), { x: 140, y: 70 });
 });

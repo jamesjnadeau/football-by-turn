@@ -21,6 +21,7 @@ const message = document.getElementById('message');
 const runBtn = document.getElementById('run');
 const clearBtn = document.getElementById('clear');
 const aiBtn = document.getElementById('ai');
+const debugBtn = document.getElementById('debug');
 const nextBtn = document.getElementById('next');
 const newBtn = document.getElementById('new');
 
@@ -32,6 +33,9 @@ let pendingWarning = false;
 // live during that window and a second click runs a whole extra turn on top
 // of the one being drawn. Set when animate() starts, cleared in finish().
 let animating = false;
+// A debug read-out, not game state: New Game replaces `state` wholesale, and
+// having asked to see velocities should survive that.
+let showVelocity = false;
 
 function layer(id) {
   return board.findOne(`#${id}`);
@@ -52,11 +56,13 @@ function rebuildBoard() {
  * animation, which is what re-enables them.
  */
 function paint() {
-  layer('game-players').clear().svg(renderPlayers(state) + renderLooseBall(state));
+  layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
   layer('game-arrows').clear().svg(state.phase === 'planning' ? renderArrows(state) : '');
   hud.textContent = `Down ${state.down} of 4 — ${state.phase}`;
   aiBtn.textContent = state.aiTeam ? 'Defense: computer' : 'Defense: you';
   aiBtn.disabled = animating || state.phase !== 'planning';
+  debugBtn.textContent = `Velocity lines: ${showVelocity ? 'on' : 'off'}`;
+  debugBtn.disabled = animating;
   runBtn.disabled = animating || state.phase !== 'planning';
   clearBtn.disabled = animating;
   nextBtn.disabled = animating;
@@ -204,6 +210,7 @@ runBtn.addEventListener('click', () => {
     nextBtn.disabled = true;
     newBtn.disabled = true;
     aiBtn.disabled = true;
+    debugBtn.disabled = true;
     animate(frames, finish);
   } else finish();
 });
@@ -225,6 +232,16 @@ aiBtn.addEventListener('click', () => {
   say(state.aiTeam
     ? 'The computer coaches the defense.'
     : 'Hot-seat: you coach both teams.');
+  paint();
+});
+
+debugBtn.addEventListener('click', () => {
+  // Dead while a turn is being drawn, like every other control: paint()
+  // rewrites the player layer, which would throw away the transforms the
+  // animation loop is driving. The lines a running turn shows are the
+  // velocities from the last paint — the read-out refreshes when it lands.
+  if (animating) return;
+  showVelocity = !showVelocity;
   paint();
 });
 

@@ -86,3 +86,34 @@ test('unplannedPlayers lists everyone without an arrow (the warning feed)', () =
   assert.equal(ids.length, TEAM_SIZE * 2 - 1);
   assert.ok(!ids.includes('o-rb'));
 });
+
+test('the computer coaches the defense during the turn — and its arrows never survive it', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
+  runTurn(s, mulberry32(1));
+  const defense = s.players.filter((p) => p.team === 'defense');
+  assert.ok(
+    defense.every((p) => p.plan === null),
+    'nothing of the computer\'s is readable once we are back in planning',
+  );
+  assert.ok(
+    defense.some((p) => p.vel.x !== 0 || p.vel.y !== 0),
+    'but the defense did move, so it really was coached',
+  );
+});
+
+test('the computer runs its players at the ball', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  s.players = s.players.filter((p) => p.id === 'o-qb' || p.id === 'd-lb'); // no traffic in between
+  const y0 = getPlayer(s, 'd-lb').pos.y;
+  runTurn(s, mulberry32(1));
+  // The QB stands upfield of the LB, so closing on him means moving in -y.
+  assert.ok(getPlayer(s, 'd-lb').pos.y < y0, 'the LB closed on the QB');
+});
+
+test('the unplanned warning counts only the players the human is coaching', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const ids = unplannedPlayers(s);
+  assert.equal(ids.length, TEAM_SIZE, 'the offense, and nobody else');
+  assert.ok(ids.every((id) => id.startsWith('o-')));
+});

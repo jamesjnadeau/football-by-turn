@@ -77,3 +77,12 @@ test('facing: plan first, then velocity, then a team default', () => {
   const lb = getPlayer(s, 'd-lb');
   assert.equal(facingAngle(lb), -Math.PI / 2); // defense default: upfield (-y)
 });
+
+test('the computer\'s arrows are never drawn', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  setPlan(s, 'd-lb', { x: 0, y: -1 }, 1); // as if one had leaked into a planning phase
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
+  const svg = renderArrows(s);
+  assert.ok(!svg.includes('data-for="d-lb"'), 'the defense keeps its plans to itself');
+  assert.ok(svg.includes('data-for="o-rb"'), 'the human still sees his own');
+});

@@ -202,17 +202,22 @@ test('the velocity triangle grows past the player edge in proportion to speed', 
   const [x1] = apexOf(renderPlayers(s, { showVelocity: true }));
   assert.equal(
     x1,
-    (rb.radius + 40 * DEBUG_VELOCITY_SECONDS) * DEBUG_VELOCITY_TRIANGLE_SCALE,
-    '2.5 of body + 10 of speed, scaled down',
+    rb.radius + 40 * DEBUG_VELOCITY_SECONDS * DEBUG_VELOCITY_TRIANGLE_SCALE,
+    'the rim (2.5) plus a height of 2.0 beyond it',
   );
   rb.vel = { x: 80, y: 0 };
   const [x2] = apexOf(renderPlayers(s, { showVelocity: true }));
   assert.equal(
     x2,
-    (rb.radius + 80 * DEBUG_VELOCITY_SECONDS) * DEBUG_VELOCITY_TRIANGLE_SCALE,
+    rb.radius + 80 * DEBUG_VELOCITY_SECONDS * DEBUG_VELOCITY_TRIANGLE_SCALE,
     'twice the speed, twice the reach',
   );
-  assert.ok(x2 > x1, 'doubling the speed makes a strictly bigger triangle');
+  // The base sits at the fixed rim distance regardless of speed, so a
+  // strictly-larger apex distance alone wouldn't prove the size tracks speed
+  // proportionally — an implementation that barely nudged the height would
+  // still pass that weaker check. Assert the HEIGHT beyond the rim itself
+  // (apex distance minus the fixed radius) exactly doubles: 2.0 -> 4.0.
+  assert.equal(2 * (x1 - rb.radius), x2 - rb.radius, 'doubling the speed exactly doubles the height beyond the rim');
 });
 
 test('the velocity triangle points along the velocity, not along the plan', () => {
@@ -224,38 +229,55 @@ test('the velocity triangle points along the velocity, not along the plan', () =
   const EPS = 1e-9;
   assert.ok(Math.abs(apexX) < EPS, 'no sideways drift in the apex');
   assert.ok(
-    Math.abs(apexY - -(rb.radius + 40 * DEBUG_VELOCITY_SECONDS) * DEBUG_VELOCITY_TRIANGLE_SCALE) < EPS,
+    Math.abs(apexY - -(rb.radius + 40 * DEBUG_VELOCITY_SECONDS * DEBUG_VELOCITY_TRIANGLE_SCALE)) < EPS,
     'apex reaches upfield, along the velocity',
   );
 });
 
-test('the velocity triangle is equilateral: three equidistant vertices, 120 degrees apart', () => {
+test("the velocity triangle's base sits on the player's own rim", () => {
+  // The whole point of this change: a shape centred on the player is hidden
+  // behind his own icon at ordinary speeds, so the base must sit out at
+  // player.radius regardless of speed, with only the apex (checked above)
+  // moving further out as he speeds up.
+  const s = createGame({ seed: 1 });
+  const rb = getPlayer(s, 'o-rb'); // radius 2.5
+  rb.vel = { x: 40, y: 0 }; // heading is +x, so "along the heading" is just x
+  const [, baseA, baseB] = allPointsOf(renderPlayers(s, { showVelocity: true }));
+  const halfWidth = (40 * DEBUG_VELOCITY_SECONDS * DEBUG_VELOCITY_TRIANGLE_SCALE) / Math.sqrt(3);
+  const EPS = 0.01; // num()'s rounding to 2 decimals is the only slop here
+  for (const [x] of [baseA, baseB]) {
+    assert.ok(Math.abs(x - rb.radius) < EPS, 'base vertex projects onto the heading at exactly player.radius');
+  }
+  const ys = [baseA[1], baseB[1]].sort((a, b) => a - b);
+  assert.ok(Math.abs(ys[0] - -halfWidth) < EPS, 'one base corner at -h/√3');
+  assert.ok(Math.abs(ys[1] - halfWidth) < EPS, 'the other at +h/√3');
+});
+
+test('the velocity triangle is equilateral: three equal sides', () => {
   // The apex-only checks above would still pass an implementation that
   // emitted the right apex but two wrong, non-triangular points behind it —
-  // e.g. collinear, or bunched together. This test looks at the shape itself:
-  // every vertex the same distance from the local origin (the circumradius),
-  // and each one exactly a third of a turn from the next.
+  // e.g. collinear, or bunched together. This test looks at the shape
+  // itself: the three pairwise distances between the vertices are all
+  // equal, which fails on collinear or wrongly-spaced points just as the
+  // old circumradius check did. That old check compared every vertex's
+  // distance from the local origin, which relied on the triangle being
+  // centred on the origin; now that the base sits out at the rim instead of
+  // the centre, the vertices are no longer equidistant from the origin, so
+  // this compares the vertices to each other instead.
   const s = createGame({ seed: 1 });
   const rb = getPlayer(s, 'o-rb');
-  rb.vel = { x: 30, y: 40 }; // an off-axis heading, so 120-degree spacing can't be mistaken for a right angle
+  rb.vel = { x: 30, y: 40 }; // an off-axis heading, so a lopsided triangle can't hide behind a round number
   const points = allPointsOf(renderPlayers(s, { showVelocity: true }));
   assert.equal(points.length, 3);
-  // num()'s two-decimal rounding is the only source of slop here, but it no
-  // longer absorbs as cleanly as it did: at this heading the circumradius is
-  // now (2.5 + 50 * DEBUG_VELOCITY_SECONDS) * DEBUG_VELOCITY_TRIANGLE_SCALE =
-  // 3.0, down from 15 pre-scale-down, and the angular slop rounding a vertex
-  // introduces is proportional to 1/r — five times bigger at a fifth the
-  // radius. EPS is widened by the same factor so the check still absorbs
-  // exactly the rounding, not the geometry.
-  const EPS = 0.1;
-  const radii = points.map(([x, y]) => Math.hypot(x, y));
-  for (const r of radii) assert.ok(Math.abs(r - radii[0]) < EPS, 'every vertex is the same distance from the centre');
-  const twoPi = 2 * Math.PI;
-  const headings = points.map(([x, y]) => Math.atan2(y, x));
-  for (let i = 0; i < 3; i += 1) {
-    const delta = ((headings[(i + 1) % 3] - headings[i]) % twoPi + twoPi) % twoPi;
-    assert.ok(Math.abs(delta - twoPi / 3) < EPS, `vertex ${i} to ${(i + 1) % 3} is a third of a turn`);
-  }
+  const dist = ([x1, y1], [x2, y2]) => Math.hypot(x2 - x1, y2 - y1);
+  const sides = [dist(points[0], points[1]), dist(points[1], points[2]), dist(points[2], points[0])];
+  // num() rounds each coordinate to 2 decimals, moving it by up to 0.005; a
+  // side length is the distance between two such rounded points, so in the
+  // worst case (the two points' errors pointing opposite ways) it can shift
+  // by up to 2 * sqrt(2) * 0.005 ~= 0.0141. EPS sits just above that bound
+  // so it absorbs only the rounding, not the geometry.
+  const EPS = 0.02;
+  for (const side of sides) assert.ok(Math.abs(side - sides[0]) < EPS, 'all three sides are the same length');
 });
 
 test('the velocity triangle is filled in the same blue the line used to be', () => {

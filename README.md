@@ -27,8 +27,8 @@ Pushes to `main` publish the game to GitHub Pages via
 `index.html`, `app/`, and `lib/` into the Pages artifact, and deploys — no
 build step, same files the local server hands out.
 
-Enabling it once per repo: **Settings → Pages → Build and deployment → Source:
-GitHub Actions**. The site then lives at
+The workflow enables Pages itself (`configure-pages` with `enablement: true`),
+so there's no Settings step to remember. The site lives at
 https://jamesjnadeau.github.io/football-by-turn/.
 
 ## How to play

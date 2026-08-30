@@ -74,6 +74,17 @@ hand the defense back over.
   warning naming how many; press **Run Turn** again to run the turn anyway.
 - **Clear Arrows** wipes every plan for the current turn, in case you want to
   start over before running it.
+- The Coaches Menu has a **Plays** section. Draw the first set of arrows for a
+  down, press **Save current play**, and name it — the play goes into one of
+  five slots, stances and a planned throw included. Press a slot to call that
+  play again on a later down; it replaces whatever you have drawn so far rather
+  than adding to it. Saving and calling are offered only on the **first turn of
+  a down** — that is what a play is — so the buttons grey out once the ball has
+  moved. Saved plays are kept in your browser, so they survive a reload and a
+  New Game. With all five slots full, saving asks which one to replace. Anyone
+  in a saved play the current game has no orders to give — a defender in a play
+  you saved while coaching both teams, say — is skipped, and the message says
+  how many.
 - When a play ends, **Next Down** appears — click it to spot the ball, advance
   the down counter, and re-form both teams at the new line of scrimmage. After
   a touchdown, a turnover on downs, or a fumble recovered by the defense, the

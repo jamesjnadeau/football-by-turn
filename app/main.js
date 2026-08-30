@@ -229,6 +229,7 @@ const slotBtns = [];
 for (let i = 0; i < PLAY_SLOTS; i++) {
   const btn = document.createElement('button');
   btn.className = 'play-slot';
+  btn.addEventListener('click', () => callPlay(i));
   playSlotsEl.appendChild(btn);
   slotBtns.push(btn);
 }
@@ -246,6 +247,59 @@ function paintPlays() {
     slotBtns[i].textContent = play ? `${i + 1}. ${play.name}` : `${i + 1}. (empty)`;
     slotBtns[i].disabled = !usable || !play;
   }
+}
+
+/**
+ * Saving fills the lowest empty slot, and only asks which slot to replace once
+ * all five are taken. The menu stays open if the coach cancels a prompt — he
+ * asked for nothing to happen, and closing the menu is something happening.
+ */
+function savePlay() {
+  if (animating || !canUsePlays(state)) return;
+  if (isEmptyPlay(capturePlay(state, ''))) {
+    closeMenu();
+    say('Nothing to save yet. Draw some arrows first.');
+    return;
+  }
+  const name = (window.prompt('Name this play:', '') ?? '').trim();
+  if (!name) return; // cancelled, or named nothing
+  const play = capturePlay(state, name); // capturePlay is what cuts the name to length
+  let slot = firstEmptySlot(playbook);
+  if (slot === -1) {
+    const answer = window.prompt(
+      `All ${PLAY_SLOTS} slots are full. Replace which one (1-${PLAY_SLOTS})?`,
+      '1',
+    );
+    const n = Number(answer);
+    if (!Number.isInteger(n) || n < 1 || n > PLAY_SLOTS) return;
+    slot = n - 1;
+  }
+  playbook = putPlay(playbook, slot, play);
+  const kept = savePlaybook(playbook);
+  closeMenu();
+  say(kept
+    ? `Saved "${play.name}" to slot ${slot + 1}.`
+    : `Saved "${play.name}" to slot ${slot + 1} for this session only.`);
+  paint();
+}
+
+/**
+ * Calling a play replaces whatever is drawn — it is a huddle, not an edit. Any
+ * of it that could not be given (a defender in a play saved in hot-seat, a tuck
+ * by a man who does not have the ball this time) is counted out loud rather
+ * than passed over in silence.
+ */
+function callPlay(i) {
+  if (animating || !canUsePlays(state)) return;
+  const play = playbook[i];
+  if (!play) return;
+  const { applied, skipped } = applyPlay(state, play);
+  pendingWarning = false; // a new plan gets a fresh warning, like any drag does
+  closeMenu();
+  say(skipped.length === 0
+    ? `"${play.name}" called. ${applied.length} player(s) set.`
+    : `"${play.name}" called. ${applied.length} set, ${skipped.length} skipped.`);
+  paint();
 }
 
 function openMenu() {
@@ -281,6 +335,7 @@ menu.addEventListener('click', (e) => {
 });
 
 closeMenuBtn.addEventListener('click', closeMenu);
+savePlayBtn.addEventListener('click', savePlay);
 
 runBtn.addEventListener('click', () => {
   closeMenu();

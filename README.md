@@ -40,11 +40,22 @@ hand the defense back over.
   closes the menu as it acts, so you can watch the board. The play's status —
   the warning about unplanned players, `TOUCHDOWN!`, `FUMBLE!` — is drawn on the
   field itself, in the end zone, so it stays readable with the menu shut.
-- **Drag a player** to set their direction and how hard they run: point the drag
-  where you want them to go, and how far you drag sets the throttle (a longer
-  drag means a harder run, up to full speed). An arrow is drawn from the player
-  showing exactly that — direction and force — and stays visible until you
-  change it or run the turn.
+- **Drag a player** to say where you want him at the end of the turn: a filled
+  green circle appears on the spot he will actually be standing when the whistle
+  blows, and a longer drag still means a harder run. Half a second does not buy
+  much ground from a standing start — about two yards — so drag past what he can
+  cover and the circle gives way to the old green arrow, which means "full speed
+  that way, and you won't get all the way there this turn". Either mark stays
+  visible until you change it or run the turn.
+- **Drag a player onto one of theirs** to put him on that man. The circle gives
+  way to a dotted line running to the man he has taken, and a green disc appears
+  under that man with just its rim showing. From then on he does not run at a
+  fixed spot — he re-aims at his man every moment of the turn, and while your
+  team has the ball he works to get his body *between* that man and your ball
+  carrier rather than merely chasing him. Taking a man on costs nothing and is
+  worth a little: slightly more force to hold ground in contact, and an arm's
+  length of extra reach — against that man alone. Drag him anywhere else to call
+  it off.
 - **Long-press a player** to toggle their stance, shown by a quarter-circle arc
   around them facing their direction of travel:
   - The **ball carrier** long-pressed **tucks** the ball in — a little slower,
@@ -68,10 +79,11 @@ hand the defense back over.
   incomplete: dead ball, no gain. A backward throw nobody catches is a live ball,
   same as a fumble.
 - Press **Run Turn** to play out half a second of simulated movement — everyone
-  moves along their arrow at once, with blocking friction as players come
-  together, and a chance of a tackle whenever a defender gets within reach of
-  the ball carrier. If any player doesn't have an arrow set yet, you'll get a
-  warning naming how many; press **Run Turn** again to run the turn anyway.
+  moves along their arrow (or toward the man they were put on) at once, with
+  blocking friction as players come together, and a chance of a tackle whenever
+  a defender gets within reach of the ball carrier. If any player doesn't have
+  an arrow set yet, you'll get a warning naming how many; press **Run Turn**
+  again to run the turn anyway.
 - **Clear Arrows** wipes every plan for the current turn, in case you want to
   start over before running it.
 - The Coaches Menu has a **Plays** section. Draw the first set of arrows for a
@@ -93,8 +105,8 @@ hand the defense back over.
 
 One thing this version *doesn't* do: there's no click-to-reposition of players
 before the snap. Every formation starts at its default positions — you set
-direction and stance from there, but you can't drag a player to a new starting
-spot pre-snap.
+destinations, cover orders and stances from there, but you can't drag a player
+to a new starting spot pre-snap.
 
 ## Running the tests
 

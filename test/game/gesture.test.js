@@ -83,3 +83,12 @@ test('movement still beats duration, armed or not', () => {
     'a genuinely stale tap does not arm a throw',
   );
 });
+
+test('a drag reports the raw drag vector alongside direction and throttle', () => {
+  const g = classifyGesture([
+    { t: 0, x: 100, y: 100 },
+    { t: 50, x: 100, y: 112 },
+  ]);
+  assert.equal(g.kind, 'drag');
+  assert.deepEqual(g.travel, { x: 0, y: 12 });
+});

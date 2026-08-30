@@ -47,11 +47,19 @@ test('mass grows with radius squared', () => {
 test('plans can be set, replaced, and cleared', () => {
   const s = createGame({ seed: 1 });
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 0.8);
-  assert.deepEqual(getPlayer(s, 'o-rb').plan, { dir: { x: 0, y: 1 }, throttle: 0.8 });
+  assert.deepEqual(getPlayer(s, 'o-rb').plan, { dir: { x: 0, y: 1 }, throttle: 0.8, target: null });
   setPlan(s, 'o-rb', { x: 1, y: 0 }, 0.5);
-  assert.deepEqual(getPlayer(s, 'o-rb').plan, { dir: { x: 1, y: 0 }, throttle: 0.5 });
+  assert.deepEqual(getPlayer(s, 'o-rb').plan, { dir: { x: 1, y: 0 }, throttle: 0.5, target: null });
   clearAllPlans(s);
   assert.ok(s.players.every((p) => p.plan === null));
+});
+
+test('a plan carries its landing spot, and defaults to not having one', () => {
+  const s = createGame({ seed: 1 });
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
+  assert.equal(getPlayer(s, 'o-rb').plan.target, null);
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 0.5, { x: 1, y: 2 });
+  assert.deepEqual(getPlayer(s, 'o-rb').plan.target, { x: 1, y: 2 });
 });
 
 test('mode legality: tuck = carrier only, prepared = defense only, holding = offense only', () => {

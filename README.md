@@ -47,6 +47,15 @@ hand the defense back over.
   cover and the circle gives way to the old green arrow, which means "full speed
   that way, and you won't get all the way there this turn". Either mark stays
   visible until you change it or run the turn.
+- **Drag a player onto one of theirs** to put him on that man. The circle gives
+  way to a dotted line running to the man he has taken, and a green disc appears
+  under that man with just its rim showing. From then on he does not run at a
+  fixed spot — he re-aims at his man every moment of the turn, and while your
+  team has the ball he works to get his body *between* that man and your ball
+  carrier rather than merely chasing him. Taking a man on costs nothing and is
+  worth a little: slightly more force to hold ground in contact, and an arm's
+  length of extra reach — against that man alone. Drag him anywhere else to call
+  it off.
 - **Long-press a player** to toggle their stance, shown by a quarter-circle arc
   around them facing their direction of travel:
   - The **ball carrier** long-pressed **tucks** the ball in — a little slower,

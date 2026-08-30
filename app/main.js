@@ -7,10 +7,11 @@ import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
-  arrowMark, destinationMark, passArrowMark, passArrowTip, renderMessage,
+  arrowMark, destinationMark, coverMark, passArrowMark, passArrowTip, renderMessage,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { planForDrag } from '../lib/game/predict.js';
+import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import {
   TURN_SECONDS, MAX_ARROW_UNITS, PENALTY_YARDS, PICK_SLOP_UNITS,
@@ -131,6 +132,19 @@ function runMark(player, plan) {
     });
 }
 
+/**
+ * What a run drag should draw, given where the pointer is. Dragging onto one of
+ * their players is a cover order; anything else is a destination or an arrow.
+ * The live preview and the committed plan both ask this, so the picture never
+ * changes shape at the moment the finger comes up.
+ */
+function runOrCoverMark(player, travel, point) {
+  const opp = opponentAt(state, point, player.team);
+  return opp
+    ? coverMark(player, getPlayer(state, opp))
+    : runMark(player, planForDrag(player, travel));
+}
+
 function onGesture(playerId, gesture, point) {
   if (animating) return; // mid-animation pointer input is not for this turn
   layer('game-preview').clear();
@@ -149,10 +163,15 @@ function onGesture(playerId, gesture, point) {
     }
     pendingWarning = false;
   } else if (gesture.kind === 'drag') {
-    const run = planForDrag(p, gesture.travel);
-    setPlan(state, playerId, run.dir, run.throttle, run.target);
+    const opp = opponentAt(state, point, p.team);
+    if (opp && setCover(state, playerId, opp)) {
+      say(`${p.role} will cover ${getPlayer(state, opp).role}.`);
+    } else {
+      const run = planForDrag(p, gesture.travel);
+      setPlan(state, playerId, run.dir, run.throttle, run.target);
+      say('');
+    }
     pendingWarning = false;
-    say('');
   } else if (gesture.kind === 'longpress') {
     const target =
       p.mode !== 'normal' ? 'normal'
@@ -184,7 +203,7 @@ function onDragPreview(playerId, log, prevTapAt) {
   const throwing = g.kind === 'passdrag' && state.ball.carrierId === playerId;
   const mark = throwing
     ? passArrowMark(p.pos, passArrowTip(p.pos, g.dir, g.throttle))
-    : runMark(p, planForDrag(p, g.travel));
+    : runOrCoverMark(p, g.travel, log[log.length - 1]);
   layer('game-preview').clear().svg(mark);
 }
 

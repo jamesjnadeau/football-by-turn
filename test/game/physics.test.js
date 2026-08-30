@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { stepPhysics } from '../../lib/game/physics.js';
-import { createGame, setPlan, getPlayer } from '../../lib/game/state.js';
+import { createGame, setPlan, setMode, getPlayer } from '../../lib/game/state.js';
 import { maxSpeed } from '../../lib/game/modes.js';
-import { DT, SUBSTEPS_PER_TURN } from '../../lib/game/constants.js';
+import { DT, SUBSTEPS_PER_TURN, STANCE_LATERAL_MULT } from '../../lib/game/constants.js';
 import { len } from '../../lib/game/vec.js';
 import { RELEASE_SPEED } from '../../lib/game/constants.js';
 
@@ -126,4 +126,97 @@ test('fast releases shed less speed than slow grinding (the pass-route exemption
   const lostGrind = 1 - len(getPlayer(grind, 'o-wr1').vel) / (RELEASE_SPEED * 0.5);
   const lostRelease = 1 - len(getPlayer(release, 'o-wr1').vel) / (RELEASE_SPEED * 1.5);
   assert.ok(lostRelease < lostGrind, `release lost ${lostRelease}, grind lost ${lostGrind} (fractions)`);
+});
+
+/** A lone linebacker, broken down and committed straight upfield at (0, -1). */
+function squaredUpLb() {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'd-lb');
+  setPlan(s, 'd-lb', { x: 0, y: -1 }, 1);
+  setMode(s, 'd-lb', 'prepared');
+  return s;
+}
+
+test('a broken-down defender still drives up his own axis at full speed', () => {
+  const s = squaredUpLb();
+  const lb = getPlayer(s, 'd-lb');
+  run(s, SUBSTEPS_PER_TURN * 4);
+  assert.ok(len(lb.vel) > maxSpeed(lb) * 0.95, `stance must not tax the drive, got ${len(lb.vel)}`);
+  assert.ok(len(lb.vel) <= maxSpeed(lb) + 1e-6, 'and never past it');
+});
+
+test('but he can only shuffle across it', () => {
+  const s = squaredUpLb();
+  const lb = getPlayer(s, 'd-lb');
+  setPlan(s, 'd-lb', { x: 1, y: 0 }, 1); // try to slide sideways out of the stance
+  run(s, SUBSTEPS_PER_TURN * 4);
+  const cap = maxSpeed(lb) * STANCE_LATERAL_MULT;
+  assert.ok(Math.abs(len(lb.vel) - cap) < cap * 0.05, `sideways is capped at ${cap}, got ${len(lb.vel)}`);
+});
+
+test('a defender who stands back up gets his agility back', () => {
+  const s = squaredUpLb();
+  const lb = getPlayer(s, 'd-lb');
+  setMode(s, 'd-lb', 'normal');
+  setPlan(s, 'd-lb', { x: 1, y: 0 }, 1);
+  run(s, SUBSTEPS_PER_TURN * 4);
+  assert.ok(len(lb.vel) > maxSpeed(lb) * 0.95, 'full speed sideways once out of the stance');
+});
+
+/**
+ * Every special move commits to an axis now, not just the prepared stance
+ * (see setMode in state.js) — clampToStance's guard is keyed off `facing`
+ * alone, so a tucked runner and a holding blocker get the same elliptical cap
+ * a broken-down defender does.
+ */
+function tuckedQbLockedDownfield() {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-qb');
+  const qb = getPlayer(s, 'o-qb');
+  qb.vel = { x: 0, y: 30 }; // already driving downfield when he tucks
+  setMode(s, 'o-qb', 'tucked');
+  return s;
+}
+
+test('a tucked runner is fast along the line he tucked on and can only shuffle across it', () => {
+  const s = tuckedQbLockedDownfield();
+  const qb = getPlayer(s, 'o-qb');
+  assert.deepEqual(qb.facing, { x: 0, y: 1 }, 'tucking locked the axis he was already driving on');
+
+  setPlan(s, 'o-qb', { x: 0, y: 1 }, 1);
+  run(s, SUBSTEPS_PER_TURN * 4);
+  assert.ok(len(qb.vel) > maxSpeed(qb) * 0.95, 'full speed along the locked line');
+
+  const s2 = tuckedQbLockedDownfield();
+  const qb2 = getPlayer(s2, 'o-qb');
+  setPlan(s2, 'o-qb', { x: 1, y: 0 }, 1); // try to cut across the locked axis
+  run(s2, SUBSTEPS_PER_TURN * 4);
+  // tucked's own top speed is TUCK_SPEED_MULT (0.85) of base; the lateral cap
+  // is STANCE_LATERAL_MULT (0.3) of THAT — the two taxes stack.
+  const cap = maxSpeed(qb2) * STANCE_LATERAL_MULT;
+  assert.ok(Math.abs(len(qb2.vel) - cap) < cap * 0.05, `sideways is capped at ${cap}, got ${len(qb2.vel)}`);
+});
+
+test('dropping a tucked runner back to normal clears his axis and restores full agility', () => {
+  const s = tuckedQbLockedDownfield();
+  const qb = getPlayer(s, 'o-qb');
+  setMode(s, 'o-qb', 'normal');
+  assert.equal(qb.facing, null);
+  setPlan(s, 'o-qb', { x: 1, y: 0 }, 1);
+  run(s, SUBSTEPS_PER_TURN * 4);
+  assert.ok(len(qb.vel) > maxSpeed(qb) * 0.95, 'full speed sideways once untucked');
+});
+
+test('a holding blocker is likewise pinned to one line', () => {
+  const s = createGame({ seed: 1 });
+  s.players = s.players.filter((p) => p.id === 'o-c');
+  const c = getPlayer(s, 'o-c');
+  setPlan(s, 'o-c', { x: 0, y: -1 }, 1); // no velocity yet: the arrow sets the axis
+  setMode(s, 'o-c', 'holding');
+  assert.deepEqual(c.facing, { x: 0, y: -1 });
+
+  setPlan(s, 'o-c', { x: 1, y: 0 }, 1); // try to slide sideways out of the stance
+  run(s, SUBSTEPS_PER_TURN * 4);
+  const cap = maxSpeed(c) * STANCE_LATERAL_MULT;
+  assert.ok(Math.abs(len(c.vel) - cap) < cap * 0.05, `sideways is capped at ${cap}, got ${len(c.vel)}`);
 });

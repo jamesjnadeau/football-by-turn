@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tackleProbability, checkTackles, checkPickup, checkDeadBall, nextDown } from '../../lib/game/rules.js';
-import { createGame, getPlayer, setMode } from '../../lib/game/state.js';
+import { createGame, getPlayer, setMode, setPlan } from '../../lib/game/state.js';
 import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
 import { SIDELINE_LEFT } from '../../lib/field/geometry.js';
 import { NEARBY_RADIUS } from '../../lib/game/constants.js';
@@ -29,6 +29,34 @@ test('a prepared defender tackles better than an unprepared one', () => {
   const before = tackleProbability(s, lb, qb);
   setMode(s, 'd-lb', 'prepared');
   assert.ok(tackleProbability(s, lb, qb) > before);
+});
+
+test('a prepared defender only gets the tackle-power bonus when the carrier is inside his wedge', () => {
+  // Squared up: no plan, no velocity, so setMode locks the team default
+  // facing ({0,-1}), which points straight at the QB sitting south of him.
+  const squared = scenario(['o-qb', 'd-lb']);
+  const qb1 = getPlayer(squared, 'o-qb'), lb1 = getPlayer(squared, 'd-lb');
+  qb1.pos = { x: 135, y: 100 }; lb1.pos = { x: 135, y: 105 };
+  setMode(squared, 'd-lb', 'prepared');
+  const inCone = tackleProbability(squared, lb1, qb1);
+
+  // Same geometry, but the defender committed east instead — the QB is
+  // outside the wedge he locked in.
+  const turned = scenario(['o-qb', 'd-lb']);
+  const qb2 = getPlayer(turned, 'o-qb'), lb2 = getPlayer(turned, 'd-lb');
+  qb2.pos = { x: 135, y: 100 }; lb2.pos = { x: 135, y: 105 };
+  setPlan(turned, 'd-lb', { x: 1, y: 0 }, 1);
+  setMode(turned, 'd-lb', 'prepared');
+  const offCone = tackleProbability(turned, lb2, qb2);
+
+  // Same geometry again, never prepared at all: the bonus-free baseline.
+  const baseline = scenario(['o-qb', 'd-lb']);
+  const qb3 = getPlayer(baseline, 'o-qb'), lb3 = getPlayer(baseline, 'd-lb');
+  qb3.pos = { x: 135, y: 100 }; lb3.pos = { x: 135, y: 105 };
+  const noBonus = tackleProbability(baseline, lb3, qb3);
+
+  assert.equal(offCone, noBonus, 'facing away from the carrier earns no power bonus, prepared or not');
+  assert.ok(inCone > offCone, 'facing the carrier is what earns it');
 });
 
 test('spec: more defenders in the immediate area make the tackle more likely', () => {
@@ -169,4 +197,42 @@ test('a defensive recovery ends the game as a turnover', () => {
   nextDown(s);
   assert.equal(s.phase, 'gameOver');
   assert.equal(s.result, 'turnover-fumble');
+});
+
+/** Rolls in order, then 0.99 (which fails every later check) forever. */
+const rolls = (...vals) => { let i = 0; return () => (i < vals.length ? vals[i++] : 0.99); };
+
+// Defence sits at higher y and faces down the field, so a defender north of the
+// QB is squared up on him. Stance reach here is 5.5 + the QB's 3 = 8.5 units;
+// the wedge doubles the defender's half of that, giving 14.
+test('a squared-up defender makes the hit from beyond his stance reach', () => {
+  const s = scenario(['o-qb', 'd-lb']);
+  const qb = getPlayer(s, 'o-qb'), lb = getPlayer(s, 'd-lb');
+  qb.pos = { x: 135, y: 100 }; lb.pos = { x: 135, y: 112 }; // 12 apart
+  setMode(s, 'd-lb', 'prepared');
+  const events = checkTackles(s, rolls(0, 0.99)); // tackle lands, ball held
+  assert.deepEqual(events, [{ type: 'tackled', by: 'd-lb' }]);
+});
+
+test('the same defender cannot reach that far to the side', () => {
+  const s = scenario(['o-qb', 'd-lb']);
+  const qb = getPlayer(s, 'o-qb'), lb = getPlayer(s, 'd-lb');
+  qb.pos = { x: 135, y: 100 }; lb.pos = { x: 147, y: 100 }; // 12 away, square abeam
+  setMode(s, 'd-lb', 'prepared');
+  assert.deepEqual(checkTackles(s, rolls(0, 0.99)), [], 'out of the wedge, out of range');
+});
+
+test('the wedge is longer, not infinite', () => {
+  const s = scenario(['o-qb', 'd-lb']);
+  const qb = getPlayer(s, 'o-qb'), lb = getPlayer(s, 'd-lb');
+  qb.pos = { x: 135, y: 100 }; lb.pos = { x: 135, y: 120 }; // 20 apart, dead ahead
+  setMode(s, 'd-lb', 'prepared');
+  assert.deepEqual(checkTackles(s, rolls(0, 0.99)), []);
+});
+
+test('an unprepared defender gets no wedge at all', () => {
+  const s = scenario(['o-qb', 'd-lb']);
+  const qb = getPlayer(s, 'o-qb'), lb = getPlayer(s, 'd-lb');
+  qb.pos = { x: 135, y: 100 }; lb.pos = { x: 135, y: 112 };
+  assert.deepEqual(checkTackles(s, rolls(0, 0.99)), [], 'still just a circle of radius 3');
 });

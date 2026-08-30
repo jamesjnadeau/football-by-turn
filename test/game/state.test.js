@@ -94,3 +94,33 @@ test('the computer opponent is opt-in, and its players take no orders', () => {
   assert.equal(isControllable(vsCpu, 'o-rb'), true, 'the human still coaches his own team');
   assert.equal(isControllable(vsCpu, 'd-lb'), false, 'the computer\'s players are off limits');
 });
+
+test('breaking down freezes the defender facing where he was headed, and only then', () => {
+  const s = createGame({ seed: 1 });
+  const lb = getPlayer(s, 'd-lb');
+  assert.equal(lb.facing, null, 'nobody starts with a locked axis');
+
+  setPlan(s, 'd-lb', { x: 3, y: 4 }, 1);
+  setMode(s, 'd-lb', 'prepared');
+  assert.deepEqual(lb.facing, { x: 0.6, y: 0.8 }, 'the axis is the heading at breakdown, normalised');
+
+  // The lock is a commitment: re-aiming the arrow afterwards does not swing it.
+  setPlan(s, 'd-lb', { x: -1, y: 0 }, 1);
+  assert.deepEqual(lb.facing, { x: 0.6, y: 0.8 }, 'a later arrow does not re-point the stance');
+
+  setMode(s, 'd-lb', 'normal');
+  assert.equal(lb.facing, null, 'standing up again releases the axis');
+});
+
+test('every special move locks an axis, and dropping back to normal releases it', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  setMode(s, 'o-qb', 'tucked');
+  assert.notEqual(qb.facing, null, 'tucking commits to a line same as breaking down');
+  setMode(s, 'o-qb', 'normal');
+  assert.equal(qb.facing, null, 'standing back up releases it');
+
+  const c = getPlayer(s, 'o-c');
+  setMode(s, 'o-c', 'holding');
+  assert.notEqual(c.facing, null, 'holding position commits to a line too');
+});

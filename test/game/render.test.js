@@ -5,6 +5,8 @@ import {
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer } from '../../lib/game/state.js';
 import { TEAM_SIZE, MAX_ARROW_UNITS } from '../../lib/game/constants.js';
+import { tackleReach } from '../../lib/game/modes.js';
+import { num } from '../../lib/field/geometry.js';
 
 test('the board shell has the field and three empty game layers', () => {
   const { viewBox, markup } = renderBoardShell(0);
@@ -66,14 +68,17 @@ test('a loose ball renders on its own; a carried one does not', () => {
   assert.ok(renderLooseBall(s).includes('class="fb"'));
 });
 
-test('facing: plan first, then velocity, then a team default', () => {
+test('facing: momentum first, then the plan arrow, then a team default', () => {
   const s = createGame({ seed: 1 });
   const rb = getPlayer(s, 'o-rb');
   assert.equal(facingAngle(rb), Math.PI / 2); // offense default: downfield (+y)
-  rb.vel = { x: 1, y: 0 };
-  assert.equal(facingAngle(rb), 0);
   setPlan(s, 'o-rb', { x: 0, y: -1 }, 1);
-  assert.equal(facingAngle(rb), -Math.PI / 2);
+  assert.equal(facingAngle(rb), -Math.PI / 2, 'no momentum yet: the arrow');
+  // A body cannot pivot instantly, so once he actually has velocity that wins
+  // over whatever arrow is currently drawn — the football points where he's
+  // really going, not where he's aimed.
+  rb.vel = { x: 1, y: 0 };
+  assert.equal(facingAngle(rb), 0, 'momentum overrides the arrow');
   const lb = getPlayer(s, 'd-lb');
   assert.equal(facingAngle(lb), -Math.PI / 2); // defense default: upfield (-y)
 });
@@ -85,4 +90,24 @@ test('the computer\'s arrows are never drawn', () => {
   const svg = renderArrows(s);
   assert.ok(!svg.includes('data-for="d-lb"'), 'the defense keeps its plans to itself');
   assert.ok(svg.includes('data-for="o-rb"'), 'the human still sees his own');
+});
+
+test('the stance arc holds the axis the defender locked, not the arrow he draws next', () => {
+  const s = createGame({ seed: 1 });
+  setPlan(s, 'd-lb', { x: 1, y: 0 }, 1);
+  setMode(s, 'd-lb', 'prepared'); // locks facing due east
+  const committed = renderPlayers(s);
+  setPlan(s, 'd-lb', { x: -1, y: 0 }, 1); // wave the arrow the other way
+  assert.equal(renderPlayers(s), committed, 'the drawn wedge does not follow the new arrow');
+});
+
+test('the stance arc is drawn at the reach it actually tackles from', () => {
+  const s = createGame({ seed: 1 });
+  const lb = getPlayer(s, 'd-lb');
+  setMode(s, 'd-lb', 'prepared');
+  const ahead = { x: lb.facing.x, y: lb.facing.y };
+  const r = tackleReach(lb, ahead) + 1;
+  const arc = renderPlayers(s).match(/class="stance" d="M [-\d.]+ [-\d.]+ A ([-\d.]+)/);
+  assert.ok(arc, 'a stance arc is drawn');
+  assert.equal(Number(arc[1]), Number(num(r)), 'its radius is the wedge reach, not the plain stance reach');
 });

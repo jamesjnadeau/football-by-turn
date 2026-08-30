@@ -6,7 +6,7 @@ import { clearAiPlans } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
-  renderBoardShell, renderPlayers, renderArrows, renderLooseBall, looseBallMark,
+  renderBoardShell, renderPlayers, renderArrows, renderLooseBall, looseBallMark, arrowMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { mulberry32 } from '../lib/game/rng.js';
@@ -84,7 +84,7 @@ function hitTest(p) {
 
 function onGesture(playerId, gesture, point) {
   if (animating) return; // mid-animation pointer input is not for this turn
-  layer('game-overlay').clear();
+  layer('game-preview').clear();
   if (state.phase !== 'planning') return;
   const p = getPlayer(state, playerId);
   if (gesture.kind === 'drag') {
@@ -107,19 +107,19 @@ function onGesture(playerId, gesture, point) {
 }
 
 function onDragPreview(playerId, log) {
-  if (animating) return; // the overlay belongs to the loose ball right now
+  if (animating) return; // the board belongs to the turn being drawn right now
   if (!playerId || !log || state.phase !== 'planning') {
-    layer('game-overlay').clear();
+    layer('game-preview').clear();
     return;
   }
   const g = classifyGesture(log);
   if (g.kind !== 'drag') return;
   const p = getPlayer(state, playerId);
-  const tipX = p.pos.x + g.dir.x * g.throttle * MAX_ARROW_UNITS;
-  const tipY = p.pos.y + g.dir.y * g.throttle * MAX_ARROW_UNITS;
-  layer('game-overlay').clear().svg(
-    `<path d="M ${p.pos.x} ${p.pos.y} L ${tipX} ${tipY}" class="mv" marker-end="url(#ar)"/>`,
-  );
+  const tip = {
+    x: p.pos.x + g.dir.x * g.throttle * MAX_ARROW_UNITS,
+    y: p.pos.y + g.dir.y * g.throttle * MAX_ARROW_UNITS,
+  };
+  layer('game-preview').clear().svg(arrowMark(p.pos, tip));
 }
 
 /**

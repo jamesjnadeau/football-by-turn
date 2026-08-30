@@ -136,3 +136,12 @@ test('arrowMark draws a rounded path between two points', () => {
     '<path d="M 1 2 L 3.46 4" class="plan-mv" marker-end="url(#ar-g)"/>',
   );
 });
+
+test('arrows and the drag preview are painted beneath the players', () => {
+  const { markup } = renderBoardShell(0);
+  const at = (id) => markup.indexOf(`id="${id}"`);
+  assert.ok(at('game-preview') > -1, 'the preview has a layer of its own');
+  assert.ok(at('game-arrows') < at('game-players'), 'committed arrows under the players');
+  assert.ok(at('game-preview') < at('game-players'), 'the live preview under them too');
+  assert.ok(at('game-players') < at('game-overlay'), 'the overlay stays on top for the loose ball');
+});

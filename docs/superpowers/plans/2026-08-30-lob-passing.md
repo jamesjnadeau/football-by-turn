@@ -373,7 +373,7 @@ flight plans and cannot drag the rest of the game into a cycle.
   - `stepLob(lob) -> {x,y}`
   - `ballScale(ball) -> number` — 1 for any ball that is not lobbing.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `test/game/lob.test.js`:
 
@@ -525,12 +525,12 @@ test('a ball that is not lobbing is drawn at its ordinary size', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test test/game/lob.test.js`
 Expected: FAIL — `Cannot find module .../lib/game/lob.js`.
 
-- [ ] **Step 3: Add the constants**
+- [x] **Step 3: Add the constants**
 
 Append to `lib/game/constants.js`, after the `--- passing ---` section:
 
@@ -565,7 +565,7 @@ export const LOB_TIME_MULT = 2;
 export const LOB_BALL_SCALE = 2;
 ```
 
-- [ ] **Step 4: Write the module**
+- [x] **Step 4: Write the module**
 
 Create `lib/game/lob.js`:
 
@@ -726,12 +726,12 @@ export function ballScale(ball) {
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `npm test`
 Expected: PASS — the new `lob.test.js` and everything that was already green.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/game/constants.js lib/game/lob.js test/game/lob.test.js && git commit -m "Add the lob's flight plan: scatter, hang time, zones and ball size"

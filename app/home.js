@@ -18,17 +18,30 @@ const board = document.getElementById('board');
 // played; startGame() is what every visit after the first calls.
 let game = null;
 
+/**
+ * `hidden` is an HTMLElement property, and the board is an <svg> — an
+ * SVGElement, which has no such property at all: assigning to it writes a
+ * field nobody reads and leaves the attribute, and the `#board[hidden]` rule
+ * in index.html, exactly where they were. The attribute is what CSS matches,
+ * so setting the attribute is the only thing that actually shows or hides
+ * anything here. The section would tolerate the property; it goes through the
+ * same helper so there is one way of doing this rather than two.
+ */
+function show(el, visible) {
+  el.toggleAttribute('hidden', !visible);
+}
+
 function showHome() {
-  board.hidden = true;
-  home.hidden = false;
+  show(board, false);
+  show(home, true);
 }
 
 async function start(variantId) {
   // The unplayable button is disabled in the markup; this is that same rule
   // said again, because a disabled button is a picture and this is the gate.
   if (!isPlayable(variantId)) return;
-  home.hidden = true;
-  board.hidden = false;
+  show(home, false);
+  show(board, true);
   game ??= await import('./main.js');
   game.startGame();
 }

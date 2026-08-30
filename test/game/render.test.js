@@ -364,37 +364,43 @@ test('the throw arc style is registered in the game stylesheet', () => {
   assert.ok(markup.includes('.pass{'), 'the pass arrow has a style rule');
 });
 
-test('the COACHES MENU label carries a transparent hit target of its own', () => {
+test('the menu is a clipboard button, not a legend spelled down the sideline', () => {
   const { markup } = renderBoardShell(0);
-  assert.ok(markup.includes('>COACHES MENU</text>'), 'the field says COACHES MENU');
-  assert.ok(markup.includes('id="game-menu"'), 'the button gets a layer of its own');
-  assert.equal(
-    menuButtonMark(),
-    '<rect data-menu-button="1" class="menu-hit" tabindex="0" role="button" aria-label="Open the Coaches Menu" x="247" y="37" width="20" height="96"/>',
-  );
-  assert.ok(STYLE_GAME.includes('.menu-hit{fill:transparent;pointer-events:all;cursor:pointer}'));
-  assert.ok(STYLE_GAME.includes('.pb{fill:#1a7f37;cursor:pointer}'), 'the label reads as pressable');
+  assert.ok(!markup.includes('COACHES MENU'), 'the words are gone from the field');
+  assert.ok(!markup.includes('class="pb"'), 'and so is the legend that carried them');
+  assert.ok(markup.includes('id="game-menu"'), 'the button still gets a layer of its own');
+  assert.ok(markup.includes('data-menu-button'), 'built into the shell, not repainted');
+  assert.ok(menuButtonMark().includes('\u{1F4CB}'), 'a clipboard says it instead');
+  assert.ok(menuButtonMark().includes('class="fbtn-plate"'), 'and wears the same plate as its neighbours');
 });
 
-test('the menu hit target sits over the label and inside the frame', () => {
+test('the menu button holds the middle of the column, inside the frame', () => {
   const { viewBox } = renderBoardShell(0);
   const [, , w, h] = viewBox.split(' ').map(Number);
-  const m = menuButtonMark().match(/x="([-\d.]+)" y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/);
-  const [x, y0, rw, rh] = m.slice(1).map(Number);
-  assert.ok(x < 257 && x + rw > 257, 'straddles the label column at x=257');
-  assert.ok(x + rw <= w, 'inside the viewBox width');
-  assert.ok(y0 > 0 && y0 + rh <= h, 'inside the viewBox height');
-  assert.ok(y0 < 85 && y0 + rh > 85, 'straddles the label centre at y=85');
+  const menu = rectBox(menuButtonMark());
+  const others = renderFieldButtons(createGame({ seed: 1 }));
+  const shuffle = rectBox(buttonGroup(others, 'data-reposition-button'));
+  const run = rectBox(buttonGroup(others, 'data-run-button'));
+
+  assert.equal(menu.x, shuffle.x, 'all three share one column');
+  assert.equal(menu.x, run.x);
+  assert.ok(menu.x + menu.w <= w, 'inside the viewBox width');
+  assert.ok(menu.y > 0 && menu.y + menu.h <= h, 'inside the viewBox height');
+  assert.ok(menu.y < 85 && menu.y + menu.h > 85, 'straddles the middle of the field at y=85');
+  // Evenly stacked, and never overlapping — they are three separate presses.
+  assert.equal(menu.y - (shuffle.y + shuffle.h), run.y - (menu.y + menu.h), 'even gaps');
+  assert.ok(menu.y - (shuffle.y + shuffle.h) > 0, 'and real ones');
 });
 
 test('the menu button is reachable and labelled without a pointer', () => {
-  // A closed <dialog> is out of the tab order, so this rect is the only
+  // A closed <dialog> is out of the tab order, so this plate is the only
   // focusable element until the menu is open — it has to carry its own
-  // keyboard affordances rather than relying on the controls inside.
+  // keyboard affordances rather than relying on the controls inside. The icon
+  // carries no text, so the aria-label is the only thing that names it.
   const mark = menuButtonMark();
-  assert.ok(mark.includes('tabindex="0"'), 'the rect is a keyboard stop');
-  assert.ok(mark.includes('role="button"'), 'the rect reads as a button to assistive tech');
-  assert.ok(mark.includes('aria-label="Open the Coaches Menu"'), 'the rect names itself');
+  assert.ok(mark.includes('tabindex="0"'), 'the plate is a keyboard stop');
+  assert.ok(mark.includes('role="button"'), 'the plate reads as a button to assistive tech');
+  assert.ok(mark.includes('aria-label="Open the Coaches Menu"'), 'the plate names itself');
 });
 
 test('wrapWords breaks greedily at the character budget', () => {
@@ -597,7 +603,7 @@ test('both quick-press buttons are reachable by keyboard, like the menu rect', (
   assert.equal(markup.match(/aria-label="/g).length, 2);
 });
 
-test('the quick-press buttons sit on the board and clear of the menu hit area', () => {
+test('the quick-press buttons sit on the board, above and below the menu plate', () => {
   const boardHeight = Number(renderBoardShell(0).viewBox.split(' ')[3]);
   const menu = rectBox(menuButtonMark());
   const markup = renderFieldButtons(createGame({ seed: 1 }));
@@ -611,16 +617,24 @@ test('the quick-press buttons sit on the board and clear of the menu hit area', 
   assert.ok(shuffle.x + shuffle.w <= 270, 'and stay inside the viewBox');
 });
 
-test('the quick-press buttons sit under the label, clear of the yard numbers', () => {
-  // Browser-measured at the .pb size: the rotated COACHES MENU label occupies
-  // x 254.9 to 265.0, and the right-hand yard numbers end at x 251.2. The
-  // buttons belong in the first and nowhere near the second — centring them on
-  // the label's BASELINE (257) rather than its glyph column left them a unit
-  // off the numbers, reading as part of the field.
-  const LABEL_LEFT = 254.9, LABEL_RIGHT = 265.0, YARD_NUMBERS_RIGHT = 251.23;
-  const box = rectBox(buttonGroup(renderFieldButtons(createGame({ seed: 1 })), 'data-run-button'));
+test('the button column clears the yard numbers and the edge of the frame', () => {
+  // The right-hand yard numbers start at YARD_LABEL_RIGHT_X and are a shade
+  // over ten units wide (browser-measured), so they end about x 251.2. A
+  // button centred on the old legend's baseline came within 1.3 of that —
+  // close enough to read as a field marking, which is what moved the column.
+  const YARD_NUMBERS_RIGHT = 251.23;
+  const boardWidth = Number(renderBoardShell(0).viewBox.split(' ')[2]);
+  const marks = [
+    menuButtonMark(),
+    ...['data-reposition-button', 'data-run-button']
+      .map((a) => buttonGroup(renderFieldButtons(createGame({ seed: 1 })), a)),
+  ];
 
-  assert.ok(box.x >= LABEL_LEFT, `left edge ${box.x} is within the label column`);
-  assert.ok(box.x + box.w <= LABEL_RIGHT, `right edge ${box.x + box.w} is within it too`);
-  assert.ok(box.x - YARD_NUMBERS_RIGHT >= 3, `clears the yard numbers by ${(box.x - YARD_NUMBERS_RIGHT).toFixed(2)}`);
+  for (const mark of marks) {
+    const box = rectBox(mark);
+    assert.ok(box.x - YARD_NUMBERS_RIGHT >= 3,
+      `clears the yard numbers by ${(box.x - YARD_NUMBERS_RIGHT).toFixed(2)}`);
+    assert.ok(boardWidth - (box.x + box.w) >= 3,
+      `clears the edge of the frame by ${(boardWidth - (box.x + box.w)).toFixed(2)}`);
+  }
 });

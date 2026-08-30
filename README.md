@@ -62,25 +62,29 @@ because the computer does not decide until you press **Run Turn**. The
 Either computer breaks a defender down into the tackling stance once he is
 within range to make the hit.
 
-- Nearly all the controls live in the **Coaches Menu**. Press the vertical green
-  **COACHES MENU** text down the right-hand side of the field to open it; press
-  Esc, click outside it, or press **Close** to dismiss it. Every button in it
-  closes the menu as it acts, so you can watch the board. The play's status —
-  the warning about unplanned players, `TOUCHDOWN!`, `FUMBLE!` — is drawn on the
-  field itself, in the end zone, so it stays readable with the menu shut.
-- **Two buttons sit on the board itself**, in the same right-hand margin as the
-  menu label, for the two things you do over and over. They are shortcuts to
-  buttons already in the menu, not extra features — each calls exactly what its
-  twin calls, so the two can never say different things.
-  - 🔀 **above** the label is **Reposition** (see below). It shows green and
+- **Three buttons run down the right-hand margin of the field**, clear of the
+  yard numbers. The middle one opens the menu; the two either side are
+  shortcuts to buttons already in it, not extra features — each calls exactly
+  what its twin in the menu calls, so the two can never say different things.
+  - 📋 **Coaches Menu**, in the middle, where the vertical `COACHES MENU`
+    legend used to be spelled down the sideline. Press Esc, click outside the
+    menu, or press **Close** to dismiss it. Every button in it closes the menu
+    as it acts, so you can watch the board.
+  - 🔀 **above** it is **Reposition** (see below). It shows green and
     pressed-in while the mode is on, and is only there while you are setting
     up: it disappears at the snap, which is also your cue that the play has
     started.
-  - ⏩ **below** the label is **Run Turn** — the same warning if someone has no
+  - ⏩ **below** it is **Run Turn** — the same warning if someone has no
     direction set, and the same second press to run anyway. It greys out rather
     than vanishing when there is no turn to run, so it never moves.
 
-  Both are ordinary buttons to a keyboard: tab to one and press Enter or Space.
+  All three are ordinary buttons to a keyboard: tab to one and press Enter or
+  Space. The clipboard is the first tab stop on the page, which matters because
+  everything the menu holds is out of the tab order until it is open.
+- Nearly all the controls live in the **Coaches Menu**. The play's status — the
+  warning about unplanned players, `TOUCHDOWN!`, `FUMBLE!` — is drawn on the
+  field itself, in the end zone, so it stays readable with the menu shut.
+
 - **Drag a player** to say where you want him at the end of the turn: a filled
   green circle appears on the spot he will actually be standing when the whistle
   blows, and a longer drag still means a harder run. Half a second does not buy

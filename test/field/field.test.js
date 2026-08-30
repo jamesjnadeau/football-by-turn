@@ -36,6 +36,10 @@ test('the sideline legend is escaped, because a view supplies it', () => {
   assert.ok(svg.includes('>A &amp; &lt;B&gt;</text>'));
 });
 
-test('the game view labels the sideline COACHES MENU', () => {
-  assert.equal(gameView(0).sidelineLabel, 'COACHES MENU');
+test('the game view draws no sideline legend — the menu button stands there', () => {
+  // Null, not undefined: undefined is what falls back to the diagrams' PRESS
+  // BOX, so the distinction is the whole point of the check.
+  assert.equal(gameView(0).sidelineLabel, null);
+  const { svg } = renderField(gameView(0));
+  assert.ok(!svg.includes('class="pb"'), 'no legend text on the game field');
 });

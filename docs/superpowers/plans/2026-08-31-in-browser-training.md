@@ -1168,7 +1168,16 @@ test('parseBundle refuses values that would not survive a clamp', () => {
   assert.match(tampered((b) => { b.values['cov:dist'] = 'wide'; }).error, /finite/);
   assert.match(tampered((b) => { b.values['cov:dist'] = null; }).error, /finite/);
   assert.match(tampered((b) => { b.values.junk = 1; }).error, /junk/);
-  assert.match(tampered((b) => { b.values.__proto__ = 1; }).error, /__proto__/);
+});
+
+test('a JSON __proto__ key is refused as a stray parameter', () => {
+  // A mutation (`values.__proto__ = 1`) cannot build this attack: assignment
+  // hits the inherited setter and no own key appears. Only JSON text can put
+  // an own "__proto__" key on the object — JSON.parse defines it rather than
+  // assigning — so the attack is crafted in the text itself.
+  const good = serializeBundle(makeBundle({ side: 'defense', values: makeGenome(DEFENSE_SPEC) }));
+  const evil = good.replace('"cov:dist":', '"__proto__": 1, "cov:dist":');
+  assert.match(parseBundle(evil).error, /__proto__/);
 });
 
 test('a bundle with no meta parses, with an empty meta', () => {

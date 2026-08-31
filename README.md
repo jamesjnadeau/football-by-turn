@@ -33,8 +33,14 @@ https://jamesjnadeau.github.io/football-by-turn/.
 
 ## How to play
 
-Each drive starts 1st and goal from the offense's own 10-yard line, and the
-offense has **4 downs** to score before the ball turns over.
+The drive starts **1st and 10 from the offense's own 20**, 80 yards from the
+goal. The offense has **4 downs** to reach the line to gain — the marker moves
+ten yards on every time it does, exactly like real football, over and over
+however many sets it takes to score. Inside the 10 there's no line to gain
+past the goal itself, so it's simply **goal to go**. Losing the ball however
+that happens — failing to reach the sticks on 4th down, a fumble the defense
+recovers, an interception, a flag that wipes a touchdown — ends the game as a
+loss; only a touchdown wins.
 
 **Every down starts with the snap.** The centre comes to the line holding the
 ball, already aimed at the quarterback — a short backward toss, which is a
@@ -184,11 +190,13 @@ within range to make the hit.
   in a saved play the current game has no orders to give — a defender in a play
   you saved while coaching both teams, say — is skipped, and the message says
   how many.
-- When a play ends, **Next Down** appears — click it to spot the ball, advance
-  the down counter, and re-form both teams at the new line of scrimmage. After
-  a touchdown, a turnover on downs, or a fumble recovered by the defense, the
-  game is over.
-- **New Game** resets everything and starts a fresh drive from the 10.
+- When a play ends, **Next Down** appears — click it to spot the ball,
+  re-form both teams at the new line of scrimmage, and rule on the down: reach
+  the line to gain and it's a fresh 1st and 10 from there; fall short and the
+  down counter simply advances. After a touchdown, or the offense losing the
+  ball any way — a turnover on downs included — the game is over.
+- **New Game** resets everything and starts a fresh drive, 1st and 10 from the
+  offense's own 20.
 
 
 ## Running the tests
@@ -227,6 +235,14 @@ game:
   game lets anyone catch a pass. An illegal formation is enforced with the
   same machinery as an illegal forward pass — five yards from the previous
   spot, and the down counts.
+- **Still a single drive, with no scoreboard and no safety rule.** Real downs
+  and a real 80-yard field don't turn this into a full two-team game: there's
+  one offense, no possession swap, and no clock. Losing the ball however it
+  happens — a turnover on downs included — ends the game; there's no running
+  score to protect and no possession swap to hand the ball back to. And
+  because there's no second team, there's no safety rule either — nothing to
+  award the two points to. A team pinned deep just keeps the ball spottable a
+  short way off its own goal line instead.
 
 ## Design notes
 

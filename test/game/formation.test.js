@@ -2,13 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   spotFault, onTheLine, lineCount, formationFoul, alignDefense, canReposition, placePlayer,
-  placeFormation, setPersonnel, defenseKeys,
+  placeFormation, setPersonnel, defenseKeys, learnedPersonnel,
 } from '../../lib/game/formation.js';
 import { minOnLine, teamSize } from '../../lib/game/rosters.js';
 import { createGame, getPlayer, setPlan, setPass } from '../../lib/game/state.js';
 import { hashCentresX } from '../../lib/field/geometry.js';
 import { setCover } from '../../lib/game/cover.js';
 import { fieldPos, yardsOfY } from '../../lib/game/view.js';
+import { makeGenome } from '../../lib/game/learned/genome.js';
+import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 
 test('a spot behind the line, inbounds and clear of everyone, has no fault', () => {
   const s = createGame({ seed: 1 });
@@ -394,4 +396,56 @@ test('a receiver split wide becomes the man his corner is keyed to', () => {
   const keyed = [...keys.values()].filter((k) => k.group === 'back')
     .map((k) => k.mate?.id);
   assert.ok(keyed.includes('o-wr1'), `expected a corner keyed to o-wr1, got ${keyed}`);
+});
+
+test('an untrained genome never subs, whatever the offense shows', () => {
+  const g = makeGenome(DEFENSE_SPEC);
+  const s = createGame({ seed: 1 });
+  assert.equal(learnedPersonnel(s, g), 'stacked');
+  // Empty the backfield and split it wide: still stacked, because both cuts
+  // sit at the floor. This pair of assertions IS the compatibility guarantee.
+  placePlayer(s, 'o-wr1', fieldPos(-24, s.losYard - 1));
+  placePlayer(s, 'o-wr2', fieldPos(24, s.losYard - 1));
+  assert.equal(learnedPersonnel(s, g), 'stacked');
+  s.down = 3;
+  s.toGoYard = s.losYard + 10;
+  assert.equal(learnedPersonnel(s, g), 'stacked');
+});
+
+test('a genome that hates spread subs to nickel, then to dime', () => {
+  const s = createGame({ seed: 1 });
+  placePlayer(s, 'o-wr1', fieldPos(-24, s.losYard - 1));
+  placePlayer(s, 'o-wr2', fieldPos(24, s.losYard - 1));
+  const base = { ...makeGenome(DEFENSE_SPEC), 'sub:spread': 4 };
+  // Spread is near 1 with the receivers on the numbers, so the axis reads
+  // about 4 (0.9 for this roster) -- comfortably clear of a cut at -3, and
+  // clear of the floor at -4 too, which is why base's own untouched bias
+  // (init -4 for both cuts) still reads stacked: raising ONE cut to -3 is
+  // what crosses it, not lowering it further.
+  assert.equal(learnedPersonnel(s, base), 'stacked');
+  assert.equal(learnedPersonnel(s, { ...base, 'sub:nickel:bias': -3 }), 'nickel');
+  assert.equal(learnedPersonnel(s, { ...base, 'sub:nickel:bias': -3, 'sub:dime:bias': -3 }), 'dime');
+});
+
+test('the empty backfield is a tell of its own, separate from width', () => {
+  // Width cannot see this: both looks below are the same number of yards
+  // across, and only the count of men off the ball changes.
+  const s = createGame({ seed: 1 });
+  const backs = (st) => {
+    const them = st.players.filter((p) => p.team === 'offense');
+    return them.filter((p) => !onTheLine(st, p)).length / them.length;
+  };
+  const packed = backs(s);
+  // Pull a receiver off the line without moving him sideways: the fraction
+  // rises, the width does not budge.
+  const wr = getPlayer(s, 'o-wr1');
+  placePlayer(s, 'o-wr1', { x: wr.pos.x, y: fieldPos(0, s.losYard - 5).y });
+  const emptied = backs(s);
+  assert.ok(emptied > packed, 'the look did not actually empty out');
+  // A cut placed between the two fractions is crossed by one and not the other.
+  const cut = -4 * (packed + emptied) / 2;
+  const g = { ...makeGenome(DEFENSE_SPEC), 'sub:backs': 4, 'sub:nickel:bias': cut };
+  assert.equal(learnedPersonnel(s, g), 'nickel');
+  const s2 = createGame({ seed: 1 });
+  assert.equal(learnedPersonnel(s2, g), 'stacked');
 });

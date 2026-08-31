@@ -8,6 +8,7 @@ import { runTurn } from '../../lib/game/turn.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { fieldPos } from '../../lib/game/view.js';
 import { DEFENSE_GENOME } from '../../lib/game/learned/defense-genome.js';
+import { nextDown } from '../../lib/game/rules.js';
 
 function afterSnap(s) {
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
@@ -69,4 +70,28 @@ test('a learned-level game runs whole turns without incident', () => {
   const moved = s.players.filter((p) => p.team === 'defense'
     && (p.pos.x !== before.get(p.id).x || p.pos.y !== before.get(p.id).y));
   assert.ok(moved.length > 0, 'the coached defense actually plays');
+});
+
+test('coachAi dispatches the learned offense', () => {
+  const s = createGame({ seed: 9, ai: 'offense', aiLevel: 'learned' });
+  coachAi(s);
+  assert.ok(s.aiPlay, 'the snap call is made');
+  assert.ok(['run', 'pass'].includes(s.aiPlay.call));
+  const planned = s.players.filter((p) => p.team === 'offense' && p.plan).length;
+  assert.ok(planned >= 3, 'the offense is coached');
+});
+
+test('a learned computer offense plays whole downs against an idle defense', () => {
+  const s = createGame({ seed: 11, ai: 'offense', aiLevel: 'learned' });
+  const random = mulberry32(11);
+  let guard = 0;
+  while (s.phase !== 'gameOver' && guard++ < 300) {
+    if (s.phase === 'playOver') { nextDown(s); continue; }
+    runTurn(s, random);
+  }
+  assert.equal(s.phase, 'gameOver');
+  assert.ok(
+    ['touchdown', 'turnover-on-downs', 'turnover-fumble'].includes(s.result),
+    s.result,
+  );
 });

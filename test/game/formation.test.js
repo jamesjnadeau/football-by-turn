@@ -2,15 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   spotFault, onTheLine, lineCount, formationFoul, alignDefense, canReposition, placePlayer,
-  placeFormation, setPersonnel, defenseKeys, learnedPersonnel,
+  placeFormation, setPersonnel, defenseKeys, learnedPersonnel, learnedLook,
 } from '../../lib/game/formation.js';
 import { minOnLine, teamSize } from '../../lib/game/rosters.js';
 import { createGame, getPlayer, setPlan, setPass } from '../../lib/game/state.js';
 import { hashCentresX } from '../../lib/field/geometry.js';
 import { setCover } from '../../lib/game/cover.js';
 import { fieldPos, yardsOfY } from '../../lib/game/view.js';
-import { makeGenome } from '../../lib/game/learned/genome.js';
+import { makeGenome, mutateGenome } from '../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
+import { learnedDefenseSpots } from '../../lib/game/learned/formation.js';
+import { DEFENSE_GENOME } from '../../lib/game/learned/defense-genome.js';
+import { mulberry32 } from '../../lib/game/rng.js';
 
 test('a spot behind the line, inbounds and clear of everyone, has no fault', () => {
   const s = createGame({ seed: 1 });
@@ -448,4 +451,109 @@ test('the empty backfield is a tell of its own, separate from width', () => {
   assert.equal(learnedPersonnel(s, g), 'nickel');
   const s2 = createGame({ seed: 1 });
   assert.equal(learnedPersonnel(s2, g), 'stacked');
+});
+
+test('at zero pull the learned look is the genome look, exactly', () => {
+  // The other half of the compatibility guarantee: with no adapt weights, the
+  // new path and the old one must not differ by so much as a rounding error.
+  const s = createGame({ seed: 1 });
+  const g = makeGenome(DEFENSE_SPEC);
+  assert.deepEqual(learnedLook(s, g), learnedDefenseSpots(s, g));
+});
+
+test('at zero pull a trained genome is still the genome look, exactly', () => {
+  const s = createGame({ seed: 1 });
+  assert.deepEqual(
+    learnedLook(s, DEFENSE_GENOME.values),
+    learnedDefenseSpots(s, DEFENSE_GENOME.values),
+  );
+});
+
+test('a full-width pull stands the front and the corners where alignDefense does', () => {
+  const s = createGame({ seed: 1 });
+  placePlayer(s, 'o-wr1', fieldPos(-22, s.losYard - 1));
+  const g = { ...makeGenome(DEFENSE_SPEC) };
+  for (const group of ['line', 'backer', 'back', 'deep']) {
+    g[`adapt:${group}:width`] = 1;
+    g[`adapt:${group}:depth`] = 1;
+  }
+  const learned = new Map(learnedLook(s, g).map((sp) => [sp.id, sp.pos]));
+  const ruled = new Map(alignDefense(s).map((sp) => [sp.id, sp.pos]));
+  // Within a nudge: both run the same clearX scan, but from spots that reached
+  // it by different arithmetic, so a man can land one nudge unit apart.
+  for (const id of ['d-nt', 'd-dt1', 'd-dt2', 'd-s']) {
+    const gap = Math.hypot(
+      learned.get(id).x - ruled.get(id).x, learned.get(id).y - ruled.get(id).y,
+    );
+    assert.ok(gap <= 1.5, `${id} stood ${gap.toFixed(2)} from the rule-based spot`);
+  }
+  // The corners are the OTHER row answerYards's own comment says reads
+  // differently on purpose: a back's depth is a cushion off HIS OWN man,
+  // not alignDefense's flat ALIGN_CORNER_YARDS, so covering a receiver at his
+  // ordinary split-end depth (both WRs ship a yard off the ball) stands the
+  // corner a yard deeper than alignDefense ever would — by design, not by
+  // rounding, exactly as the flanker test two cases below relies on. Only the
+  // across component — which the two algorithms compute identically, straight
+  // off the mate's x — is asserted here.
+  for (const id of ['d-cb1', 'd-cb2']) {
+    assert.ok(Math.abs(learned.get(id).x - ruled.get(id).x) <= 1.5,
+      `${id} stood ${Math.abs(learned.get(id).x - ruled.get(id).x).toFixed(2)} across from the rule-based spot`);
+  }
+});
+
+test('a receiver split wide drags his corner across', () => {
+  // The thing this whole feature exists for.
+  const s = createGame({ seed: 1 });
+  const g = { ...makeGenome(DEFENSE_SPEC), 'adapt:back:width': 1 };
+  const before = new Map(learnedLook(s, g).map((sp) => [sp.id, sp.pos]));
+  placePlayer(s, 'o-wr1', fieldPos(-24, s.losYard - 1));
+  const after = new Map(learnedLook(s, g).map((sp) => [sp.id, sp.pos]));
+  const travelled = ['d-cb1', 'd-cb2'].some(
+    (id) => Math.abs(after.get(id).x - before.get(id).x) > 5,
+  );
+  assert.ok(travelled, 'no corner moved with the receiver');
+});
+
+test('a flanker off the ball drags his corner deeper', () => {
+  const s = createGame({ seed: 1 });
+  const g = { ...makeGenome(DEFENSE_SPEC), 'adapt:back:width': 1, 'adapt:back:depth': 1 };
+  placePlayer(s, 'o-wr1', fieldPos(-22, s.losYard - 1));
+  const shallow = new Map(learnedLook(s, g).map((sp) => [sp.id, sp.pos]));
+  placePlayer(s, 'o-wr1', fieldPos(-22, s.losYard - 6));
+  const deep = new Map(learnedLook(s, g).map((sp) => [sp.id, sp.pos]));
+  const backedOff = ['d-cb1', 'd-cb2'].some(
+    (id) => yardsOfY(deep.get(id).y) > yardsOfY(shallow.get(id).y),
+  );
+  assert.ok(backedOff, 'no corner gave ground to the flanker');
+});
+
+test('half a pull stands a man between the two looks', () => {
+  const s = createGame({ seed: 1 });
+  placePlayer(s, 'o-wr1', fieldPos(-24, s.losYard - 1));
+  const none = new Map(learnedLook(s, { ...makeGenome(DEFENSE_SPEC), 'adapt:back:width': 0 })
+    .map((sp) => [sp.id, sp.pos]));
+  const half = new Map(learnedLook(s, { ...makeGenome(DEFENSE_SPEC), 'adapt:back:width': 0.5 })
+    .map((sp) => [sp.id, sp.pos]));
+  const full = new Map(learnedLook(s, { ...makeGenome(DEFENSE_SPEC), 'adapt:back:width': 1 })
+    .map((sp) => [sp.id, sp.pos]));
+  const between = ['d-cb1', 'd-cb2'].some((id) => {
+    const lo = Math.min(none.get(id).x, full.get(id).x);
+    const hi = Math.max(none.get(id).x, full.get(id).x);
+    return half.get(id).x > lo + 0.5 && half.get(id).x < hi - 0.5;
+  });
+  assert.ok(between, 'half a pull landed on one end or the other');
+});
+
+test('everything a training run can express still lands legal', () => {
+  // learned/formation.js keeps this sweep for the base look; the adapted look
+  // needs its own, because the blend is a new way to arrive at a spot.
+  const rand = mulberry32(11);
+  for (let i = 0; i < 20; i++) {
+    const s = createGame({ seed: 1 });
+    const g = mutateGenome(DEFENSE_SPEC, makeGenome(DEFENSE_SPEC), rand, 0.5);
+    for (const { id, pos } of learnedLook(s, g)) getPlayer(s, id).pos = pos;
+    for (const p of s.players.filter((pl) => pl.team === 'defense')) {
+      assert.equal(spotFault(s, p.id, p.pos), null, `${p.id} mutation ${i}`);
+    }
+  }
 });

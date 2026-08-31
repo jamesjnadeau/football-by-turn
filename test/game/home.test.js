@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { homeMarkup, COMING_SOON } from '../../lib/game/home.js';
-import { VARIANTS } from '../../lib/game/variants.js';
+import { homeMarkup, COMING_SOON, SIDES, sideMarkup } from '../../lib/game/home.js';
+import { VARIANTS, getVariant } from '../../lib/game/variants.js';
 
 test('the screen names the game and offers one button per variant', () => {
   const html = homeMarkup();
@@ -31,4 +31,34 @@ test('text with markup in it is escaped rather than written through', () => {
   assert.ok(!html.includes('<b>'), 'no tag survives');
   assert.ok(html.includes('&lt;b&gt;7&lt;/b&gt;'));
   assert.ok(html.includes('&quot;note&quot; &amp; more'));
+});
+
+test('the side screen offers offense, defense, training, and the way back', () => {
+  const html = sideMarkup(getVariant('7'));
+  assert.ok(html.includes('7 Player'), 'names the picked game');
+  assert.ok(html.includes('data-side="offense"'), 'an offense button');
+  assert.ok(html.includes('data-side="defense"'), 'a defense button');
+  assert.ok(html.includes('data-side="training"'), 'a training-mode button');
+  assert.ok(html.includes('data-home-back'), 'a way back to the game list');
+  assert.ok(html.includes('Training Mode'), 'the current mode keeps its name');
+  for (const s of SIDES) {
+    assert.ok(html.includes(s.label), `the label for ${s.id}`);
+    assert.ok(html.includes(s.note), `the note for ${s.id}`);
+  }
+});
+
+test('the side buttons reuse the home-choice styling', () => {
+  const html = sideMarkup(getVariant('11'));
+  // Three choices plus Back, all styled like the buttons on the first screen.
+  assert.equal((html.match(/class="home-choice"/g) || []).length, 4);
+});
+
+test('side-screen text is escaped like every other home string', () => {
+  const html = sideMarkup({ id: 'x', label: '<b>7</b>' }, [
+    { id: 'offense', label: 'a "label" & more', note: '<i>note</i>' },
+  ]);
+  assert.ok(!html.includes('<b>'), 'no tag survives');
+  assert.ok(html.includes('&lt;b&gt;7&lt;/b&gt;'));
+  assert.ok(html.includes('&quot;label&quot; &amp; more'));
+  assert.ok(html.includes('&lt;i&gt;note&lt;/i&gt;'));
 });

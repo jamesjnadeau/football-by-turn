@@ -157,6 +157,26 @@ test('pickups: offense recovering keeps the play alive, defense recovering kills
   assert.equal(def.deadReason, 'recovered');
 });
 
+test('an offensive lineman is an ineligible receiver: a forward pass sails through him', () => {
+  const s = scenario(['o-c', 'd-s']);
+  const c = getPlayer(s, 'o-c');
+  s.ball = { carrierId: null, pos: { ...c.pos }, vel: { x: 0, y: 0 }, forward: true };
+  assert.deepEqual(checkPickup(s), [], 'standing right on it is not enough — he cannot catch a forward pass');
+  assert.equal(s.ball.carrierId, null, 'the ball stays loose');
+});
+
+test('but that same lineman can still fall on a fumble, or take a backward pass/handoff', () => {
+  const fumble = scenario(['o-c', 'd-s']);
+  const c1 = getPlayer(fumble, 'o-c');
+  fumble.ball = { carrierId: null, pos: { ...c1.pos }, vel: { x: 0, y: 0 } }; // no `forward`: a fumble
+  assert.equal(checkPickup(fumble)[0].by, 'o-c', 'no forward flag means it is fair game');
+
+  const lateral = scenario(['o-c', 'd-s']);
+  const c2 = getPlayer(lateral, 'o-c');
+  lateral.ball = { carrierId: null, pos: { ...c2.pos }, vel: { x: 0, y: 0 }, forward: false };
+  assert.equal(checkPickup(lateral)[0].by, 'o-c', 'a backward throw is not a forward pass');
+});
+
 test('touchdown: the ball crossing the goal plane ends everything', () => {
   const s = createGame({ seed: 1 });
   afterSnap(s);

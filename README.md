@@ -33,10 +33,10 @@ https://jamesjnadeau.github.io/football-by-turn/.
 
 ## How to play
 
-The page opens on a **home screen** listing the games it can deal: **7 Player**,
-which is the game described below, and **11 Player**, which is greyed out and
-marked *coming soon* — the eleven-a-side game is not built yet. Press **7
-Player** and the board takes over the screen.
+The page opens on a **home screen** listing the games it can deal: **7 Player**
+and **11 Player**. They are the same game with different-sized teams — the rules
+below are true of both. Press either and the board takes over the screen; **Back
+to Home** in the Coaches Menu brings the list back.
 
 Each drive starts 1st and goal from the offense's own 10-yard line, and the
 offense has **4 downs** to score before the ball turns over.
@@ -55,7 +55,7 @@ Because the ball is spotted between the hash marks, the man holding it has to
 line up between them: drag the centre wider than that while repositioning and
 the spot is refused. Everyone else splits out as far as the sideline allows.
 
-**The computer coaches the defense.** You draw arrows for your seven offensive
+**The computer coaches the defense.** You draw arrows for your offensive
 players; each turn the computer plans the defense and runs it. You never see
 what it has planned: no defensive arrows and no coverage marks are ever drawn,
 because the computer does not decide until you press **Run Turn**. The
@@ -70,8 +70,8 @@ because the computer does not decide until you press **Run Turn**. The
   cover order you give by dragging, re-aimed at their man every fraction of a
   second — and the safety plays free behind everything, so nobody gets over the
   top. All of that is off the moment the ball comes loose or the carrier crosses
-  the line: then it is seven players converging on one, each on the angle that
-  arrives in front of him rather than behind.
+  the line: then it is the whole defense converging on one, each on the angle
+  that arrives in front of him rather than behind.
 - **Defense: computer (basic)** — the original brain. Every defender runs
   straight at the ball, leading the carrier rather than chasing where he just
   was. Easier to beat: get one man moving sideways and the whole defense follows
@@ -250,18 +250,21 @@ game:
   going downfield, such as for a pass release" line is implemented as a physics
   rule of its own: a fast release past a defender gets a lighter friction
   coefficient than a slow grind.
-- **`TEAM_SIZE` = 7-a-side**, not the full 11: three linemen, a QB, a
-  running back, and two wide receivers/corners on offense; a matching
-  three-lineman front, two corners, a linebacker, and a safety on defense.
-  Chosen to keep a turn-based, hand-drawn-arrow game legible — 22 players all
-  needing an arrow every half-second turn would be a lot of drawing.
-- **The formation rules are the real ones, scaled to seven a side.** Real
-  football wants seven of eleven on the line; 7/11 of a seven-man team rounds
-  to five, which is exactly what the drive-start formation shows. Eligible
-  receiver and covered/uncovered rules are deliberately left out, because this
-  game lets anyone catch a pass. An illegal formation is enforced with the
-  same machinery as an illegal forward pass — five yards from the previous
-  spot, and the down counts.
+- **Two team sizes, picked off the home screen.** **11 Player** is the full
+  game: five linemen, a tight end, two receivers, a fullback, a quarterback and
+  a back, against a five-two-four defense. **7 Player** is the original, and is
+  kept because it is a genuinely quicker game to draw for — 22 players all
+  needing an arrow every half-second turn is a lot of drawing. Both formations
+  live in `lib/game/rosters.js`, keyed by the same ids the home screen's buttons
+  carry; it is the only file that knows what a formation looks like, and
+  everything downstream reads the roster off the state.
+- **The formation rules are the real ones.** Eleven a side wants seven of eleven
+  on the line, which is exactly what its drive-start formation shows. Seven a
+  side rounds that to five, and shows five. Eligible receiver and
+  covered/uncovered rules are deliberately left out, because this game lets
+  anyone catch a pass. An illegal formation is enforced with the same machinery
+  as an illegal forward pass — five yards from the previous spot, and the down
+  counts.
 
 ## Design notes
 

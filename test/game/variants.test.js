@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { VARIANTS, getVariant, isPlayable } from '../../lib/game/variants.js';
 import { ROSTERS } from '../../lib/game/rosters.js';
 
-test('two games are offered: seven a side to play, eleven not yet', () => {
+test('two games are offered, and both of them can be played', () => {
   assert.deepEqual(VARIANTS.map((v) => v.id), ['7', '11']);
   assert.equal(isPlayable('7'), true);
-  assert.equal(isPlayable('11'), false);
+  assert.equal(isPlayable('11'), true);
 });
 
 test('every variant carries what the screen needs to draw it', () => {

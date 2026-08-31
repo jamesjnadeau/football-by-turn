@@ -24,7 +24,7 @@ import { lobLanded } from '../lib/game/lob.js';
 import {
   TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
 } from '../lib/game/constants.js';
-import { minOnLine, DEFAULT_VARIANT } from '../lib/game/rosters.js';
+import { minOnLine, DEFAULT_VARIANT, OFFENSIVE_LINE_ROLES } from '../lib/game/rosters.js';
 import { followYard, yardsOfY } from '../lib/game/view.js';
 import { attachInput } from './input.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
@@ -332,9 +332,15 @@ function onGesture(playerId, gesture, point) {
       p.mode !== 'normal' ? 'normal'
       : state.ball.carrierId === playerId ? 'tucked'
       : p.team === 'defense' ? 'prepared'
+      // An offensive lineman gets the cut block instead of holding, but only
+      // on the snap itself — setMode's own legality agrees (OFFENSIVE_LINE_ROLES,
+      // turnIndex === 0); surfacing the same condition here means the long
+      // press offers the stance he can actually use instead of one setMode
+      // would just refuse past the first turn.
+      : p.team === 'offense' && OFFENSIVE_LINE_ROLES.has(p.role) && state.turnIndex === 0 ? 'cutBlock'
       : 'holding';
     if (!setMode(state, playerId, target)) say(`${p.role} can't do that.`);
-    else say(target === 'normal' ? `${p.role} back to normal.` : `${p.role}: ${target}.`);
+    else say(target === 'normal' ? `${p.role} back to normal.` : `${p.role}: ${target === 'cutBlock' ? 'cut block' : target}.`);
   }
   // gesture.kind === 'click': a tap on a player does nothing. Moving him is a
   // drag, and only in reposition mode — a tap is how you arm a throw, and it

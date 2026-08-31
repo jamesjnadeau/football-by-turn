@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
-  coverMark, coverHaloMark, lineZoneMark, renderFieldButtons, lineToGainMark,
+  coverMark, coverHaloMark, lineZoneMark, renderFieldButtons, lineToGainMark, passLockMark,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
@@ -707,19 +707,19 @@ test('the button column clears the yard numbers and the edge of the frame', () =
   }
 });
 
-test('the snap arrow reaches the man it is aimed at, not a length scaled by power', () => {
+test('the snap draws exactly like any other lock-on: a halo under the quarterback and an arrow to his edge', () => {
   const s = createGame({ seed: 1 });
   const c = getPlayer(s, 'o-c');
   const qb = getPlayer(s, 'o-qb');
   assert.equal(s.plannedPass.power, 0, 'the snap is the gentlest throw in the game');
+  assert.equal(s.plannedPass.target, 'o-qb', 'the snap is a lock, not a bare aim');
 
   const svg = renderPassArrow(s);
   assert.ok(svg.includes('data-pass="o-c"'), 'drawn from the centre');
-  // Scaled by power it would be a path from a point to the same point. It runs
-  // to the quarterback instead, which is the whole of what it has to say.
-  assert.ok(!svg.includes(`M ${num(c.pos.x)} ${num(c.pos.y)} L ${num(c.pos.x)} ${num(c.pos.y)}`),
-    'not a zero-length arrow');
-  assert.ok(svg.includes(`L ${num(qb.pos.x)} ${num(qb.pos.y)}`), 'it reaches him');
+  assert.ok(svg.includes('class="pass-halo"'), 'the snap reads like any other lock, halo and all');
+  // No special-casing left for the snap: it is the same mark passLockMark
+  // draws for a coach's own lock-on, from the same two men.
+  assert.equal(svg, `<g class="plan-arrow" data-pass="o-c">${passLockMark(c, qb)}</g>`);
 });
 
 test('a throw the coach drew is still drawn at the length he dragged', () => {

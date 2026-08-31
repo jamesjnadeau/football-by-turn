@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createGame, setPlan, clearAllPlans, setMode, getPlayer, ballPos, carrier,
-  isControllable, setPass, clearPass, aimSnap, defaultSpots,
+  isControllable, setPass, clearPass, aimSnap, defaultSpots, SNAP_TARGET_ID,
 } from '../../lib/game/state.js';
 import { teamSize } from '../../lib/game/rosters.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -150,10 +150,23 @@ test('every special move locks an axis, and dropping back to normal releases it'
 test('a new game comes up with the snap planned, nothing thrown, and no flag', () => {
   const s = createGame({ seed: 1 });
   // Not null any more: the centre has the ball and is already aimed at the
-  // quarterback. It is marked `auto` because nobody asked for it.
-  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true });
+  // quarterback. It is marked `auto` because nobody asked for it, and it
+  // carries a `target` so the whistle re-aims it at him rather than firing
+  // along wherever he happened to be standing when the huddle broke.
+  assert.deepEqual(s.plannedPass, {
+    from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true, target: 'o-qb',
+  });
   assert.equal(s.forwardPasses, 0, 'planned, not thrown');
   assert.equal(s.penalty, null);
+});
+
+test('aimSnap locks the snap onto the quarterback, not just aims a fallback at him', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(s.plannedPass.target, SNAP_TARGET_ID);
+  // Re-aiming (the quarterback having moved) keeps the lock, it doesn't drop it.
+  getPlayer(s, 'o-qb').pos = { x: 155, y: 70 };
+  assert.equal(aimSnap(s), true);
+  assert.equal(s.plannedPass.target, SNAP_TARGET_ID);
 });
 
 test('the snap is aimed at the quarterback, wherever he is standing', () => {
@@ -227,7 +240,9 @@ test('Clear Arrows drops the coach\'s throw and leaves the snap standing', () =>
   assert.ok(s.players.every((p) => p.plan === null), 'the arrows are gone');
   // Wiping the board must not leave a down that cannot start, so the snap is
   // put straight back — aimed at the quarterback again, not out to the side.
-  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true });
+  assert.deepEqual(s.plannedPass, {
+    from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true, target: 'o-qb',
+  });
 });
 
 test('the default spots are the formation every down opens in', () => {

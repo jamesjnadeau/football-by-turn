@@ -208,7 +208,9 @@ test('between downs: ball is spotted where it died, down advances, formation res
   // ball back on the centre, with the lateral to the quarterback re-aimed at
   // the new line rather than left pointing at the old one.
   assert.equal(s.ball.carrierId, 'o-c');
-  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true });
+  assert.deepEqual(s.plannedPass, {
+    from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true, target: 'o-qb',
+  });
   assert.equal(s.deadReason, null);
   // the new formation is planted around the new LOS
   const c = getPlayer(s, 'o-c');
@@ -288,7 +290,9 @@ test('an enforced flag wipes the play and spots the ball back from the previous 
   assert.equal(s.forwardPasses, 0, 'a new down gets a new forward pass');
   // The throw that drew the flag is gone; what stands is the fresh snap, which
   // is a lateral and so spends none of the new down's forward pass.
-  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true });
+  assert.deepEqual(s.plannedPass, {
+    from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true, target: 'o-qb',
+  });
 });
 
 test('the defense declines the flag when it has just taken the ball', () => {

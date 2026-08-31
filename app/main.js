@@ -589,7 +589,9 @@ function pressRun() {
   // pre-turn spots, so animating the frames walks them to where state says.
   const { frames, events } = runTurn(state, random);
   layer('game-arrows').clear();
-  const thrown = events.some((e) => e.type === 'pass');
+  // Only ever one throw a turn, so its own event -- if any -- says everything
+  // there is to say about what got thrown and by whom.
+  const passEvent = events.find((e) => e.type === 'pass');
   const finish = () => {
     animating = false;
     paint();
@@ -599,8 +601,18 @@ function pressRun() {
       if (e.type === 'touchdown') say('TOUCHDOWN!');
       if (e.type === 'out-of-bounds') say('Out of bounds.');
       if (e.type === 'pickup') {
-        if (!thrown) say(`Recovered by ${e.team}.`);
-        else say(e.team === 'defense' ? 'INTERCEPTED!' : 'Caught!');
+        if (!passEvent) {
+          say(`Recovered by ${e.team}.`);
+        } else if (passEvent.auto) {
+          // The snap is never news -- it is how a down starts, not a play the
+          // coach called, so the offense catching its own snap gets silence
+          // rather than "Caught!". But a snap is a backward pass, so a MUFFED
+          // one is still a live ball: if the defense comes up with it, that is
+          // a real turnover and has to be announced like any other one.
+          if (e.team === 'defense') say(`Recovered by ${e.team}.`);
+        } else {
+          say(e.team === 'defense' ? 'INTERCEPTED!' : 'Caught!');
+        }
       }
       if (e.type === 'incomplete') say('Incomplete.');
     }

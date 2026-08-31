@@ -75,9 +75,37 @@ test('releasing a throw puts the ball in the air, clear of the passer\'s own rea
   const off = Math.hypot(s.ball.pos.x - from.x, s.ball.pos.y - from.y);
   assert.ok(off > qb.radius + PICKUP_RADIUS_BONUS, 'outside his own scoop range');
   assert.ok(Math.abs(off - (qb.radius + PICKUP_RADIUS_BONUS + PASS_SPAWN_EPSILON)) < 1e-9);
-  assert.deepEqual(events, [{ type: 'pass', by: 'o-qb', forward: true }]);
+  assert.deepEqual(events, [{ type: 'pass', by: 'o-qb', forward: true, auto: false }]);
   assert.equal(s.forwardPasses, 1);
   assert.equal(s.penalty, null);
+});
+
+test('the pass event flags the automatic snap; a throw the coach calls is not', () => {
+  const s = createGame({ seed: 1 });
+  // A fresh game already has the snap queued -- releasing it is the snap
+  // itself, no afterSnap() needed.
+  const [snapEvent] = releasePass(s, mulberry32(1));
+  assert.equal(snapEvent.auto, true, 'nobody called this throw, so it is never announced');
+
+  afterSnap(s);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  const [throwEvent] = releasePass(s, mulberry32(1));
+  assert.equal(throwEvent.auto, false, 'the coach threw this one himself');
+});
+
+test('the snap leads a moving quarterback rather than throwing at the spot he broke the huddle from', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  const centre = getPlayer(s, 'o-c');
+  const standing = { ...s.plannedPass.dir }; // aimed at him at rest, when the huddle broke
+  setPlan(s, 'o-qb', { x: 1, y: 0 }, 1); // he drops back to one side before the ball is snapped
+  const solved = lockOnPass(centre, qb);
+  releasePass(s, mulberry32(1));
+  const flew = norm(s.ball.vel);
+  assert.ok(Math.abs(flew.x - standing.x) > 1e-6 || Math.abs(flew.y - standing.y) > 1e-6,
+    'not thrown at the spot he broke the huddle from');
+  assert.ok(Math.abs(flew.x - solved.dir.x) < 1e-9 && Math.abs(flew.y - solved.dir.y) < 1e-9,
+    'thrown at the lock solution instead, leading him');
 });
 
 test('a non-unit direction does not secretly change the throw\'s power', () => {

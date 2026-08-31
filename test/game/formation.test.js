@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {
   spotFault, onTheLine, lineCount, formationFoul, alignDefense, canReposition, placePlayer,
   placeFormation, setPersonnel, defenseKeys, learnedPersonnel, learnedLook,
+  answerOffense, applyLearnedLook,
 } from '../../lib/game/formation.js';
-import { minOnLine, teamSize } from '../../lib/game/rosters.js';
+import { minOnLine, teamSize, personnelId } from '../../lib/game/rosters.js';
 import { createGame, getPlayer, setPlan, setPass } from '../../lib/game/state.js';
 import { hashCentresX } from '../../lib/field/geometry.js';
 import { setCover } from '../../lib/game/cover.js';
@@ -556,4 +557,78 @@ test('everything a training run can express still lands legal', () => {
       assert.equal(spotFault(s, p.id, p.pos), null, `${p.id} mutation ${i}`);
     }
   }
+});
+
+test('answerOffense subs the package and stands the men, for a learned defense only', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  const g = { ...makeGenome(DEFENSE_SPEC), 'sub:spread': 4, 'sub:nickel:bias': -3 };
+  placePlayer(s, 'o-wr1', fieldPos(-24, s.losYard - 1));
+  placePlayer(s, 'o-wr2', fieldPos(24, s.losYard - 1));
+  assert.equal(answerOffense(s, g), true);
+  assert.equal(personnelId(s.variantId), 'nickel');
+  assert.ok(s.players.some((p) => p.id === 'd-lb2'), 'the extra backer never came on');
+  assert.equal(s.players.filter((p) => p.team === 'defense').length, teamSize(s.variantId));
+});
+
+test('answerOffense declines and touches nobody when the computer is not on defense', () => {
+  for (const opts of [
+    { seed: 1 },
+    { seed: 1, ai: 'defense', aiLevel: 'smart' },
+    { seed: 1, ai: 'offense', aiLevel: 'learned' },
+  ]) {
+    const s = createGame(opts);
+    const before = s.players.map((p) => ({ id: p.id, ...p.pos }));
+    const variant = s.variantId;
+    assert.equal(answerOffense(s, makeGenome(DEFENSE_SPEC)), false);
+    assert.equal(s.variantId, variant);
+    assert.deepEqual(s.players.map((p) => ({ id: p.id, ...p.pos })), before);
+  }
+});
+
+test('answerOffense declines once the ball is live', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.turnIndex = 1;
+  assert.equal(answerOffense(s, makeGenome(DEFENSE_SPEC)), false);
+});
+
+test('a man answerOffense moves loses the orders he was given standing elsewhere', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  const g = { ...makeGenome(DEFENSE_SPEC), 'adapt:back:width': 1 };
+  placePlayer(s, 'o-wr1', fieldPos(-24, s.losYard - 1));
+  setPlan(s, 'd-cb1', { x: 0, y: 1 }, 1);
+  answerOffense(s, g);
+  assert.equal(getPlayer(s, 'd-cb1').plan, null);
+  assert.equal(getPlayer(s, 'd-cb1').cover, null);
+});
+
+test('every spot answerOffense writes is one the rulebook would allow', () => {
+  const rand = mulberry32(13);
+  for (let i = 0; i < 20; i++) {
+    const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+    const g = mutateGenome(DEFENSE_SPEC, makeGenome(DEFENSE_SPEC), rand, 0.5);
+    answerOffense(s, g);
+    for (const p of s.players.filter((pl) => pl.team === 'defense')) {
+      assert.equal(spotFault(s, p.id, p.pos), null, `${p.id} mutation ${i}`);
+    }
+  }
+});
+
+test('applyLearnedLook works hot-seat, which is how the trainer runs', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(s.aiTeam, null);
+  assert.equal(applyLearnedLook(s, makeGenome(DEFENSE_SPEC)), true);
+});
+
+test('answerOffense puts a dragged-away defender back where the look wants him', () => {
+  // The bug this guards: app/main.js's realignDefense used to run the
+  // rule-based alignDefense after any offense change, stomping a learned
+  // defense's formation. Simulate that stomp by hand and confirm the answer
+  // puts him back.
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  const g = makeGenome(DEFENSE_SPEC);
+  answerOffense(s, g);
+  const spot = { ...getPlayer(s, 'd-s').pos };
+  getPlayer(s, 'd-s').pos = { x: spot.x + 30, y: spot.y + 5 };
+  assert.equal(answerOffense(s, g), true);
+  assert.deepEqual(getPlayer(s, 'd-s').pos, spot);
 });

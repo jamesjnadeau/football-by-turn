@@ -6,29 +6,25 @@
  *   node tools/train-defense.js --generations 30 --pop 16 --plays 24 --seed 1
  *
  * The opponent here is offense.js's scripted autoplan — a bootstrap, not the
- * end state. The Offense plan's tools/train-coevolve.js retrains this genome
- * against the LEARNED offense, population against population; keep using
- * that once it exists.
+ * end state. tools/train-coevolve.js retrains this genome against the LEARNED
+ * offense, population against population; keep using that.
+ *
+ * The fitness function moved to lib/game/train/fitness.js with the rest of the
+ * training core (the browser trains too); it is re-exported here so that every
+ * existing importer — tools/coevolve.js, the tests — still finds it.
  */
 import { writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { DEFENSE_SPEC } from '../lib/game/learned/defense-spec.js';
 import { DEFENSE_GENOME } from '../lib/game/learned/defense-genome.js';
 import { genomeModuleSource } from '../lib/game/learned/genome.js';
-import { evolve } from './evolve.js';
-import { evaluateDefense } from './harness.js';
+import { evolve } from '../lib/game/train/evolve.js';
+import { evaluateDefense } from '../lib/game/train/harness.js';
+import {
+  defenseFitness, TURNOVER_BONUS_YARDS, TOUCHDOWN_PENALTY_YARDS,
+} from '../lib/game/train/fitness.js';
 
-// A turnover is worth about a possession's field position; a touchdown given
-// up costs more than any one play's yardage. Both in "yards" so the three
-// terms share a scale.
-export const TURNOVER_BONUS_YARDS = 8;
-export const TOUCHDOWN_PENALTY_YARDS = 10;
-
-export function defenseFitness(stats) {
-  return -stats.yardsPerPlay
-    + TURNOVER_BONUS_YARDS * stats.turnoverRate
-    - TOUCHDOWN_PENALTY_YARDS * stats.touchdownRate;
-}
+export { defenseFitness, TURNOVER_BONUS_YARDS, TOUCHDOWN_PENALTY_YARDS };
 
 export function trainDefense({ generations, popSize, plays, seed, sigma }) {
   return evolve({

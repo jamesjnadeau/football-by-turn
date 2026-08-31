@@ -8,22 +8,21 @@
  * This is the training the spec actually asks for; train-defense.js's
  * scripted-opponent run was the bootstrap that made the first defense
  * genome worth playing against.
+ *
+ * Both fitness functions moved to lib/game/train/fitness.js with the rest of
+ * the training core; the offense's is re-exported here so that every existing
+ * importer still finds it.
  */
 import { mulberry32 } from '../lib/game/rng.js';
 import { clampGenome, mutateGenome } from '../lib/game/learned/genome.js';
 import { OFFENSE_SPEC } from '../lib/game/learned/offense-spec.js';
 import { DEFENSE_SPEC } from '../lib/game/learned/defense-spec.js';
-import { evaluateMatch } from './harness.js';
-import { defenseFitness } from './train-defense.js';
+import { evaluateMatch } from '../lib/game/train/harness.js';
+import {
+  defenseFitness, offenseFitness, TD_BONUS_YARDS, TURNOVER_PENALTY_YARDS,
+} from '../lib/game/train/fitness.js';
 
-export const TD_BONUS_YARDS = 10;
-export const TURNOVER_PENALTY_YARDS = 8;
-
-export function offenseFitness(stats) {
-  return stats.yardsPerPlay
-    + TD_BONUS_YARDS * stats.touchdownRate
-    - TURNOVER_PENALTY_YARDS * stats.turnoverRate;
-}
+export { offenseFitness, TD_BONUS_YARDS, TURNOVER_PENALTY_YARDS };
 
 const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
 

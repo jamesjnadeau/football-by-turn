@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { stepPhysics } from '../../lib/game/physics.js';
 import { createGame, setPlan, setMode, getPlayer } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
-import { maxSpeed } from '../../lib/game/modes.js';
+import { maxSpeed, accelMult } from '../../lib/game/modes.js';
+import { applyCutBlockAssist } from '../../lib/game/block.js';
 import { DT, SUBSTEPS_PER_TURN, STANCE_LATERAL_MULT, COVER_GRAB_REACH } from '../../lib/game/constants.js';
 import { len } from '../../lib/game/vec.js';
 import { RELEASE_SPEED } from '../../lib/game/constants.js';
@@ -139,6 +140,35 @@ test('a driving blocker\'s wider reach pulls in contact from farther away than a
   nt.pos = { x: 135, y: 108 };
   const contacts = stepPhysics(s, DT);
   assert.ok(contacts.length > 0, 'engaged despite the 1-unit gap between bodies');
+});
+
+test('a teammate within a yard of a driving blocker is faster and turns quicker', () => {
+  const near = pair(['o-rb', 'o-lg']);
+  const far = pair(['o-rb', 'o-lg']);
+  for (const s of [near, far]) getPlayer(s, 'o-lg').mode = 'cutBlockDrive';
+  getPlayer(near, 'o-lg').pos = { x: 135, y: 100 };
+  getPlayer(near, 'o-rb').pos = { x: 135, y: 109 }; // edge gap 9 - 6 = 3 units: inside the aura
+  getPlayer(far, 'o-lg').pos = { x: 135, y: 100 };
+  getPlayer(far, 'o-rb').pos = { x: 135, y: 120 };  // edge gap 20 - 6 = 14 units: well outside it
+  applyCutBlockAssist(near);
+  applyCutBlockAssist(far);
+  assert.equal(getPlayer(near, 'o-rb').cutBlockAssist, true);
+  assert.equal(getPlayer(far, 'o-rb').cutBlockAssist, false);
+  assert.ok(maxSpeed(getPlayer(near, 'o-rb')) > maxSpeed(getPlayer(far, 'o-rb')));
+  assert.ok(accelMult(getPlayer(near, 'o-rb')) > accelMult(getPlayer(far, 'o-rb')));
+});
+
+test('the assist tracks distance each sub-step rather than latching on', () => {
+  const s = pair(['o-rb', 'o-lg']);
+  getPlayer(s, 'o-lg').mode = 'cutBlockDrive';
+  getPlayer(s, 'o-lg').pos = { x: 135, y: 100 };
+  const rb = getPlayer(s, 'o-rb');
+  rb.pos = { x: 135, y: 109 };
+  applyCutBlockAssist(s);
+  assert.equal(rb.cutBlockAssist, true);
+  rb.pos = { x: 135, y: 200 }; // walked well clear
+  applyCutBlockAssist(s);
+  assert.equal(rb.cutBlockAssist, false);
 });
 
 test('contact friction slows a player sliding past another', () => {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createGame, setMode, getPlayer } from '../../lib/game/state.js';
 import { applyPendingCutBlocks } from '../../lib/game/block.js';
 import { len, sub } from '../../lib/game/vec.js';
-import { CUT_BLOCK_PUSH_UNITS, CUT_BLOCK_IMPULSE_SPEED } from '../../lib/game/constants.js';
+import { CUT_BLOCK_PUSH_UNITS } from '../../lib/game/constants.js';
 
 function lineUp(id, defId) {
   const s = createGame({ seed: 1 });
@@ -35,7 +35,7 @@ test('the turn starting fires every pending cut block, pushing the nearest defen
   const gap = len(sub(nt.pos, before));
   assert.ok(Math.abs(gap - CUT_BLOCK_PUSH_UNITS) < 1e-6, `pushed ${CUT_BLOCK_PUSH_UNITS} units, got ${gap}`);
   assert.ok(nt.pos.y > before.y, 'pushed straight downfield, away from the blocker');
-  assert.equal(len(nt.vel), CUT_BLOCK_IMPULSE_SPEED);
+  assert.deepEqual(nt.vel, { x: 0, y: 0 }, 'a pure teleport — no momentum imparted either way');
 });
 
 test('the shove targets wherever the defender actually stood when the turn started, not when the stance was committed', () => {

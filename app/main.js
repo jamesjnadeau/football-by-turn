@@ -3,7 +3,7 @@ import {
   createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable, setPass, ballPos,
 } from '../lib/game/state.js';
 import {
-  canReposition, placePlayer, spotFault, alignDefense, lineCount, setPersonnel,
+  canReposition, placePlayer, spotFault, alignDefense, lineCount, setPersonnel, answerOffense,
 } from '../lib/game/formation.js';
 import { clearAiPlans, AI_MODES, aiModeIndex, nextAiMode, defaultModeForSide } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
@@ -45,7 +45,7 @@ import {
   loadTendencies, saveTendencies, clearTendencies,
 } from './coach-store.js';
 import { autoplanOffense } from '../lib/game/offense.js';
-import { realignLearnedDefense } from '../lib/game/learned/formation.js';
+import { DEFENSE_GENOME } from '../lib/game/learned/defense-genome.js';
 
 // SVG(el) adopts the existing <svg id="board"> node rather than creating a
 // nested one — every read/write below goes through this wrapper.
@@ -198,7 +198,9 @@ function paint() {
   repositionBtn.textContent = `Reposition: ${repositioning ? 'on' : 'off'}`;
   repositionBtn.disabled = animating || !canReposition(state);
   personnelBtn.textContent = `Personnel: ${personnelId(state.variantId)}`;
-  personnelBtn.disabled = animating || !canReposition(state);
+  // Not the human's to press when the computer is coaching the defense: it
+  // picks its own package now, and the two would fight on every press.
+  personnelBtn.disabled = animating || !canReposition(state) || state.aiTeam === 'defense';
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
   copyLogBtn.textContent = `Copy coaching log (${coachLog.length})`;
@@ -314,13 +316,13 @@ function formationNote() {
  * Answer the offense's new look. Only when the computer is coaching the
  * defense: in hot-seat the coach is placing both teams by hand, and aligning
  * over the top of him would throw away the spots he just set. A learned
- * defense doesn't actually answer the look — its genome spots are fixed —
- * so it just holds its ground instead; only the rule-based fallback reads
- * the offense's current positions.
+ * defense no longer just holds its ground — it subs its personnel package and
+ * slides its men by however far its genome has learned to answer the look —
+ * and the rule-based alignDefense below is what every other brain still gets.
  */
 function realignDefense() {
   if (state.aiTeam !== 'defense') return;
-  if (realignLearnedDefense(state)) return;
+  if (answerOffense(state, DEFENSE_GENOME.values)) return;
   for (const { id, pos } of alignDefense(state)) getPlayer(state, id).pos = pos;
 }
 

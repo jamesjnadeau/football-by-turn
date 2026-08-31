@@ -19,7 +19,8 @@ import { yardsOfY, GOAL_YARD } from '../lib/game/view.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import { applyOrders, applyAiModes } from '../lib/game/ai.js';
 import { learnedOrders } from '../lib/game/learned/defense-policy.js';
-import { applyLearnedDefenseFormation, applyLearnedOffenseFormation } from '../lib/game/learned/formation.js';
+import { applyLearnedOffenseFormation } from '../lib/game/learned/formation.js';
+import { applyLearnedLook } from '../lib/game/formation.js';
 import { autoplanOffense } from '../lib/game/offense.js';
 import { coachLearnedOffense } from '../lib/game/learned/offense-policy.js';
 import { FIRST_DOWN_YARDS } from '../lib/game/constants.js';
@@ -76,14 +77,19 @@ export function playOnePlay(state, offenseCoach, defenseCoach, random) {
 }
 
 /**
- * The learned defense as a coach function: its genome's formation at the top
- * of the down, the breakdown stance near the carrier (the same modes coachAi
- * applies), and learnedOrders every turn.
+ * The learned defense as a coach function: at the top of the down, the
+ * formation it stands is now the candidate's package AND its answer to the
+ * offense's look — which is what makes the `adapt:*` and `sub:*` weights
+ * something evolution can score at all. The loop (playOnePlay, above) already
+ * runs `offenseCoach` before this one, so the offense's formation is already
+ * on the board when the defense reads it — that ordering is what makes
+ * adaptation trainable in the first place. Then the breakdown stance near the
+ * carrier (the same modes coachAi applies), and learnedOrders every turn.
  */
 export function defenseCoach(values) {
   return (state) => {
     if (state.turnIndex === 0 && state.phase === 'planning') {
-      applyLearnedDefenseFormation(state, values);
+      applyLearnedLook(state, values);
     }
     applyAiModes(state, 'defense');
     applyOrders(state, learnedOrders(state, 'defense', values));

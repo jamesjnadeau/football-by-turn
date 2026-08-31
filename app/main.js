@@ -1,6 +1,6 @@
 import { SVG } from './vendor/svg.esm.js';
 import {
-  createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable, setPass,
+  createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable, setPass, ballPos,
 } from '../lib/game/state.js';
 import {
   canReposition, placePlayer, spotFault, alignDefense, lineCount,
@@ -11,7 +11,8 @@ import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
   planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
-  lineZoneMark, renderFieldButtons, passLandingMark, passLockMark,
+  lineZoneMark, renderFieldButtons, passLandingMark, passLockMark, cameraViewBox,
+  menuButtonMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { downDistanceText } from '../lib/game/hud.js';
@@ -24,6 +25,7 @@ import {
   TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
 } from '../lib/game/constants.js';
 import { minOnLine, DEFAULT_VARIANT } from '../lib/game/rosters.js';
+import { followYard, yardsOfY } from '../lib/game/view.js';
 import { attachInput } from './input.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
 import { PLAY_SLOTS, firstEmptySlot, putPlay } from '../lib/game/playbook.js';
@@ -77,8 +79,23 @@ function layer(id) {
   return board.findOne(`#${id}`);
 }
 
+/**
+ * Where the camera is looking, worked out from the state rather than kept in a
+ * variable of its own. followYard is anchored to the line of scrimmage, so the
+ * answer depends only on the down and where the ball is -- there is no camera
+ * position to reset at the snap and none that can drift out of step with the
+ * board. animate() calls the same function per frame with the ball of that
+ * frame; everything else asks about the ball as it stands.
+ */
+function cameraYard(ballYard = null) {
+  if (ballYard !== null) return followYard(state.losYard, ballYard);
+  const bp = ballPos(state);
+  return bp ? followYard(state.losYard, yardsOfY(bp.y)) : state.losYard;
+}
+
 function rebuildBoard() {
-  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard);
+  const cam = cameraYard();
+  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard, cam);
   board.attr('viewBox', viewBox);
   board.clear();
   board.svg(markup); // parses the markup string from render.js and inserts it as real SVG nodes
@@ -91,6 +108,26 @@ function rebuildBoard() {
  * under the in-flight animate() loop. paint() runs again at the end of the
  * animation, which is what re-enables them.
  */
+/**
+ * Point the board at `cam`: the crop, and everything pinned to the screen
+ * rather than to the field.
+ *
+ * The menu plate is repainted here with its two neighbours rather than left in
+ * the board shell where it used to live: the three are one column, and a
+ * scrolling run moves the window out from under anything placed once at the
+ * snap. animate() calls this every frame for the same reason -- the column
+ * and the message would otherwise slide off with the field for half a second
+ * and snap back at the whistle.
+ */
+function aimCamera(cam) {
+  board.attr('viewBox', cameraViewBox(state.losYard, cam));
+  layer('game-menu').clear().svg(menuButtonMark(state.losYard, cam));
+  layer('game-buttons').clear().svg(
+    renderFieldButtons(state, { repositioning, animating, cameraYard: cam }),
+  );
+  layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cam));
+}
+
 function paint() {
   layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
   // The band goes in `game-arrows`, beneath the players, so a man standing in
@@ -122,7 +159,10 @@ function paint() {
   // the board, which is what lets the shuffle disappear at the snap and the
   // run button grey out — the menu hit rect beside them never changes, so it
   // stays in the shell.
-  layer('game-buttons').clear().svg(renderFieldButtons(state, { repositioning, animating }));
+  // The crop is re-asserted on every paint, not just on a rebuild: a play that
+  // scrolled downfield ends with the camera well past the line of scrimmage,
+  // and the board has to stay there until the next down re-spots the ball.
+  aimCamera(cameraYard());
   drawMessage();
   paintPlays();
 }
@@ -134,7 +174,7 @@ function paint() {
  * here afterwards.
  */
 function drawMessage() {
-  layer('game-message').clear().svg(renderMessage(messageText, state.losYard));
+  layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cameraYard()));
 }
 
 function say(text) {
@@ -361,6 +401,12 @@ function animate(frames, done) {
   let i = 0;
   function tick() {
     const frame = frames[i];
+    // Scroll with the ball -- the BALL, not the carrier, so a fumble bouncing
+    // downfield stays on screen instead of leaving the window with nobody
+    // holding it. Only the viewBox is written: the field underneath was drawn
+    // across every yard of the hundred and twenty when the board was built, so
+    // there is nothing to redraw as the crop moves.
+    if (frame.ball) aimCamera(cameraYard(yardsOfY(frame.ball.y)));
     for (const fp of frame.players) {
       const g = playersLayer.findOne(`[data-id="${fp.id}"]`);
       if (g) g.transform({ translate: [fp.x, fp.y] });

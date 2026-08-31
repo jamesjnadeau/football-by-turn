@@ -432,41 +432,40 @@ test('an empty message draws nothing', () => {
   assert.equal(renderMessage('   ', 20), '');
 });
 
-test('a one-line message is a plate and a tspan centred in the end zone', () => {
+test('a one-line message is a plate and a tspan pinned to the top of the board', () => {
   assert.equal(
     renderMessage('TOUCHDOWN!', 20),
-    '<rect class="msg-plate" x="104" y="129.75" width="62" height="23" rx="2"/>' +
-    '<text class="msg"><tspan x="135" y="144">TOUCHDOWN!</tspan></text>',
+    '<rect class="msg-plate" x="104" y="57.75" width="62" height="11.5" rx="2"/>' +
+    '<text class="msg"><tspan x="135" y="64.88">TOUCHDOWN!</tspan></text>',
   );
 });
 
-test('a two-line message stacks tspans and grows the plate, staying in the end zone', () => {
+test('a two-line message stacks tspans and grows the plate, staying pinned to the top', () => {
   const svg = renderMessage('Fumble recovered by the defense. Game over.', 20);
   assert.equal((svg.match(/<tspan /g) || []).length, 2);
-  assert.ok(svg.includes('<tspan x="135" y="138.5">Fumble recovered by the defense.</tspan>'));
-  assert.ok(svg.includes('<tspan x="135" y="149.5">Game over.</tspan>'));
+  assert.ok(svg.includes('<tspan x="135" y="64.88">Fumble recovered by the defense.</tspan>'));
+  assert.ok(svg.includes('<tspan x="135" y="70.38">Game over.</tspan>'));
+  const view = gameView(20);
   const plate = svg.match(/y="([-\d.]+)" width="([-\d.]+)" height="([-\d.]+)"/);
   const [py, pw, ph] = plate.slice(1).map(Number);
-  assert.ok(py >= 122.5, 'the plate starts at or below the goal line');
-  assert.ok(py + ph <= 160, 'and ends at or above the end line');
+  assert.equal(py, view.windowTopY + 1.5, 'the plate sits at the top of the window');
   assert.ok(pw <= 200, 'and never runs wider than the sidelines');
 });
 
-test('a long message grows past the end zone but never off the board', () => {
+test('a long message grows downward from the top but never off the board', () => {
   const view = gameView(20);
   const windowBottom = view.windowTopY + view.height;
-  // The real penalty message: three lines, taller than the 37.5-unit end zone.
   const flag = 'FLAG: forward pass from beyond the line. 5 yards from the previous spot, loss of down.';
   const svg = renderMessage(flag, 20);
   assert.equal((svg.match(/<tspan /g) || []).length, 3, 'three lines at this budget');
   const [py, ph] = svg.match(/y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/).slice(1).map(Number);
-  assert.ok(py > view.windowTopY, 'still on the board at the top');
+  assert.equal(py, view.windowTopY + 1.5, 'pinned to the top');
   assert.ok(py + ph <= windowBottom, 'and still on the board at the bottom');
-  // 40 short words wrap to six lines at this budget, which is too tall to be
-  // centred and still stay on the board; the clamp catches it.
+  // 40 short words wrap to six lines at this budget, which is still short
+  // enough at the halved line height to stay inside the window.
   const huge = renderMessage(new Array(40).fill('word').join(' '), 20);
   const [hy, hh] = huge.match(/y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/).slice(1).map(Number);
-  assert.ok(hy >= view.windowTopY && hy + hh <= windowBottom, 'clamped inside the viewBox');
+  assert.ok(hy >= view.windowTopY && hy + hh <= windowBottom, 'still inside the viewBox');
 });
 
 test('message text is escaped', () => {
@@ -639,6 +638,51 @@ test('the quick-press buttons sit on the board, above and below the menu plate',
   assert.ok(shuffle.y >= boardTop && run.y + run.h <= boardTop + boardHeight, 'both are on the board');
   assert.equal(shuffle.x, run.x, 'they share the label\'s column');
   assert.ok(shuffle.x + shuffle.w <= 270, 'and stay inside the viewBox');
+});
+
+test('the board furniture follows the camera, not the line of scrimmage', () => {
+  // Everything anchored to the SCREEN rather than to the field has to be
+  // placed from the camera's window. Position it from losYard instead and a
+  // long run scrolls the message and both quick-press buttons off the board,
+  // where they stay until the next down re-spots the ball.
+  const s2 = createGame({ seed: 1 });
+  const camera = s2.losYard + 30; // a thirty-yard run, camera well downfield
+  const [, top, , height] = renderBoardShell(s2.losYard, s2.toGoYard, camera)
+    .viewBox.split(' ').map(Number);
+
+  const menu = rectBox(menuButtonMark(s2.losYard, camera));
+  assert.ok(menu.y >= top && menu.y + menu.h <= top + height, 'the menu plate is on screen');
+
+  const btns = renderFieldButtons(s2, { cameraYard: camera });
+  for (const attr of ['data-reposition-button', 'data-run-button']) {
+    const b = rectBox(buttonGroup(btns, attr));
+    assert.ok(b.y >= top && b.y + b.h <= top + height, `${attr} is on screen`);
+  }
+
+  const plateY = Number(/<rect[^>]*\sy="([-\d.]+)"/.exec(renderMessage('Tackled!', s2.losYard, camera))[1]);
+  assert.ok(plateY >= top && plateY <= top + height, 'and so is the message plate');
+});
+
+test('all three plates keep one column when the camera has scrolled away', () => {
+  // The menu plate used to be built once into the board shell and never
+  // repainted, so a scrolling run left it stranded at the top of the field
+  // while the quick-press buttons followed the ball. They are one column of
+  // three; they have to be placed from one camera.
+  const s2 = createGame({ seed: 1 });
+  const camera = s2.losYard + 30;
+  const menu = rectBox(menuButtonMark(s2.losYard, camera));
+  const btns = renderFieldButtons(s2, { cameraYard: camera });
+  const shuffle = rectBox(buttonGroup(btns, 'data-reposition-button'));
+  const run = rectBox(buttonGroup(btns, 'data-run-button'));
+
+  assert.equal(menu.x, shuffle.x, 'one column');
+  assert.equal(menu.x, run.x);
+  assert.ok(shuffle.y + shuffle.h <= menu.y, 'the shuffle sits above the menu plate');
+  assert.ok(run.y >= menu.y + menu.h, 'and the run button below it');
+  // Adjacent, not merely ordered: a plate placed from a different camera would
+  // still be above or below, just a long way off.
+  assert.ok(menu.y - (shuffle.y + shuffle.h) < menu.h, 'the shuffle is next to it');
+  assert.ok(run.y - (menu.y + menu.h) < menu.h, 'and so is the run button');
 });
 
 test('the button column clears the yard numbers and the edge of the frame', () => {

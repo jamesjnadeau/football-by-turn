@@ -26,6 +26,19 @@ leave the page running a mixture of edited and cached modules — a failure that
 looks like a bug in the game rather than a bug in the cache. Pass a port to use
 a different one (`python3 serve.py 8099`).
 
+## Training the learned AI
+
+The `Defense: computer (learned)` level plays a trained genome shipped in
+`lib/game/learned/defense-genome.js`. To retrain it:
+
+    npm run train:defense -- --generations 30 --pop 16 --plays 24 --seed 1
+
+Training is a seeded evolutionary search over the genome's ~30 parameters
+(starting spots, man/zone scheme gate, coverage weights), simulating whole
+plays headlessly through the same engine the browser runs. It is fully
+deterministic for a seed and writes its champion back into the genome module,
+which is committed like any other source file.
+
 ## Deploying
 
 Pushes to `main` publish the game to GitHub Pages via

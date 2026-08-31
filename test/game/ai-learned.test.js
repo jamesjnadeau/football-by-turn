@@ -7,6 +7,7 @@ import { createGame, getPlayer, setPlan } from '../../lib/game/state.js';
 import { runTurn } from '../../lib/game/turn.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { fieldPos } from '../../lib/game/view.js';
+import { DEFENSE_GENOME } from '../../lib/game/learned/defense-genome.js';
 
 function afterSnap(s) {
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
@@ -36,12 +37,23 @@ test('aiPlayers and applyAiModes take an explicit team for hot-seat harnesses', 
 });
 
 test('coachAi dispatches the learned brain', () => {
-  const s = afterSnap(createGame({ seed: 3, ai: 'defense', aiLevel: 'learned' }));
-  coachAi(s);
-  assert.ok(getPlayer(s, 'd-nt').plan, 'the front rushes');
-  const covering = s.players.filter((p) => p.team === 'defense' && p.cover).length;
-  assert.ok(covering >= 1, 'the seed genome plays man');
-  clearAiPlans(s);
+  // The shipped genome's own scheme call is a trained number that can favor
+  // either man or zone by situation — this test is about the WIRING (coachAi
+  // reaches the learned brain and writes its orders), not about the shipped
+  // genome's specific scheme weights, so the gate is forced firmly to man for
+  // the duration of the call and restored after.
+  const savedBias = DEFENSE_GENOME.values['scheme:bias'];
+  DEFENSE_GENOME.values['scheme:bias'] = -4;
+  try {
+    const s = afterSnap(createGame({ seed: 3, ai: 'defense', aiLevel: 'learned' }));
+    coachAi(s);
+    assert.ok(getPlayer(s, 'd-nt').plan, 'the front rushes');
+    const covering = s.players.filter((p) => p.team === 'defense' && p.cover).length;
+    assert.ok(covering >= 1, 'a man-gated genome plays man');
+    clearAiPlans(s);
+  } finally {
+    DEFENSE_GENOME.values['scheme:bias'] = savedBias;
+  }
 });
 
 test('a learned-level game runs whole turns without incident', () => {

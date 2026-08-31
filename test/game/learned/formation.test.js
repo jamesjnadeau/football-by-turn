@@ -66,7 +66,12 @@ test('it refuses once the down is running', () => {
 });
 
 test('createGame applies the shipped genome for a learned-level defense', () => {
-  const saved = DEFENSE_GENOME.values['pos:d-s:down'];
+  // Overridden explicitly (both keys, not just down) rather than trusting the
+  // shipped genome's own trained across offset to still be 0 — a genome's
+  // specific trained values are not something a game-side test may depend on.
+  const savedAcross = DEFENSE_GENOME.values['pos:d-s:across'];
+  const savedDown = DEFENSE_GENOME.values['pos:d-s:down'];
+  DEFENSE_GENOME.values['pos:d-s:across'] = 0;
   DEFENSE_GENOME.values['pos:d-s:down'] = 11;
   try {
     const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
@@ -75,7 +80,8 @@ test('createGame applies the shipped genome for a learned-level defense', () => 
     const smart = createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' });
     assert.deepEqual(getPlayer(smart, 'd-s').pos, fieldPos(0, smart.losYard + 8));
   } finally {
-    DEFENSE_GENOME.values['pos:d-s:down'] = saved;
+    DEFENSE_GENOME.values['pos:d-s:across'] = savedAcross;
+    DEFENSE_GENOME.values['pos:d-s:down'] = savedDown;
   }
 });
 

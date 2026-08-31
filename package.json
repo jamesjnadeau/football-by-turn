@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "serve": "python3 serve.py"
+    "serve": "python3 serve.py",
+    "train:defense": "node tools/train-defense.js"
   }
 }

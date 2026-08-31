@@ -103,6 +103,44 @@ test('a holding blocker barely budges when a charger slams in', () => {
   assert.ok(heldDrift < normalDrift / 2, `holding drift ${heldDrift} vs normal ${normalDrift}`);
 });
 
+test('a driving blocker sheds a sliding defender\'s speed far more than an ordinary block', () => {
+  // A head-on charge is the wrong geometry to test this with: this engine's
+  // friction impulse only ever acts on the TANGENTIAL component of a
+  // contact (see physics.js's frictionFor comment), so a square hit never
+  // exercises FRICTION_CUT_BLOCK_DRIVE at all — it only exercises
+  // driveReachBonus's effect on the positional-correction split, which for
+  // two equal-mass players pushes the blocker back MORE, not less (see the
+  // plan's design decision 5). A sliding contact — same geometry the
+  // existing "contact friction slows a player sliding past another" test
+  // uses just above — is what actually isolates the friction coefficient.
+  const withDrive = pair(['o-c', 'd-nt']);
+  const without = pair(['o-c', 'd-nt']);
+  for (const s of [withDrive, without]) {
+    const c = getPlayer(s, 'o-c'), nt = getPlayer(s, 'd-nt');
+    c.pos = { x: 135, y: 100 };
+    nt.pos = { x: 138.5, y: 100 };   // radii 3.5 + 3.5 = 7, so overlapping by 3.5
+    nt.vel = { x: 0, y: 10 };        // sliding along the tangent, not closing
+  }
+  getPlayer(withDrive, 'o-c').mode = 'cutBlockDrive';
+  stepPhysics(withDrive, DT);
+  stepPhysics(without, DT);
+  const driveSpeed = len(getPlayer(withDrive, 'd-nt').vel);
+  const normalSpeed = len(getPlayer(without, 'd-nt').vel);
+  assert.ok(driveSpeed < normalSpeed, `driving blocker should bleed more speed: ${driveSpeed} vs ${normalSpeed}`);
+});
+
+test('a driving blocker\'s wider reach pulls in contact from farther away than an ordinary body', () => {
+  const s = pair(['o-c', 'd-nt']);
+  const c = getPlayer(s, 'o-c'), nt = getPlayer(s, 'd-nt');
+  c.mode = 'cutBlockDrive';
+  c.pos = { x: 135, y: 100 };
+  // Bodies alone (3.5 + 3.5 = 7) do not overlap at a gap of 8, but
+  // CUT_BLOCK_DRIVE_REACH (6) extends contact well past that.
+  nt.pos = { x: 135, y: 108 };
+  const contacts = stepPhysics(s, DT);
+  assert.ok(contacts.length > 0, 'engaged despite the 1-unit gap between bodies');
+});
+
 test('contact friction slows a player sliding past another', () => {
   const s = pair(['o-wr1', 'd-cb1']);
   const wr = getPlayer(s, 'o-wr1'), cb = getPlayer(s, 'd-cb1');

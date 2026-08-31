@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runTurn, unplannedPlayers } from '../../lib/game/turn.js';
 import { nextDown } from '../../lib/game/rules.js';
-import { createGame, setPlan, getPlayer, setPass } from '../../lib/game/state.js';
+import { createGame, setPlan, getPlayer, setPass, setMode } from '../../lib/game/state.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { SUBSTEPS_PER_TURN } from '../../lib/game/constants.js';
 import { teamSize } from '../../lib/game/rosters.js';
@@ -47,6 +47,18 @@ test('charge is consumed by the turn that uses it', () => {
   getPlayer(s, 'o-qb').charge = 1;
   runTurn(s, mulberry32(1));
   assert.equal(getPlayer(s, 'o-qb').charge, 0);
+});
+
+test('a cut-blocking lineman moves into the drive phase the turn after, then back to normal', () => {
+  const s = createGame({ seed: 1 });
+  setMode(s, 'o-lg', 'cutBlock');
+  const facing = { ...getPlayer(s, 'o-lg').facing };
+  runTurn(s, mulberry32(1));
+  assert.equal(getPlayer(s, 'o-lg').mode, 'cutBlockDrive', 'the lunge turn gives way to the drive turn');
+  assert.deepEqual(getPlayer(s, 'o-lg').facing, facing, 'still driving the same line he committed to');
+  runTurn(s, mulberry32(1));
+  assert.equal(getPlayer(s, 'o-lg').mode, 'normal', 'the drive turn expires on its own');
+  assert.equal(getPlayer(s, 'o-lg').facing, null);
 });
 
 test('a clean run to the end zone ends the turn early with a touchdown', () => {

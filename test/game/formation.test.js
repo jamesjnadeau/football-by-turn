@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   spotFault, onTheLine, lineCount, formationFoul, alignDefense, canReposition, placePlayer,
-  placeFormation,
+  placeFormation, setPersonnel,
 } from '../../lib/game/formation.js';
 import { minOnLine, teamSize } from '../../lib/game/rosters.js';
 import { createGame, getPlayer, setPlan, setPass } from '../../lib/game/state.js';
@@ -325,4 +325,44 @@ test('nobody is seated once the ball is in the air', () => {
   assert.deepEqual(applied, []);
   assert.deepEqual(skipped, ['o-wr1']);
   assert.deepEqual(getPlayer(s, 'o-wr1').pos, where);
+});
+
+test('setPersonnel swaps the defense without disturbing the offense', () => {
+  const s = createGame({ seed: 1, variant: '7' });
+  const movedWr1 = fieldPos(-20, -3);
+  assert.ok(placePlayer(s, 'o-wr1', movedWr1));
+
+  assert.ok(setPersonnel(s, 'nickel'));
+  assert.equal(s.variantId, '7-nickel');
+  assert.deepEqual(getPlayer(s, 'o-wr1').pos, movedWr1,
+    'the offense stayed exactly where the coach put it');
+
+  const ids = s.players.filter((p) => p.team === 'defense').map((p) => p.id).sort();
+  assert.deepEqual(ids, ['d-cb1', 'd-cb2', 'd-dt1', 'd-lb', 'd-lb2', 'd-nt', 'd-s']);
+  assert.equal(s.players.length, 14, 'still seven a side, both teams');
+});
+
+test('setPersonnel is refused once the play is under way', () => {
+  const s = createGame({ seed: 1, variant: '7' });
+  s.turnIndex = 1;
+  const before = s.players.map((p) => p.id);
+  assert.equal(setPersonnel(s, 'nickel'), false);
+  assert.equal(s.variantId, '7');
+  assert.deepEqual(s.players.map((p) => p.id), before);
+});
+
+test('setPersonnel cycles through stacked, nickel and dime and back', () => {
+  const s = createGame({ seed: 1, variant: '11' });
+  assert.ok(setPersonnel(s, 'nickel'));
+  assert.equal(s.variantId, '11-nickel');
+  assert.ok(setPersonnel(s, 'dime'));
+  assert.equal(s.variantId, '11-dime');
+  assert.ok(setPersonnel(s, 'stacked'));
+  assert.equal(s.variantId, '11');
+});
+
+test('an unrecognised personnel package falls back to stacked rather than stranding the game', () => {
+  const s = createGame({ seed: 1, variant: '7' });
+  assert.ok(setPersonnel(s, 'wishbone'));
+  assert.equal(s.variantId, '7');
 });

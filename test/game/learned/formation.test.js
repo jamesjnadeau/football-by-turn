@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   learnedDefenseSpots, applyLearnedDefenseFormation, maybeApplyLearnedFormations,
-  realignLearnedDefense,
+  realignLearnedDefense, isLearnedDefense,
 } from '../../../lib/game/learned/formation.js';
 import { DEFENSE_SPEC } from '../../../lib/game/learned/defense-spec.js';
 import { DEFENSE_GENOME } from '../../../lib/game/learned/defense-genome.js';
@@ -131,4 +131,16 @@ test('realignLearnedDefense declines when the variant does not match the trained
 test('realignLearnedDefense declines when the computer is not coaching defense', () => {
   const s = createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' });
   assert.equal(realignLearnedDefense(s), false);
+});
+
+test('a genome trained for the seven-a-side game covers its sub packages too', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  assert.equal(isLearnedDefense(s), true);
+  for (const id of ['7-nickel', '7-dime']) {
+    s.variantId = id;
+    assert.equal(isLearnedDefense(s), true, id);
+  }
+  // Eleven a side is a different game, not a different package.
+  s.variantId = '11';
+  assert.equal(isLearnedDefense(s), false);
 });

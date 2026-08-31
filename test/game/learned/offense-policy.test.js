@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   boxDefenders, callFeatures, chooseCall, chooseSide, planLearnedRun,
+  eligibleReceivers, routeDir, planLearnedPassSnap, receiverScore, planThrow,
 } from '../../../lib/game/learned/offense-policy.js';
 import { OFFENSE_SPEC } from '../../../lib/game/learned/offense-spec.js';
 import { makeGenome } from '../../../lib/game/learned/genome.js';
@@ -90,4 +91,104 @@ test("the read threshold is the genome's, not the constant", () => {
   getPlayer(s2, 'd-dt2').pos = fieldPos(4, s2.losYard + 1);
   const narrow = { ...makeGenome(OFFENSE_SPEC), 'run:sideBias': 2, 'run:read': 10 };
   assert.equal(planLearnedRun(s2, narrow).give, false); // 5.6 < 10: crash
+});
+
+test('eligible receivers are the skill men, never the line or the passer', () => {
+  const s = createGame({ seed: 1 });
+  assert.deepEqual(
+    eligibleReceivers(s).map((p) => p.id).sort(),
+    ['o-rb', 'o-wr1', 'o-wr2'],
+  );
+});
+
+test('routeDir turns degrees into unit directions, upfield by default', () => {
+  const g = makeGenome(OFFENSE_SPEC);
+  const right = routeDir({ ...g, 'route:o-wr2:deg0': 90 }, 'o-wr2', 'deg0');
+  assert.ok(Math.abs(right.x - 1) < 1e-9 && Math.abs(right.y) < 1e-9);
+  assert.deepEqual(routeDir(g, 'o-te', 'deg0'), { x: 0, y: 1 }); // no key: upfield
+  const wr1 = routeDir(g, 'o-wr1', 'deg0'); // init -20°: bends left, still upfield
+  assert.ok(wr1.x < 0 && wr1.y > 0);
+});
+
+test('a pass snap sends routes, a drop, and protection', () => {
+  const s = createGame({ seed: 1 });
+  const g = makeGenome(OFFENSE_SPEC);
+  const play = planLearnedPassSnap(s, g);
+  assert.deepEqual(play, { call: 'pass' });
+  for (const id of ['o-wr1', 'o-wr2', 'o-rb']) {
+    assert.ok(getPlayer(s, id).plan, `${id} runs a route`);
+  }
+  const qb = getPlayer(s, 'o-qb');
+  assert.ok(qb.plan.dir.y < 0, 'the QB drops back');
+  assert.equal(qb.plan.throttle, g['qb:drop']);
+  assert.ok(getPlayer(s, 'o-c').plan, 'the line protects');
+  assert.equal(s.plannedPass.auto, true, 'the ordinary snap stands');
+});
+
+test('receiverScore prices separation up, depth up, distance down', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = makeGenome(OFFENSE_SPEC); // sep 1, depth 0.5, dist -0.3
+  const qb = getPlayer(s, 'o-qb');
+  const wr2 = getPlayer(s, 'o-wr2');
+  wr2.pos = fieldPos(10, s.losYard + 4);
+  getPlayer(s, 'd-cb2').pos = fieldPos(10, s.losYard + 10); // 6 yards of separation
+  const base = receiverScore(s, g, qb, wr2);
+  getPlayer(s, 'd-cb2').pos = fieldPos(10, s.losYard + 5); // now 1 yard
+  assert.ok(receiverScore(s, g, qb, wr2) < base);
+});
+
+test('planThrow locks on inside the lock zone and lobs beyond it', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = { ...makeGenome(OFFENSE_SPEC), 'throw:go': -20 }; // anything is open enough
+  const qb = getPlayer(s, 'o-qb');
+  // wr2 close and wide open: a locked throw.
+  getPlayer(s, 'o-wr2').pos = fieldPos(10, s.losYard + 3);
+  getPlayer(s, 'o-wr1').pos = fieldPos(-2, s.losYard - 1);
+  getPlayer(s, 'o-rb').pos = fieldPos(2, s.losYard - 5);
+  getPlayer(s, 'd-cb2').pos = fieldPos(22, s.losYard + 12);
+  assert.equal(planThrow(s, g, qb), true);
+  assert.equal(s.plannedPass.target, 'o-wr2');
+
+  // The same receiver far downfield: an unlocked lob.
+  const s2 = createGame({ seed: 1 });
+  s2.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s2.plannedPass = null;
+  const qb2 = getPlayer(s2, 'o-qb');
+  getPlayer(s2, 'o-wr2').pos = fieldPos(10, s2.losYard + 14);
+  getPlayer(s2, 'o-wr1').pos = fieldPos(-2, s2.losYard - 1);
+  getPlayer(s2, 'o-rb').pos = fieldPos(2, s2.losYard - 5);
+  getPlayer(s2, 'd-cb2').pos = fieldPos(22, s2.losYard + 20);
+  assert.equal(planThrow(s2, g, qb2), true);
+  assert.equal(s2.plannedPass.target, null);
+  assert.ok(s2.plannedPass.dir.y > 0, 'thrown downfield');
+});
+
+test('planThrow never plans an illegal forward pass', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = { ...makeGenome(OFFENSE_SPEC), 'throw:go': -20 };
+  const qb = getPlayer(s, 'o-qb');
+  s.forwardPasses = 1; // one is already spent
+  assert.equal(planThrow(s, g, qb), false);
+  s.forwardPasses = 0;
+  qb.pos = fieldPos(0, s.losYard + 2); // past the line
+  assert.equal(planThrow(s, g, qb), false);
+});
+
+test('the hold clock forces the throw', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = { ...makeGenome(OFFENSE_SPEC), 'throw:go': 40, 'throw:hold': 2 }; // nobody is ever open
+  const qb = getPlayer(s, 'o-qb');
+  s.turnIndex = 1;
+  assert.equal(planThrow(s, g, qb), false); // still holding
+  s.turnIndex = 2;
+  assert.equal(planThrow(s, g, qb), true); // clock's up: best available
+  assert.ok(s.plannedPass);
 });

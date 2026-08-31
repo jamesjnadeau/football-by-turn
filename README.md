@@ -16,9 +16,15 @@ It's built as an HTML/SVG page with no build step and no server-side logic — o
 npm run serve
 ```
 
-Then open **http://localhost:8080** in a browser. `npm run serve` just starts a
-static file server (`python3 -m http.server 8080`); there's no build or bundling
-step.
+Then open **http://localhost:8080** in a browser. `npm run serve` starts
+`serve.py`, a static file server and nothing more; there's no build or bundling
+step. It differs from a bare `python3 -m http.server` in exactly one way: it
+sends `Cache-Control: no-store`, so a reload always gets every module as it is
+on disk. Without that header the browser has only `Last-Modified` to go on and
+falls back to guessing how long a file stays fresh, which on a no-build app can
+leave the page running a mixture of edited and cached modules — a failure that
+looks like a bug in the game rather than a bug in the cache. Pass a port to use
+a different one (`python3 serve.py 8099`).
 
 ## Deploying
 

@@ -62,6 +62,10 @@ test('bookFor reads one side, and an unknown side is an empty book', () => {
   assert.deepEqual(bookFor(lib, 'special-teams'), emptyPlaybook());
 });
 
+test('bookFor reads a library with no book for a known side as an empty book, not undefined', () => {
+  assert.deepEqual(bookFor({}, 'offense'), emptyPlaybook());
+});
+
 test('putBook copies rather than mutating, and leaves the other side alone', () => {
   const lib = emptyLibrary();
   const next = putBook(lib, 'offense', putPlay(emptyPlaybook(), 0, play('Sweep')));
@@ -165,10 +169,11 @@ test('a stored book longer than five slots is cut to five', () => {
   assert.equal(lib.defense.length, PLAY_SLOTS);
 });
 
-test('a book stored as something other than an array reads as empty slots', () => {
+test('a book stored as something other than an array reads as empty slots, and leaves the other book alone', () => {
   const lib = parseLibrary(JSON.stringify({
     v: PLAYBOOK_VERSION,
-    books: { offense: 'Sweep' },
+    books: { offense: [play('Sweep')], defense: 'Sweep' },
   }));
-  assert.deepEqual(lib, emptyLibrary());
+  assert.equal(lib.offense[0].name, 'Sweep');
+  assert.ok(lib.defense.every((slot) => slot === null));
 });

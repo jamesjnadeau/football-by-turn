@@ -7,7 +7,7 @@ import {
 import { teamSize } from '../../lib/game/rosters.js';
 import { fieldPos } from '../../lib/game/view.js';
 
-test('a new game: 1st down at yard 0, planning, TEAM_SIZE a side, the centre has the ball', () => {
+test('a new game: 1st down at yard 0, planning, a full team a side, the centre has the ball', () => {
   const s = createGame({ seed: 7 });
   assert.equal(s.down, 1);
   assert.equal(s.losYard, 0);

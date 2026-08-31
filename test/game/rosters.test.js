@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ROSTERS, DEFAULT_VARIANT, getRoster, teamSize, minOnLine,
+  PERSONNEL_PACKAGES, personnelId, baseVariantId, variantWithPersonnel,
 } from '../../lib/game/rosters.js';
 import {
   createGame, SNAPPER_ID, SNAP_TARGET_ID, getPlayer, setPlan, formationPlayers,
@@ -9,7 +10,7 @@ import {
 import { nextDown } from '../../lib/game/rules.js';
 import { yardsOfY } from '../../lib/game/view.js';
 import {
-  backerLane, orderedMates, containRank, coverAssignments, deepMan,
+  backerLane, orderedMates, containRank, coverAssignments, deepMan, positionGroup,
 } from '../../lib/game/defense.js';
 import {
   BACKER_LANE_UNITS, MIN_SPOT_YARD, FIELD_LOW_YARD,
@@ -166,4 +167,61 @@ test('every roster fits the field and the camera, even spotted as deep as the ru
         `${id}: ${p.id} at yard ${yard} is past the camera`);
     }
   }
+});
+
+test('personnelId reads the package off a variant id, and baseVariantId strips it back off', () => {
+  assert.equal(personnelId('7'), 'stacked');
+  assert.equal(personnelId('11'), 'stacked');
+  assert.equal(personnelId('7-nickel'), 'nickel');
+  assert.equal(personnelId('11-dime'), 'dime');
+  assert.equal(baseVariantId('7-nickel'), '7');
+  assert.equal(baseVariantId('11-dime'), '11');
+  assert.equal(baseVariantId('7'), '7');
+});
+
+test('variantWithPersonnel names the roster for any base and package, falling back to stacked', () => {
+  assert.equal(variantWithPersonnel('7', 'nickel'), '7-nickel');
+  assert.equal(variantWithPersonnel('7-nickel', 'dime'), '7-dime');
+  assert.equal(variantWithPersonnel('11-dime', 'stacked'), '11');
+  assert.equal(variantWithPersonnel('7', 'wishbone'), '7', 'an unknown package strands nobody');
+});
+
+test('PERSONNEL_PACKAGES names stacked first — that is what a fresh down is dealt', () => {
+  assert.deepEqual(PERSONNEL_PACKAGES, ['stacked', 'nickel', 'dime']);
+});
+
+test('seven a side nickel fields two linemen and two backers, in exchange for one lineman', () => {
+  const s = createGame({ seed: 1, variant: '7-nickel' });
+  const d = s.players.filter((p) => p.team === 'defense');
+  assert.equal(d.length, 7);
+  assert.equal(d.filter((p) => positionGroup(p) === 'line').length, 2);
+  assert.equal(d.filter((p) => positionGroup(p) === 'backer').length, 2);
+  assert.equal(d.filter((p) => positionGroup(p) === 'back').length, 3);
+});
+
+test('seven a side dime fields two linemen and four backs, in exchange for one lineman', () => {
+  const s = createGame({ seed: 1, variant: '7-dime' });
+  const d = s.players.filter((p) => p.team === 'defense');
+  assert.equal(d.length, 7);
+  assert.equal(d.filter((p) => positionGroup(p) === 'line').length, 2);
+  assert.equal(d.filter((p) => positionGroup(p) === 'backer').length, 1);
+  assert.equal(d.filter((p) => positionGroup(p) === 'back').length, 4);
+});
+
+test('eleven a side nickel fields four linemen and three backers, in exchange for one lineman', () => {
+  const s = createGame({ seed: 1, variant: '11-nickel' });
+  const d = s.players.filter((p) => p.team === 'defense');
+  assert.equal(d.length, 11);
+  assert.equal(d.filter((p) => positionGroup(p) === 'line').length, 4);
+  assert.equal(d.filter((p) => positionGroup(p) === 'backer').length, 3);
+  assert.equal(d.filter((p) => positionGroup(p) === 'back').length, 4);
+});
+
+test('eleven a side dime fields four linemen and five backs, in exchange for one lineman', () => {
+  const s = createGame({ seed: 1, variant: '11-dime' });
+  const d = s.players.filter((p) => p.team === 'defense');
+  assert.equal(d.length, 11);
+  assert.equal(d.filter((p) => positionGroup(p) === 'line').length, 4);
+  assert.equal(d.filter((p) => positionGroup(p) === 'backer').length, 2);
+  assert.equal(d.filter((p) => positionGroup(p) === 'back').length, 5);
 });

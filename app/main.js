@@ -20,8 +20,9 @@ import { mulberry32 } from '../lib/game/rng.js';
 import { receiverAt, lockOnPass, passLanding } from '../lib/game/pass.js';
 import { lobLanded } from '../lib/game/lob.js';
 import {
-  TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS, MIN_ON_LINE,
+  TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
 } from '../lib/game/constants.js';
+import { minOnLine, DEFAULT_VARIANT } from '../lib/game/rosters.js';
 import { attachInput } from './input.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
 import { PLAY_SLOTS, firstEmptySlot, putPlay } from '../lib/game/playbook.js';
@@ -45,6 +46,10 @@ const newBtn = document.getElementById('new');
 const homeBtn = document.getElementById('home-btn');
 
 let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
+// Which game this drive is: the id of the home-screen button that started it.
+// startGame() sets it and New Game re-reads it, so New Game deals the same game
+// again — switching is what Back to Home is for.
+let variantId = DEFAULT_VARIANT;
 let random = mulberry32(state.seed);
 let pendingWarning = false;
 let messageText = '';
@@ -202,8 +207,9 @@ const FAULT_WORDS = {
  */
 function formationNote() {
   const n = lineCount(state, 'offense');
-  return n < MIN_ON_LINE
-    ? `${n} on the line — ILLEGAL FORMATION (needs ${MIN_ON_LINE}).`
+  const need = minOnLine(state);
+  return n < need
+    ? `${n} on the line — ILLEGAL FORMATION (needs ${need}).`
     : `${n} on the line.`;
 }
 
@@ -695,7 +701,9 @@ function goToNextDown() {
 function startNewGame() {
   cancelAutoAdvance();
   stopRepositioning();
-  state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
+  state = createGame({
+    seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart', variant: variantId,
+  });
   random = mulberry32(state.seed);
   pendingWarning = false;
   // The board is built before anything is said into it. Every other caller
@@ -754,6 +762,11 @@ homeBtn.addEventListener('click', () => {
  * advance, drops reposition mode, builds the state, rebuilds the board and
  * paints. The only thing said differently here is the opening line, which is
  * an instruction rather than a score report.
+ *
+ * `variant` is the id of the button that was pressed — see lib/game/variants.js
+ * and lib/game/rosters.js. It is held for the whole visit, so New Game deals
+ * the same game again and a coach who wants the other one goes back home for
+ * it.
  */
 let inputAttached = false;
 // How the Back to Home button gets back to the screen that started us. It is
@@ -761,8 +774,9 @@ let inputAttached = false;
 // knows about the game, and the game knows nothing about home.
 let exitToHome = () => {};
 
-export function startGame({ onExit = () => {} } = {}) {
+export function startGame({ variant = DEFAULT_VARIANT, onExit = () => {} } = {}) {
   exitToHome = onExit;
+  variantId = variant;
   if (!inputAttached) {
     attachInput(board, { hitTest, onGesture, onDragPreview });
     inputAttached = true;

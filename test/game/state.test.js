@@ -4,7 +4,7 @@ import {
   createGame, setPlan, clearAllPlans, setMode, getPlayer, ballPos, carrier,
   isControllable, setPass, clearPass, aimSnap,
 } from '../../lib/game/state.js';
-import { TEAM_SIZE } from '../../lib/game/constants.js';
+import { teamSize } from '../../lib/game/rosters.js';
 import { fieldPos } from '../../lib/game/view.js';
 
 test('a new game: 1st down at yard 0, planning, TEAM_SIZE a side, the centre has the ball', () => {
@@ -13,8 +13,8 @@ test('a new game: 1st down at yard 0, planning, TEAM_SIZE a side, the centre has
   assert.equal(s.losYard, 0);
   assert.equal(s.phase, 'planning');
   assert.equal(s.turnIndex, 0);
-  assert.equal(s.players.filter((p) => p.team === 'offense').length, TEAM_SIZE);
-  assert.equal(s.players.filter((p) => p.team === 'defense').length, TEAM_SIZE);
+  assert.equal(s.players.filter((p) => p.team === 'offense').length, teamSize(s));
+  assert.equal(s.players.filter((p) => p.team === 'defense').length, teamSize(s));
   // The down starts the way a down starts: the ball on the centre, waiting to
   // be snapped. The quarterback does not have it until he is thrown it.
   const c = getPlayer(s, 'o-c');

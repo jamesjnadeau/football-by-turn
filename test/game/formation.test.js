@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   spotFault, onTheLine, lineCount, formationFoul, alignDefense, canReposition, placePlayer,
 } from '../../lib/game/formation.js';
-import { MIN_ON_LINE, TEAM_SIZE } from '../../lib/game/constants.js';
+import { minOnLine, teamSize } from '../../lib/game/rosters.js';
 import { createGame, getPlayer, setPlan, setPass } from '../../lib/game/state.js';
 import { hashCentresX } from '../../lib/field/geometry.js';
 import { setCover } from '../../lib/game/cover.js';
@@ -46,14 +46,14 @@ test('a man inside the line zone is on it; anyone deeper is a back', () => {
 
 test('the default formation comes to the line legally: five on it, two backs', () => {
   const s = createGame({ seed: 1 });
-  assert.equal(lineCount(s, 'offense'), MIN_ON_LINE);
+  assert.equal(lineCount(s, 'offense'), minOnLine(s));
   assert.equal(formationFoul(s), null);
 });
 
 test('pulling a fifth man off the line is an illegal formation', () => {
   const s = createGame({ seed: 1 });
   getPlayer(s, 'o-wr1').pos = fieldPos(-20, -6);
-  assert.equal(lineCount(s, 'offense'), MIN_ON_LINE - 1);
+  assert.equal(lineCount(s, 'offense'), minOnLine(s) - 1);
   assert.equal(formationFoul(s), 'illegal-formation');
 });
 
@@ -66,7 +66,7 @@ test('only the offense is judged on its formation — the defense lines up as it
 test('alignment answers the default formation with a spot for every defender', () => {
   const s = createGame({ seed: 1 });
   const spots = alignDefense(s);
-  assert.equal(spots.length, TEAM_SIZE);
+  assert.equal(spots.length, teamSize(s));
   const ids = spots.map((sp) => sp.id).sort();
   assert.deepEqual(ids, s.players.filter((p) => p.team === 'defense').map((p) => p.id).sort());
 });

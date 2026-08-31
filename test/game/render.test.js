@@ -8,9 +8,10 @@ import {
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
 import {
-  TEAM_SIZE, MAX_ARROW_UNITS, MAX_PASS_ARROW_UNITS, DEBUG_VELOCITY_SECONDS,
+  MAX_ARROW_UNITS, MAX_PASS_ARROW_UNITS, DEBUG_VELOCITY_SECONDS,
   DEBUG_VELOCITY_TRIANGLE_SCALE, COVER_HALO_UNITS, ON_LINE_YARDS,
 } from '../../lib/game/constants.js';
+import { teamSize } from '../../lib/game/rosters.js';
 import { tackleReach } from '../../lib/game/modes.js';
 import { num, UNITS_PER_YARD_X } from '../../lib/field/geometry.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -35,7 +36,7 @@ test('the scrimmage line draws dashed but unlabelled', () => {
 test('every player renders as a positioned group with a team-classed circle of its own radius', () => {
   const s = createGame({ seed: 1 });
   const svg = renderPlayers(s);
-  assert.equal((svg.match(/data-id="/g) || []).length, TEAM_SIZE * 2);
+  assert.equal((svg.match(/data-id="/g) || []).length, teamSize(s) * 2);
   assert.ok(svg.includes('data-id="o-rb"'));
   assert.ok(svg.includes('class="gp-o"'));
   assert.ok(svg.includes('class="gp-d"'));

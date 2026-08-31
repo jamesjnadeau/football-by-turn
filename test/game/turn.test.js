@@ -4,7 +4,8 @@ import { runTurn, unplannedPlayers } from '../../lib/game/turn.js';
 import { nextDown } from '../../lib/game/rules.js';
 import { createGame, setPlan, getPlayer, setPass } from '../../lib/game/state.js';
 import { mulberry32 } from '../../lib/game/rng.js';
-import { SUBSTEPS_PER_TURN, TEAM_SIZE } from '../../lib/game/constants.js';
+import { SUBSTEPS_PER_TURN } from '../../lib/game/constants.js';
+import { teamSize } from '../../lib/game/rosters.js';
 import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
 import { norm, dist, sub } from '../../lib/game/vec.js';
 import { lobLanded, isLob } from '../../lib/game/lob.js';
@@ -97,10 +98,10 @@ test('a full scripted play: everyone charges, the play eventually ends', () => {
 test('unplannedPlayers lists everyone without an arrow (the warning feed)', () => {
   const s = createGame({ seed: 1 });
   afterSnap(s);
-  assert.equal(unplannedPlayers(s).length, TEAM_SIZE * 2);
+  assert.equal(unplannedPlayers(s).length, teamSize(s) * 2);
   setPlan(s, 'o-rb', { x: 0, y: 1 }, 1);
   const ids = unplannedPlayers(s);
-  assert.equal(ids.length, TEAM_SIZE * 2 - 1);
+  assert.equal(ids.length, teamSize(s) * 2 - 1);
   assert.ok(!ids.includes('o-rb'));
 });
 
@@ -141,7 +142,7 @@ test('the unplanned warning counts only the players the human is coaching', () =
   const s = createGame({ seed: 1, ai: 'defense' });
   afterSnap(s);
   const ids = unplannedPlayers(s);
-  assert.equal(ids.length, TEAM_SIZE, 'the offense, and nobody else');
+  assert.equal(ids.length, teamSize(s), 'the offense, and nobody else');
   assert.ok(ids.every((id) => id.startsWith('o-')));
 });
 

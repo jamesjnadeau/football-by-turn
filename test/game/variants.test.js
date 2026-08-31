@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { VARIANTS, getVariant, isPlayable } from '../../lib/game/variants.js';
-import { TEAM_SIZE } from '../../lib/game/constants.js';
+import { ROSTERS } from '../../lib/game/rosters.js';
 
 test('two games are offered: seven a side to play, eleven not yet', () => {
   assert.deepEqual(VARIANTS.map((v) => v.id), ['7', '11']);
@@ -19,8 +19,13 @@ test('every variant carries what the screen needs to draw it', () => {
   }
 });
 
-test('the playable variant fields the team the game actually builds', () => {
-  assert.equal(getVariant('7').teamSize, TEAM_SIZE);
+test('every playable variant fields the team the game actually builds', () => {
+  for (const v of VARIANTS) {
+    if (!v.available) continue;
+    const roster = ROSTERS[v.id];
+    assert.ok(roster, `${v.id} has a roster to build from`);
+    assert.equal(v.teamSize, roster.teamSize, `${v.id} team size`);
+  }
 });
 
 test('an id nobody offers is neither found nor playable', () => {

@@ -7,7 +7,8 @@ import {
 import { createGame, getPlayer, setPlan, setMode } from '../../lib/game/state.js';
 import { runTurn } from '../../lib/game/turn.js';
 import { mulberry32 } from '../../lib/game/rng.js';
-import { TEAM_SIZE, AI_LEAD_MAX_SECONDS, AI_BREAKDOWN_UNITS } from '../../lib/game/constants.js';
+import { AI_LEAD_MAX_SECONDS, AI_BREAKDOWN_UNITS } from '../../lib/game/constants.js';
+import { teamSize } from '../../lib/game/rosters.js';
 
 /**
  * The snap taken: the ball in the quarterback's hands and nothing pending.
@@ -30,7 +31,7 @@ test('with no computer opponent there is nothing to coach', () => {
 test('the computer coaches exactly its own team', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
   const ids = aiPlayers(s).map((p) => p.id);
-  assert.equal(ids.length, TEAM_SIZE);
+  assert.equal(ids.length, teamSize(s));
   assert.ok(ids.every((id) => id.startsWith('d-')), 'defense only');
 });
 
@@ -75,7 +76,7 @@ test('every plan is a unit vector at the ball, full throttle', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
   afterSnap(s);
   const plans = defensePlans(s);
-  assert.equal(plans.length, TEAM_SIZE);
+  assert.equal(plans.length, teamSize(s));
   const qb = getPlayer(s, 'o-qb');
   for (const plan of plans) {
     const p = getPlayer(s, plan.id);

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   positionGroup, defendDir, losY, pastLine, groupMates,
-  interceptPoint, leverageAim, containSide, rushLineman, flowLinebacker,
+  interceptPoint, leverageAim, containRank, rushLineman, flowLinebacker,
   deepestThreat, deepMan, deepAim, coverAssignments, coverBack,
   smartOrder, smartOrders,
 } from '../../lib/game/defense.js';
@@ -125,15 +125,15 @@ test('leverage is off once he is close enough to go and get him', () => {
 
 test('the front works out its own edges from where it is standing', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
-  assert.equal(containSide(s, getPlayer(s, 'd-dt1')), -1, 'left edge');
-  assert.equal(containSide(s, getPlayer(s, 'd-nt')), 0, 'straight down the middle');
-  assert.equal(containSide(s, getPlayer(s, 'd-dt2')), 1, 'right edge');
+  assert.equal(containRank(s, getPlayer(s, 'd-dt1')), -1, 'left edge');
+  assert.equal(containRank(s, getPlayer(s, 'd-nt')), 0, 'straight down the middle');
+  assert.equal(containRank(s, getPlayer(s, 'd-dt2')), 1, 'right edge');
 });
 
 test('a lone lineman contains nothing — he just goes', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
   s.players = s.players.filter((p) => p.id !== 'd-dt1' && p.id !== 'd-dt2');
-  assert.equal(containSide(s, getPlayer(s, 'd-nt')), 0);
+  assert.equal(containRank(s, getPlayer(s, 'd-nt')), 0);
 });
 
 test('an edge rusher keeps his side of the ball', () => {

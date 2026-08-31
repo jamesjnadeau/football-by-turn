@@ -7,7 +7,7 @@ import {
   createGame, SNAPPER_ID, SNAP_TARGET_ID, getPlayer,
 } from '../../lib/game/state.js';
 import { nextDown } from '../../lib/game/rules.js';
-import { backerLane, orderedMates } from '../../lib/game/defense.js';
+import { backerLane, orderedMates, containRank } from '../../lib/game/defense.js';
 import { BACKER_LANE_UNITS } from '../../lib/game/constants.js';
 
 test('every roster fields as many a side as it claims, with unique ids and a snap to take', () => {
@@ -46,4 +46,12 @@ test('a lone backer keeps no lane — he plays the ball, as he always has', () =
   const s = createGame({ seed: 1, ai: 'defense', variant: '7' });
   assert.equal(backerLane(s, getPlayer(s, 'd-lb')), 0);
   assert.deepEqual(orderedMates(s, getPlayer(s, 'd-lb')).map((p) => p.id), ['d-lb']);
+});
+
+test('a three-man front ranks as it always did: one free, one each side', () => {
+  const s = createGame({ seed: 1, ai: 'defense', variant: '7' });
+  assert.deepEqual(
+    ['d-dt1', 'd-nt', 'd-dt2'].map((id) => containRank(s, getPlayer(s, id))),
+    [-1, 0, 1],
+  );
 });

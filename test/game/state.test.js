@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createGame, setPlan, clearAllPlans, setMode, getPlayer, ballPos, carrier,
-  isControllable, setPass, clearPass, aimSnap, defaultSpots, SNAP_TARGET_ID,
+  isControllable, setPass, clearPass, aimSnap, defaultSpots, defensePlayers, SNAP_TARGET_ID,
 } from '../../lib/game/state.js';
 import { teamSize } from '../../lib/game/rosters.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -260,4 +260,19 @@ test('the default spots are the formation every down opens in', () => {
     const { across, down } = spots[p.id];
     assert.deepEqual(p.pos, fieldPos(across, s.losYard + down));
   }
+});
+
+test('defensePlayers builds just the defense half of a formation, at any spot', () => {
+  const players = defensePlayers(20, '7');
+  assert.equal(players.length, 7);
+  assert.ok(players.every((p) => p.team === 'defense'));
+  const nt = players.find((p) => p.id === 'd-nt');
+  assert.deepEqual(nt.pos, fieldPos(0, 21), 'a yard on the defense side of the 20');
+});
+
+test('defensePlayers picks up a nickel or dime package exactly like formationPlayers would', () => {
+  const players = defensePlayers(20, '7-nickel');
+  assert.equal(players.length, 7);
+  assert.deepEqual(players.map((p) => p.id).sort(),
+    ['d-cb1', 'd-cb2', 'd-dt1', 'd-lb', 'd-lb2', 'd-nt', 'd-s']);
 });

@@ -2,12 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   schemeFeatures, schemeChoice, learnedCoverAssignments, zoneAnchorsFromGenome,
+  learnedOrders,
 } from '../../../lib/game/learned/defense-policy.js';
 import { DEFENSE_SPEC } from '../../../lib/game/learned/defense-spec.js';
 import { makeGenome } from '../../../lib/game/learned/genome.js';
 import { createGame, getPlayer } from '../../../lib/game/state.js';
 import { coverAssignments } from '../../../lib/game/defense.js';
 import { fieldPos } from '../../../lib/game/view.js';
+import { zoneAnchorPoint } from '../../../lib/game/zone.js';
 
 function afterSnap(s) {
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
@@ -75,4 +77,60 @@ test('zone anchors come off the genome only for men actually on the field', () =
   // The offense has no zone keys: no anchors.
   const offense = s.players.filter((p) => p.team === 'offense');
   assert.deepEqual(zoneAnchorsFromGenome(offense, g), []);
+});
+
+test('a man-genome defense rushes its front and covers with its backs', () => {
+  const s = afterSnap(createGame({ seed: 1 }));
+  const g = makeGenome(DEFENSE_SPEC); // scheme:bias -2 => man
+  const orders = learnedOrders(s, 'defense', g);
+  const byId = new Map(orders.map((o) => [o.id, o]));
+  for (const id of ['d-nt', 'd-dt1', 'd-dt2']) {
+    assert.ok(byId.get(id).aim, `${id} rushes`);
+    assert.equal(byId.get(id).cover, null);
+  }
+  const covering = orders.filter((o) => o.cover).length;
+  assert.ok(covering >= 2, 'both corners have a man');
+  // The free man (deepest back) plays help, not a man.
+  assert.equal(byId.get('d-s').cover, null);
+  assert.ok(byId.get('d-s').aim);
+});
+
+test('a zone-genome defense sends its coverage bodies to anchors, never to men', () => {
+  const s = afterSnap(createGame({ seed: 1 }));
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': 4 }; // always zone
+  const orders = learnedOrders(s, 'defense', g);
+  const byId = new Map(orders.map((o) => [o.id, o]));
+  for (const id of ['d-cb1', 'd-cb2', 'd-lb', 'd-s']) {
+    assert.equal(byId.get(id).cover, null, `${id} zones, never covers`);
+    assert.ok(byId.get(id).aim, `${id} has somewhere to be`);
+  }
+  // An empty zone's order is literally its anchor.
+  for (const p of s.players) {
+    if (p.team === 'offense') p.pos = fieldPos(20, s.losYard - 2);
+  }
+  const again = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o]));
+  assert.deepEqual(again.get('d-cb1').aim, zoneAnchorPoint(s, 'defense', -12, 4));
+});
+
+test('a loose ball turns every assignment into a footrace', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: null, pos: fieldPos(3, s.losYard + 2), vel: { x: 0, y: 0 } };
+  s.plannedPass = null;
+  const orders = learnedOrders(s, 'defense', makeGenome(DEFENSE_SPEC));
+  assert.equal(orders.length, 7);
+  for (const o of orders) {
+    assert.equal(o.cover, null);
+    assert.deepEqual(o.aim, fieldPos(3, s.losYard + 2));
+  }
+});
+
+test('a carrier past the line ends the scheme: everyone converges', () => {
+  const s = afterSnap(createGame({ seed: 1 }));
+  getPlayer(s, 'o-qb').pos = fieldPos(0, s.losYard + 3);
+  const orders = learnedOrders(s, 'defense', makeGenome(DEFENSE_SPEC));
+  assert.equal(orders.length, 7);
+  for (const o of orders) {
+    assert.equal(o.cover, null);
+    assert.ok(o.aim, `${o.id} converges`);
+  }
 });

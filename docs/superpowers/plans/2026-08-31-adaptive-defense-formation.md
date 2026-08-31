@@ -403,15 +403,26 @@ test('a genome that hates spread subs to nickel, then to dime', () => {
 });
 
 test('the empty backfield is a tell of its own, separate from width', () => {
+  // Width cannot see this: both looks below are the same number of yards
+  // across, and only the count of men off the ball changes.
   const s = createGame({ seed: 1 });
-  const g = { ...makeGenome(DEFENSE_SPEC), 'sub:backs': 4, 'sub:nickel:bias': -1 };
-  // Default seven-a-side: some men are off the line, but not enough to cross.
-  const before = learnedPersonnel(s, g);
-  // Put a back on the line and the fraction falls; pull one off and it rises.
-  placePlayer(s, 'o-rb', fieldPos(-20, s.losYard - 6));
-  placePlayer(s, 'o-wr1', fieldPos(-10, s.losYard - 5));
-  assert.ok(['stacked', 'nickel'].includes(before));
+  const backs = (st) => {
+    const them = st.players.filter((p) => p.team === 'offense');
+    return them.filter((p) => !onTheLine(st, p)).length / them.length;
+  };
+  const packed = backs(s);
+  // Pull a receiver off the line without moving him sideways: the fraction
+  // rises, the width does not budge.
+  const wr = getPlayer(s, 'o-wr1');
+  placePlayer(s, 'o-wr1', { x: wr.pos.x, y: fieldPos(0, s.losYard - 5).y });
+  const emptied = backs(s);
+  assert.ok(emptied > packed, 'the look did not actually empty out');
+  // A cut placed between the two fractions is crossed by one and not the other.
+  const cut = -4 * (packed + emptied) / 2;
+  const g = { ...makeGenome(DEFENSE_SPEC), 'sub:backs': 4, 'sub:nickel:bias': cut };
   assert.equal(learnedPersonnel(s, g), 'nickel');
+  const s2 = createGame({ seed: 1 });
+  assert.equal(learnedPersonnel(s2, g), 'stacked');
 });
 ```
 
@@ -422,7 +433,8 @@ import { makeGenome } from '../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 ```
 
-and add `learnedPersonnel` to the `formation.js` import block.
+and add `learnedPersonnel` to the `formation.js` import block. `onTheLine`,
+`getPlayer`, `placePlayer` and `fieldPos` are already imported in that file.
 
 - [ ] **Step 2: Run them and watch them fail**
 
@@ -1043,28 +1055,41 @@ git commit -m "feat: the computer answers the formation it is shown"
 
 Append to `test/game/rules.test.js`:
 
+`nextDown` takes the state and nothing else — it derives the new spot from
+where the ball died — so the down has to be killed first, the way every other
+`nextDown` test in this file does it.
+
 ```js
-test('a learned defense comes to the new down already answering the formation', () => {
-  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
-  const saved = { ...DEFENSE_GENOME.values };
-  // Borrow the shipped genome for one down: a corner who walks all the way to
-  // the answer, so the effect is visible rather than a fraction of a yard.
-  DEFENSE_GENOME.values['adapt:back:width'] = 1;
+/** Where d-cb1 comes to the line on the NEXT down, for a defense whose genome
+ *  answers the formation by `width` of the way. */
+function cornerAfterNextDown(width) {
+  const saved = DEFENSE_GENOME.values;
+  DEFENSE_GENOME.values = { ...saved, 'adapt:back:width': width };
   try {
-    s.losYard = 40;
-    nextDown(s, 45);
-    const cb = getPlayer(s, 'd-cb1');
-    const wr = s.players.filter((p) => p.team === 'offense')
-      .reduce((a, b) => (Math.abs(b.pos.x - cb.pos.x) < Math.abs(a.pos.x - cb.pos.x) ? b : a));
-    assert.ok(Math.abs(cb.pos.x - wr.pos.x) < 6,
-      'the corner did not come to the line over anybody');
+    const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+    s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+    getPlayer(s, 'o-qb').pos = fieldPos(0, 25);
+    s.deadReason = 'tackled';
+    nextDown(s);
+    assert.equal(s.phase, 'planning');
+    return { ...getPlayer(s, 'd-cb1').pos };
   } finally {
     DEFENSE_GENOME.values = saved;
   }
+}
+
+test('a learned defense comes to the new down already answering the formation', () => {
+  // Not "is he near a receiver" — his genome spot may be near one anyway.
+  // The question is whether nextDown consulted the adapt weight at all.
+  const held = cornerAfterNextDown(0);
+  const answered = cornerAfterNextDown(1);
+  assert.ok(Math.abs(held.x - answered.x) > 1,
+    'the corner stood in the same place whether he answers the formation or not');
 });
 ```
 
-Add to that file's imports whichever of `createGame`, `getPlayer`, `nextDown` are missing, plus:
+`createGame`, `getPlayer`, `nextDown` and `fieldPos` are already imported in
+that file. Add:
 
 ```js
 import { DEFENSE_GENOME } from '../../lib/game/learned/defense-genome.js';

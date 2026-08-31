@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   spotFault, onTheLine, lineCount, formationFoul, alignDefense, canReposition, placePlayer,
-  placeFormation, setPersonnel,
+  placeFormation, setPersonnel, defenseKeys,
 } from '../../lib/game/formation.js';
 import { minOnLine, teamSize } from '../../lib/game/rosters.js';
 import { createGame, getPlayer, setPlan, setPass } from '../../lib/game/state.js';
@@ -365,4 +365,33 @@ test('an unrecognised personnel package falls back to stacked rather than strand
   const s = createGame({ seed: 1, variant: '7' });
   assert.ok(setPersonnel(s, 'wishbone'));
   assert.equal(s.variantId, '7');
+});
+
+test('defenseKeys pairs the front with the interior and the corners with the widest', () => {
+  const s = createGame({ seed: 1 });
+  const { keys, middle } = defenseKeys(s);
+  // The nose is the first man of the front, so he answers the offensive
+  // lineman standing closest to the ball — the centre.
+  assert.equal(keys.get('d-nt').group, 'line');
+  assert.equal(keys.get('d-nt').mate.id, 'o-c');
+  // The corners are backs, and they take the widest men left uncovered.
+  assert.equal(keys.get('d-cb1').group, 'back');
+  assert.ok(keys.get('d-cb1').mate.id.startsWith('o-'));
+  // The safety is the deepest back, so he is the free man and answers nobody
+  // in particular — he answers the middle.
+  assert.equal(keys.get('d-s').group, 'deep');
+  assert.equal(keys.get('d-s').mate, null);
+  assert.equal(keys.get('d-lb').group, 'backer');
+  // Every defender is keyed, nobody twice.
+  assert.equal(keys.size, s.players.filter((p) => p.team === 'defense').length);
+  assert.equal(typeof middle, 'number');
+});
+
+test('a receiver split wide becomes the man his corner is keyed to', () => {
+  const s = createGame({ seed: 1 });
+  placePlayer(s, 'o-wr1', fieldPos(-24, s.losYard - 1));
+  const { keys } = defenseKeys(s);
+  const keyed = [...keys.values()].filter((k) => k.group === 'back')
+    .map((k) => k.mate?.id);
+  assert.ok(keyed.includes('o-wr1'), `expected a corner keyed to o-wr1, got ${keyed}`);
 });

@@ -83,11 +83,19 @@ test('a plan remembers whether the man falls short of where he was pointed', () 
   assert.equal(getPlayer(s, 'o-rb').plan.short, true, 'he does not, and is still running');
 });
 
-test('mode legality: tuck = carrier only, prepared = defense only, holding = offense only', () => {
+test('mode legality: tuck = non-lineman carrier only, prepared = defense only, holding = offense only', () => {
   const s = createGame({ seed: 1 });
-  assert.equal(setMode(s, 'o-c', 'tucked'), true);      // has the ball, pre-snap
+  // The centre holds the ball pre-snap (see the "ball starts tucked in a
+  // lineman's hands" comment in state.js), but a lineman can never tuck --
+  // this used to be exactly the bug where a long press on the centre before
+  // the snap tucked him instead of offering the cut block.
+  assert.equal(setMode(s, 'o-c', 'tucked'), false);     // has the ball, but is a lineman
   assert.equal(setMode(s, 'o-qb', 'tucked'), false);    // no ball until it is snapped to him
   assert.equal(setMode(s, 'o-rb', 'tucked'), false);    // no ball
+  s.ball.carrierId = 'o-rb';
+  assert.equal(setMode(s, 'o-rb', 'tucked'), true);     // a non-lineman carrier can tuck
+  setMode(s, 'o-rb', 'normal');
+  s.ball.carrierId = 'o-c';
   assert.equal(setMode(s, 'd-lb', 'prepared'), true);
   assert.equal(setMode(s, 'o-lg', 'prepared'), false);
   assert.equal(setMode(s, 'o-lg', 'holding'), true);
@@ -100,6 +108,7 @@ test('mode legality: tuck = carrier only, prepared = defense only, holding = off
   s.turnIndex = 1;
   assert.equal(setMode(s, 'o-lg', 'cutBlock'), false);   // past the first turn
   // setting a mode arms the next-turn charge (spec: momentum after preparing)
+  assert.equal(setMode(s, 'o-c', 'holding'), true);
   assert.equal(getPlayer(s, 'o-c').charge, 1);
   // toggling back to normal clears it
   setMode(s, 'o-c', 'normal');
@@ -143,11 +152,14 @@ test('breaking down freezes the defender facing where he was headed, and only th
 
 test('every special move locks an axis, and dropping back to normal releases it', () => {
   const s = createGame({ seed: 1 });
-  const c = getPlayer(s, 'o-c'); // the centre is the one holding the ball pre-snap
-  setMode(s, 'o-c', 'tucked');
-  assert.notEqual(c.facing, null, 'tucking commits to a line same as breaking down');
-  setMode(s, 'o-c', 'normal');
-  assert.equal(c.facing, null, 'standing back up releases it');
+  // Linemen can never tuck (see the mode-legality test above), so hand the
+  // ball to a back to demonstrate the tucked axis-lock.
+  s.ball.carrierId = 'o-rb';
+  const rb = getPlayer(s, 'o-rb');
+  setMode(s, 'o-rb', 'tucked');
+  assert.notEqual(rb.facing, null, 'tucking commits to a line same as breaking down');
+  setMode(s, 'o-rb', 'normal');
+  assert.equal(rb.facing, null, 'standing back up releases it');
 
   const lg = getPlayer(s, 'o-lg');
   setMode(s, 'o-lg', 'holding');

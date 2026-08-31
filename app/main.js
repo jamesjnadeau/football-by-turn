@@ -15,7 +15,7 @@ import {
   menuButtonMark, liveLobMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
-import { downDistanceText, gameOverMessage, kickoffMessage } from '../lib/game/hud.js';
+import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '../lib/game/hud.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
@@ -34,6 +34,16 @@ import {
   PLAY_SLOTS, firstEmptySlot, putPlay, bookFor, putBook, playbookSide, playbookHeading,
 } from '../lib/game/playbook.js';
 import { loadLibrary, saveLibrary } from './playbook-store.js';
+import {
+  captureSnapshot, appendSnapshot, emptyCoachLog, serializeCoachLog,
+} from '../lib/game/coach-log.js';
+import {
+  observationFromSnapshot, observePlay, emptyTendencies,
+} from '../lib/game/tendencies.js';
+import {
+  loadCoachLog, saveCoachLog, clearCoachLog,
+  loadTendencies, saveTendencies, clearTendencies,
+} from './coach-store.js';
 import { autoplanOffense } from '../lib/game/offense.js';
 import { realignLearnedDefense } from '../lib/game/learned/formation.js';
 
@@ -56,6 +66,8 @@ const debugBtn = document.getElementById('debug');
 const nextBtn = document.getElementById('next');
 const newBtn = document.getElementById('new');
 const homeBtn = document.getElementById('home-btn');
+const copyLogBtn = document.getElementById('copy-log');
+const clearLogBtn = document.getElementById('clear-log');
 
 let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
 // Which game this drive is: the id of the home-screen button that started it.
@@ -83,6 +95,13 @@ let showVelocity = true;
 // side of the ball — a defensive coach is never offered arrows drawn for men
 // he does not have.
 let library = loadLibrary();
+// What the computer has learned about this coach. Not game state, for the
+// same reason the playbook is not: New Game replaces `state` wholesale, and
+// a habit is something you carry between drives, not something a fresh down
+// forgets. The log is the raw record (exportable, and what tools/ghost.js
+// replays); the counts are what the learned defense actually reads.
+let coachLog = loadCoachLog();
+let tendencies = loadTendencies();
 
 /**
  * The five slots for the side being coached right now. Asked fresh every time
@@ -182,6 +201,9 @@ function paint() {
   personnelBtn.disabled = animating || !canReposition(state);
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
+  copyLogBtn.textContent = `Copy coaching log (${coachLog.length})`;
+  copyLogBtn.disabled = animating || coachLog.length === 0;
+  clearLogBtn.disabled = animating || (coachLog.length === 0 && tendencies.plays === 0);
   runBtn.disabled = animating || state.phase !== 'planning';
   autoplanBtn.disabled = animating || state.phase !== 'planning' || state.aiTeam === 'offense';
   clearBtn.disabled = animating;
@@ -623,6 +645,35 @@ closeMenuBtn.addEventListener('click', closeMenu);
 savePlayBtn.addEventListener('click', savePlay);
 
 /**
+ * Write down what the coach just called. Runs at the moment Run Turn is
+ * pressed, which is the only moment the whole huddle is on the board at once:
+ * every arrow drawn, every man moved, the throw set — and, on a turn the
+ * computer coaches, none of ITS intentions, because those are written inside
+ * runTurn and wiped at the whistle.
+ *
+ * Only the human's own side is recorded, and only when there IS one: in
+ * hot-seat both teams are his, and a log that could not say whose call a
+ * snapshot was would teach the ghost to play both sides at once.
+ *
+ * The tendency counts take the first turn of a down only — that is the play
+ * call; turns two and three are what happened to it. They are counted only
+ * when the human is the OFFENSE, because it is an offense's habits the
+ * learned defense knows what to do with (design decision 3).
+ */
+function recordPlanning() {
+  const team = humanSide(state);
+  if (!team) return;
+  const snap = captureSnapshot(state, team);
+  coachLog = appendSnapshot(coachLog, snap);
+  saveCoachLog(coachLog);
+  if (team === 'offense' && snap.situation.turnIndex === 0) {
+    tendencies = observePlay(tendencies, observationFromSnapshot(snap));
+    saveTendencies(tendencies);
+    state.tendencyCounts = tendencies;
+  }
+}
+
+/**
  * Run the turn. The menu's Run Turn and the board's quick press both come
  * here, so the shortcut is the same press and not a second, subtly different
  * way to snap the ball — same warning when someone has no direction set, same
@@ -640,6 +691,8 @@ function pressRun() {
   pendingWarning = false;
   stopRepositioning();
   say('');
+  // Recorded before the turn runs, while the huddle is still on the board.
+  recordPlanning();
   // runTurn mutates state to the end-of-turn position and returns the
   // per-sub-step frames; the player groups are still painted at their
   // pre-turn spots, so animating the frames walks them to where state says.
@@ -712,6 +765,8 @@ function pressRun() {
     repositionBtn.disabled = true;
     personnelBtn.disabled = true;
     debugBtn.disabled = true;
+    copyLogBtn.disabled = true;
+    clearLogBtn.disabled = true;
     animate(frames, finish);
   } else finish();
 }
@@ -821,6 +876,39 @@ debugBtn.addEventListener('click', () => {
 });
 
 /**
+ * Hand the coaching log over as JSON — the file tools/train-vs-ghost.js
+ * trains against. The clipboard is asked first and a prompt is the fallback,
+ * because a browser may refuse clipboard access outright and a log the coach
+ * cannot get at is a log that never leaves the browser.
+ */
+copyLogBtn.addEventListener('click', async () => {
+  closeMenu();
+  if (animating || coachLog.length === 0) return;
+  const text = serializeCoachLog(coachLog);
+  try {
+    await navigator.clipboard.writeText(text);
+    say(`Copied ${coachLog.length} planning snapshot(s). Save them as JSON and train against them.`);
+  } catch {
+    window.prompt('Copy this coaching log:', text);
+    say('The browser refused the clipboard — the log is in the prompt instead.');
+  }
+});
+
+/** Forget everything: the raw log and the counts read off it. Both, always —
+ *  a coach who asks to be forgotten does not mean half of him. */
+clearLogBtn.addEventListener('click', () => {
+  closeMenu();
+  if (animating) return;
+  coachLog = emptyCoachLog();
+  tendencies = emptyTendencies();
+  clearCoachLog();
+  clearTendencies();
+  state.tendencyCounts = tendencies;
+  say('Forgotten. The computer starts reading you from scratch.');
+  paint();
+});
+
+/**
  * A finished play moves the game on by itself after DEAD_BALL_PAUSE_SECONDS —
  * the coach reads the call, sees where everyone stopped, and the next down
  * comes up without a button press. The timer id is kept so that a coach who
@@ -862,6 +950,8 @@ function startNewGame() {
   state = createGame({
     seed: (Math.random() * 2 ** 31) | 0, ai: mode.ai, aiLevel: mode.level, variant: variantId,
   });
+  // The new drive inherits what the old ones taught the computer.
+  state.tendencyCounts = tendencies;
   random = mulberry32(state.seed);
   pendingWarning = false;
   // The board is built before anything is said into it. Every other caller

@@ -5,7 +5,7 @@ import {
 import {
   canReposition, placePlayer, spotFault, alignDefense, lineCount, setPersonnel,
 } from '../lib/game/formation.js';
-import { clearAiPlans, AI_MODES, aiModeIndex, nextAiMode } from '../lib/game/ai.js';
+import { clearAiPlans, AI_MODES, aiModeIndex, nextAiMode, defaultModeForSide } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
@@ -15,7 +15,7 @@ import {
   menuButtonMark, liveLobMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
-import { downDistanceText } from '../lib/game/hud.js';
+import { downDistanceText, gameOverMessage, kickoffMessage } from '../lib/game/hud.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
@@ -58,6 +58,10 @@ let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiL
 // startGame() sets it and New Game re-reads it, so New Game deals the same game
 // again — switching is what Back to Home is for.
 let variantId = DEFAULT_VARIANT;
+// How the human chose to play this visit — 'offense', 'defense' or
+// 'training', held exactly the way variantId is: New Game re-deals it,
+// Back to Home is how you change it.
+let sideId = 'training';
 let random = mulberry32(state.seed);
 let pendingWarning = false;
 let messageText = '';
@@ -813,9 +817,7 @@ function goToNextDown() {
   stopRepositioning();
   nextDown(state);
   if (state.phase === 'gameOver') {
-    say(state.result === 'touchdown' ? 'TOUCHDOWN — you win!'
-      : state.result === 'turnover-on-downs' ? 'Turnover on downs. Game over — you lose.'
-      : 'Turnover. Game over — you lose.');
+    say(gameOverMessage(state));
   } else {
     say(`${['1st', '2nd', '3rd', '4th'][state.down - 1]} down.`);
     rebuildBoard();
@@ -826,8 +828,9 @@ function goToNextDown() {
 function startNewGame() {
   cancelAutoAdvance();
   stopRepositioning();
+  const mode = defaultModeForSide(sideId);
   state = createGame({
-    seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart', variant: variantId,
+    seed: (Math.random() * 2 ** 31) | 0, ai: mode.ai, aiLevel: mode.level, variant: variantId,
   });
   random = mulberry32(state.seed);
   pendingWarning = false;
@@ -836,7 +839,7 @@ function startNewGame() {
   // one — and the message layer say() writes into does not exist until
   // rebuildBoard() has made it.
   rebuildBoard();
-  say('New game. 1st and 10 from your own 20 — 80 yards to the house.');
+  say(kickoffMessage(state));
   paint();
 }
 
@@ -899,9 +902,10 @@ let inputAttached = false;
 // knows about the game, and the game knows nothing about home.
 let exitToHome = () => {};
 
-export function startGame({ variant = DEFAULT_VARIANT, onExit = () => {} } = {}) {
+export function startGame({ variant = DEFAULT_VARIANT, side = 'training', onExit = () => {} } = {}) {
   exitToHome = onExit;
   variantId = variant;
+  sideId = side;
   if (!inputAttached) {
     attachInput(board, { hitTest, onGesture, onDragPreview });
     inputAttached = true;

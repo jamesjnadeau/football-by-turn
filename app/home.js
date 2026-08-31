@@ -7,8 +7,8 @@
  * The markup comes from lib/game/home.js as a string, the same way the board's
  * does. This file only writes it into the page and listens for the press.
  */
-import { homeMarkup } from '../lib/game/home.js';
-import { isPlayable } from '../lib/game/variants.js';
+import { homeMarkup, sideMarkup } from '../lib/game/home.js';
+import { isPlayable, getVariant } from '../lib/game/variants.js';
 
 const home = document.getElementById('home');
 const board = document.getElementById('board');
@@ -17,6 +17,16 @@ const board = document.getElementById('board');
 // at module scope, so it is imported exactly once however many drives get
 // played; startGame() is what every visit after the first calls.
 let game = null;
+
+// The variant whose side chooser is on screen, or null when the variant
+// list is. Only the click handler reads it, so the two screens cannot get
+// out of step with what a press means.
+let pickedVariant = null;
+
+function showChoices() {
+  pickedVariant = null;
+  home.innerHTML = homeMarkup();
+}
 
 /**
  * `hidden` is an HTMLElement property, and the board is an <svg> — an
@@ -34,24 +44,36 @@ function show(el, visible) {
 function showHome() {
   show(board, false);
   show(home, true);
+  showChoices();
 }
 
-async function start(variantId) {
+async function start(variantId, side) {
   // The unplayable button is disabled in the markup; this is that same rule
   // said again, because a disabled button is a picture and this is the gate.
   if (!isPlayable(variantId)) return;
   show(home, false);
   show(board, true);
   game ??= await import('./main.js');
-  game.startGame({ variant: variantId, onExit: showHome });
+  game.startGame({ variant: variantId, side, onExit: showHome });
 }
 
-home.innerHTML = homeMarkup();
-// One listener on the section rather than one per button: the buttons are
-// written in as markup, so matching on the way up means there is nothing to
-// re-bind if the list of games ever changes.
+// One listener on the section for both screens: the buttons are written in
+// as markup, so matching on the way up means there is nothing to re-bind
+// when the screen swaps from the game list to the side chooser and back.
 home.addEventListener('click', (e) => {
+  if (e.target.closest?.('[data-home-back]')) {
+    showChoices();
+    return;
+  }
+  const sideBtn = e.target.closest?.('[data-side]');
+  if (sideBtn && pickedVariant) {
+    start(pickedVariant, sideBtn.dataset.side);
+    return;
+  }
   const btn = e.target.closest?.('[data-variant]');
-  if (btn) start(btn.dataset.variant);
+  if (btn && isPlayable(btn.dataset.variant)) {
+    pickedVariant = btn.dataset.variant;
+    home.innerHTML = sideMarkup(getVariant(pickedVariant));
+  }
 });
 showHome();

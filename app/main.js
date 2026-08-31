@@ -3,7 +3,7 @@ import {
   createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable, setPass, ballPos,
 } from '../lib/game/state.js';
 import {
-  canReposition, placePlayer, spotFault, alignDefense, lineCount,
+  canReposition, placePlayer, spotFault, alignDefense, lineCount, setPersonnel,
 } from '../lib/game/formation.js';
 import { clearAiPlans, AI_MODES, aiModeIndex, nextAiMode } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
@@ -24,7 +24,9 @@ import { lobLanded } from '../lib/game/lob.js';
 import {
   TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
 } from '../lib/game/constants.js';
-import { minOnLine, DEFAULT_VARIANT, OFFENSIVE_LINE_ROLES } from '../lib/game/rosters.js';
+import {
+  minOnLine, DEFAULT_VARIANT, OFFENSIVE_LINE_ROLES, PERSONNEL_PACKAGES, personnelId,
+} from '../lib/game/rosters.js';
 import { followYard, yardsOfY } from '../lib/game/view.js';
 import { attachInput } from './input.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
@@ -43,6 +45,7 @@ const runBtn = document.getElementById('run');
 const clearBtn = document.getElementById('clear');
 const aiBtn = document.getElementById('ai');
 const repositionBtn = document.getElementById('reposition');
+const personnelBtn = document.getElementById('personnel');
 const debugBtn = document.getElementById('debug');
 const nextBtn = document.getElementById('next');
 const newBtn = document.getElementById('new');
@@ -147,6 +150,8 @@ function paint() {
   aiBtn.disabled = animating || state.phase !== 'planning';
   repositionBtn.textContent = `Reposition: ${repositioning ? 'on' : 'off'}`;
   repositionBtn.disabled = animating || !canReposition(state);
+  personnelBtn.textContent = `Personnel: ${personnelId(state.variantId)}`;
+  personnelBtn.disabled = animating || !canReposition(state);
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
   runBtn.disabled = animating || state.phase !== 'planning';
@@ -659,6 +664,7 @@ function pressRun() {
     homeBtn.disabled = true;
     aiBtn.disabled = true;
     repositionBtn.disabled = true;
+    personnelBtn.disabled = true;
     debugBtn.disabled = true;
     animate(frames, finish);
   } else finish();
@@ -689,6 +695,22 @@ aiBtn.addEventListener('click', () => {
   if (state.aiTeam) clearAiPlans(state);
   pendingWarning = false;
   say(next.note);
+  paint();
+});
+
+personnelBtn.addEventListener('click', () => {
+  closeMenu();
+  if (animating || !canReposition(state)) return;
+  const order = PERSONNEL_PACKAGES;
+  const next = order[(order.indexOf(personnelId(state.variantId)) + 1) % order.length];
+  if (!setPersonnel(state, next)) return;
+  // A new package means new bodies on the field — realign them the same way
+  // a drag during reposition mode does, and for the same reason: only when
+  // the computer is coaching the defense, so a human coach's own drags are
+  // never overwritten.
+  realignDefense();
+  pendingWarning = false;
+  say(`Personnel: ${next}.`);
   paint();
 });
 

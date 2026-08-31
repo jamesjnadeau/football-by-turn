@@ -390,14 +390,15 @@ function onGesture(playerId, gesture, point) {
   } else if (gesture.kind === 'longpress') {
     const target =
       p.mode !== 'normal' ? 'normal'
-      : state.ball.carrierId === playerId ? 'tucked'
-      : p.team === 'defense' ? 'prepared'
-      // An offensive lineman gets the cut block instead of holding, but only
-      // on the snap itself — setMode's own legality agrees (OFFENSIVE_LINE_ROLES,
-      // turnIndex === 0); surfacing the same condition here means the long
-      // press offers the stance he can actually use instead of one setMode
-      // would just refuse past the first turn.
+      // An offensive lineman can never tuck (setMode refuses it outright), so
+      // this has to be checked before the carrier-tucked branch below —
+      // otherwise a long press on the centre pre-snap (he's the placeholder
+      // ball carrier before the snap) would offer 'tucked' and setMode would
+      // silently refuse it. On the snap itself he gets the cut block instead;
+      // any other turn he falls through to holding like any other lineman.
       : p.team === 'offense' && OFFENSIVE_LINE_ROLES.has(p.role) && state.turnIndex === 0 ? 'cutBlock'
+      : state.ball.carrierId === playerId && !OFFENSIVE_LINE_ROLES.has(p.role) ? 'tucked'
+      : p.team === 'defense' ? 'prepared'
       : 'holding';
     if (!setMode(state, playerId, target)) say(`${p.role} can't do that.`);
     else say(target === 'normal' ? `${p.role} back to normal.` : `${p.role}: ${target === 'cutBlock' ? 'cut block' : target}.`);

@@ -8,7 +8,7 @@ import {
   SPEED_FACTOR, TUCK_SPEED_MULT, STANCE_LATERAL_MULT, HOLD_SPEED_MULT,
   PREPARED_REACH, HOLD_REACH, HOLD_MASS_MULT, CHARGE_MULT,
   PREPARED_REACH_MULT, STANCE_CONE_HALF_ANGLE,
-  FUMBLE_UNTUCKED, FUMBLE_TUCKED,
+  FUMBLE_UNTUCKED, FUMBLE_TUCKED, CUT_BLOCK_DRIVE_SPEED_MULT,
 } from '../../lib/game/constants.js';
 
 const p = (over) => ({
@@ -29,6 +29,16 @@ test('each mode caps speed as specified', () => {
   // ALONG his locked axis — full tilt — and clampToStance is what taxes the
   // sideways shuffle.
   assert.equal(maxSpeed(p({ mode: 'prepared' })), SPEED_FACTOR / 3);
+});
+
+test('cutBlockDrive caps speed hard — the spec\'s "can\'t move very fast"', () => {
+  assert.equal(maxSpeed(p({ mode: 'cutBlockDrive' })), (SPEED_FACTOR / 3) * CUT_BLOCK_DRIVE_SPEED_MULT);
+  assert.ok(CUT_BLOCK_DRIVE_SPEED_MULT < TUCK_SPEED_MULT, 'slower than a tucked runner');
+  assert.ok(CUT_BLOCK_DRIVE_SPEED_MULT > HOLD_SPEED_MULT, 'but not as pinned as a holding blocker');
+});
+
+test('cutBlock itself costs no speed — the lunge is at full tilt', () => {
+  assert.equal(maxSpeed(p({ mode: 'cutBlock' })), SPEED_FACTOR / 3);
 });
 
 test('prepared and holding extend reach; normal reach is just the radius', () => {

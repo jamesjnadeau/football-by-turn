@@ -10,6 +10,7 @@ import { setCover } from '../../lib/game/cover.js';
 import {
   MAX_ARROW_UNITS, MAX_PASS_ARROW_UNITS, DEBUG_VELOCITY_SECONDS,
   DEBUG_VELOCITY_TRIANGLE_SCALE, COVER_HALO_UNITS, ON_LINE_YARDS,
+  CUT_BLOCK_DRIVE_REACH,
 } from '../../lib/game/constants.js';
 import { teamSize } from '../../lib/game/rosters.js';
 import { tackleReach } from '../../lib/game/modes.js';
@@ -25,6 +26,33 @@ test('the board shell has the field and every game layer', () => {
     assert.ok(markup.includes(`id="${id}"`), id);
   }
   assert.ok(markup.includes(STYLE_GAME));
+});
+
+test('a driving blocker draws his friction aura at radius + CUT_BLOCK_DRIVE_REACH', () => {
+  const s = createGame({ seed: 1 });
+  getPlayer(s, 'o-lg').mode = 'cutBlockDrive';
+  const svg = renderPlayers(s);
+  const group = svg.match(/data-id="o-lg"[\s\S]*?<\/g>/)[0];
+  const match = group.match(/<circle cx="0" cy="0" r="([-\d.]+)" class="drive-aura"\/>/);
+  assert.ok(match, 'aura drawn');
+  const expected = getPlayer(s, 'o-lg').radius + CUT_BLOCK_DRIVE_REACH;
+  assert.ok(Math.abs(Number(match[1]) - expected) < 1e-6);
+});
+
+test('nobody else draws the drive aura', () => {
+  const s = createGame({ seed: 1 });
+  assert.ok(!renderPlayers(s).includes('class="drive-aura"'));
+});
+
+test('a player receiving the cut-block assist is marked', () => {
+  const s = createGame({ seed: 1 });
+  getPlayer(s, 'o-rb').cutBlockAssist = true;
+  assert.ok(renderPlayers(s).includes('class="cb-assist"'));
+});
+
+test('nobody else draws the assist mark', () => {
+  const s = createGame({ seed: 1 });
+  assert.ok(!renderPlayers(s).includes('class="cb-assist"'));
 });
 
 test('the scrimmage line draws dashed but unlabelled', () => {

@@ -240,6 +240,24 @@ test('sanitising rejects a stance mode the game does not have', () => {
   assert.equal(sanitizePlay(bad), null);
 });
 
+test('sanitising accepts a cut-block stance', () => {
+  const p = goodPlay();
+  p.stances['o-lg'] = { mode: 'cutBlock', facing: { x: 0, y: 1 } };
+  assert.deepEqual(sanitizePlay(p).stances['o-lg'], { mode: 'cutBlock', facing: { x: 0, y: 1 } });
+});
+
+test('a cut block round-trips through capture and apply', () => {
+  const state = drawn();
+  setMode(state, 'o-lg', 'cutBlock');
+  const play = capturePlay(state, 'Trap');
+  assert.deepEqual(play.stances['o-lg'], { mode: 'cutBlock', facing: getPlayer(state, 'o-lg').facing });
+  const fresh = createGame({ ai: 'defense' });
+  afterSnap(fresh);
+  const { skipped } = applyPlay(fresh, play);
+  assert.equal(getPlayer(fresh, 'o-lg').mode, 'cutBlock');
+  assert.ok(!skipped.includes('o-lg'));
+});
+
 test('sanitising refuses a __proto__ key', () => {
   // Built by JSON.parse, which makes __proto__ a real own property — an
   // assignment would have set the prototype instead and proved nothing.

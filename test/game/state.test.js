@@ -92,6 +92,13 @@ test('mode legality: tuck = carrier only, prepared = defense only, holding = off
   assert.equal(setMode(s, 'o-lg', 'prepared'), false);
   assert.equal(setMode(s, 'o-lg', 'holding'), true);
   assert.equal(setMode(s, 'd-nt', 'holding'), false);
+  // the cut block: offensive linemen only, and only before the play has moved
+  assert.equal(setMode(s, 'o-lg', 'cutBlock'), true);
+  assert.equal(setMode(s, 'o-rb', 'cutBlock'), false);   // not a lineman
+  assert.equal(setMode(s, 'd-nt', 'cutBlock'), false);   // not offense
+  setMode(s, 'o-lg', 'normal');
+  s.turnIndex = 1;
+  assert.equal(setMode(s, 'o-lg', 'cutBlock'), false);   // past the first turn
   // setting a mode arms the next-turn charge (spec: momentum after preparing)
   assert.equal(getPlayer(s, 'o-c').charge, 1);
   // toggling back to normal clears it

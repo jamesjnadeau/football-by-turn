@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { stepPhysics } from '../../lib/game/physics.js';
 import { createGame, setPlan, setMode, getPlayer } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
-import { maxSpeed } from '../../lib/game/modes.js';
+import { maxSpeed, accelMult } from '../../lib/game/modes.js';
+import { applyCutBlockAssist } from '../../lib/game/block.js';
 import { DT, SUBSTEPS_PER_TURN, STANCE_LATERAL_MULT, COVER_GRAB_REACH } from '../../lib/game/constants.js';
 import { len } from '../../lib/game/vec.js';
 import { RELEASE_SPEED } from '../../lib/game/constants.js';
@@ -101,6 +102,73 @@ test('a holding blocker barely budges when a charger slams in', () => {
   const heldDrift = 100 - getPlayer(withHold, 'o-c').pos.y;
   const normalDrift = 100 - getPlayer(without, 'o-c').pos.y;
   assert.ok(heldDrift < normalDrift / 2, `holding drift ${heldDrift} vs normal ${normalDrift}`);
+});
+
+test('a driving blocker sheds a sliding defender\'s speed far more than an ordinary block', () => {
+  // A head-on charge is the wrong geometry to test this with: this engine's
+  // friction impulse only ever acts on the TANGENTIAL component of a
+  // contact (see physics.js's frictionFor comment), so a square hit never
+  // exercises FRICTION_CUT_BLOCK_DRIVE at all — it only exercises
+  // driveReachBonus's effect on the positional-correction split, which for
+  // two equal-mass players pushes the blocker back MORE, not less (see the
+  // plan's design decision 5). A sliding contact — same geometry the
+  // existing "contact friction slows a player sliding past another" test
+  // uses just above — is what actually isolates the friction coefficient.
+  const withDrive = pair(['o-c', 'd-nt']);
+  const without = pair(['o-c', 'd-nt']);
+  for (const s of [withDrive, without]) {
+    const c = getPlayer(s, 'o-c'), nt = getPlayer(s, 'd-nt');
+    c.pos = { x: 135, y: 100 };
+    nt.pos = { x: 138.5, y: 100 };   // radii 3.5 + 3.5 = 7, so overlapping by 3.5
+    nt.vel = { x: 0, y: 10 };        // sliding along the tangent, not closing
+  }
+  getPlayer(withDrive, 'o-c').mode = 'cutBlockDrive';
+  stepPhysics(withDrive, DT);
+  stepPhysics(without, DT);
+  const driveSpeed = len(getPlayer(withDrive, 'd-nt').vel);
+  const normalSpeed = len(getPlayer(without, 'd-nt').vel);
+  assert.ok(driveSpeed < normalSpeed, `driving blocker should bleed more speed: ${driveSpeed} vs ${normalSpeed}`);
+});
+
+test('a driving blocker\'s wider reach pulls in contact from farther away than an ordinary body', () => {
+  const s = pair(['o-c', 'd-nt']);
+  const c = getPlayer(s, 'o-c'), nt = getPlayer(s, 'd-nt');
+  c.mode = 'cutBlockDrive';
+  c.pos = { x: 135, y: 100 };
+  // Bodies alone (3.5 + 3.5 = 7) do not overlap at a gap of 8, but
+  // CUT_BLOCK_DRIVE_REACH (6) extends contact well past that.
+  nt.pos = { x: 135, y: 108 };
+  const contacts = stepPhysics(s, DT);
+  assert.ok(contacts.length > 0, 'engaged despite the 1-unit gap between bodies');
+});
+
+test('a teammate within a yard of a driving blocker is faster and turns quicker', () => {
+  const near = pair(['o-rb', 'o-lg']);
+  const far = pair(['o-rb', 'o-lg']);
+  for (const s of [near, far]) getPlayer(s, 'o-lg').mode = 'cutBlockDrive';
+  getPlayer(near, 'o-lg').pos = { x: 135, y: 100 };
+  getPlayer(near, 'o-rb').pos = { x: 135, y: 109 }; // edge gap 9 - 6 = 3 units: inside the aura
+  getPlayer(far, 'o-lg').pos = { x: 135, y: 100 };
+  getPlayer(far, 'o-rb').pos = { x: 135, y: 120 };  // edge gap 20 - 6 = 14 units: well outside it
+  applyCutBlockAssist(near);
+  applyCutBlockAssist(far);
+  assert.equal(getPlayer(near, 'o-rb').cutBlockAssist, true);
+  assert.equal(getPlayer(far, 'o-rb').cutBlockAssist, false);
+  assert.ok(maxSpeed(getPlayer(near, 'o-rb')) > maxSpeed(getPlayer(far, 'o-rb')));
+  assert.ok(accelMult(getPlayer(near, 'o-rb')) > accelMult(getPlayer(far, 'o-rb')));
+});
+
+test('the assist tracks distance each sub-step rather than latching on', () => {
+  const s = pair(['o-rb', 'o-lg']);
+  getPlayer(s, 'o-lg').mode = 'cutBlockDrive';
+  getPlayer(s, 'o-lg').pos = { x: 135, y: 100 };
+  const rb = getPlayer(s, 'o-rb');
+  rb.pos = { x: 135, y: 109 };
+  applyCutBlockAssist(s);
+  assert.equal(rb.cutBlockAssist, true);
+  rb.pos = { x: 135, y: 200 }; // walked well clear
+  applyCutBlockAssist(s);
+  assert.equal(rb.cutBlockAssist, false);
 });
 
 test('contact friction slows a player sliding past another', () => {

@@ -7,10 +7,10 @@ import {
 import { TEAM_SIZE } from '../../lib/game/constants.js';
 import { fieldPos } from '../../lib/game/view.js';
 
-test('a new game: 1st down at yard 0, planning, TEAM_SIZE a side, the centre has the ball', () => {
+test('a new game: 1st down at yard 20, planning, TEAM_SIZE a side, the centre has the ball', () => {
   const s = createGame({ seed: 7 });
   assert.equal(s.down, 1);
-  assert.equal(s.losYard, 0);
+  assert.equal(s.losYard, 20);
   assert.equal(s.phase, 'planning');
   assert.equal(s.turnIndex, 0);
   assert.equal(s.players.filter((p) => p.team === 'offense').length, TEAM_SIZE);
@@ -23,9 +23,16 @@ test('a new game: 1st down at yard 0, planning, TEAM_SIZE a side, the centre has
   assert.equal(carrier(s).id, 'o-c');
 });
 
+test('a new game is 1st and 10 from the offense\'s own 20', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(s.down, 1);
+  assert.equal(s.losYard, 20);
+  assert.equal(s.toGoYard, 30);
+});
+
 test('offense lines up behind the LOS, defense beyond it, nobody overlapping', () => {
   const s = createGame({ seed: 1 });
-  const losY = fieldPos(0, 0).y;
+  const losY = fieldPos(0, s.losYard).y;
   for (const p of s.players) {
     if (p.team === 'offense') assert.ok(p.pos.y < losY, `${p.id} behind LOS`);
     else assert.ok(p.pos.y > losY, `${p.id} beyond LOS`);

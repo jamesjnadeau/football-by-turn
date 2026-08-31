@@ -17,8 +17,8 @@ test('a spot behind the line, inbounds and clear of everyone, has no fault', () 
 
 test('the offense may not line up past the line, and the defense may not line up behind it', () => {
   const s = createGame({ seed: 1 });
-  assert.equal(spotFault(s, 'o-wr1', fieldPos(-20, 2)), 'past-line');
-  assert.equal(spotFault(s, 'd-cb1', fieldPos(-20, -2)), 'past-line');
+  assert.equal(spotFault(s, 'o-wr1', fieldPos(-20, s.losYard + 2)), 'past-line');
+  assert.equal(spotFault(s, 'd-cb1', fieldPos(-20, s.losYard - 2)), 'past-line');
 });
 
 test('a spot with any part of the body outside a sideline is out of bounds', () => {
@@ -142,16 +142,16 @@ test('repositioning is offered on the first turn of a down and nowhere else', ()
 
 test('repositioning: allowed only at turn 0 planning, and only on your own side of the LOS', () => {
   const s = createGame({ seed: 1 });
-  const ok = placePlayer(s, 'o-wr1', fieldPos(-20, -2));
+  const ok = placePlayer(s, 'o-wr1', fieldPos(-20, s.losYard - 2));
   assert.equal(ok, true);
-  assert.deepEqual(getPlayer(s, 'o-wr1').pos, fieldPos(-20, -2));
+  assert.deepEqual(getPlayer(s, 'o-wr1').pos, fieldPos(-20, s.losYard - 2));
   // offense may not set up past the LOS
-  assert.equal(placePlayer(s, 'o-wr1', fieldPos(-20, 2)), false);
+  assert.equal(placePlayer(s, 'o-wr1', fieldPos(-20, s.losYard + 2)), false);
   // defense may not set up behind it
-  assert.equal(placePlayer(s, 'd-cb1', fieldPos(-20, -2)), false);
+  assert.equal(placePlayer(s, 'd-cb1', fieldPos(-20, s.losYard - 2)), false);
   // once the play has run a turn, nobody repositions
   s.turnIndex = 1;
-  assert.equal(placePlayer(s, 'o-wr1', fieldPos(-15, -2)), false);
+  assert.equal(placePlayer(s, 'o-wr1', fieldPos(-15, s.losYard - 2)), false);
 });
 
 test('repositioning refuses a spot the formation rulebook faults', () => {
@@ -290,9 +290,9 @@ test('an impossible spot is skipped and the rest of the formation still seats', 
   const s = createGame({ seed: 1 });
   const where = { ...getPlayer(s, 'o-wr2').pos };
   const { applied, skipped } = placeFormation(s, [
-    { id: 'o-wr1', pos: fieldPos(-22, -1) },   // fine
-    { id: 'o-wr2', pos: fieldPos(0, 5) },      // past the line
-    { id: 'nobody', pos: fieldPos(0, -3) },    // no such player
+    { id: 'o-wr1', pos: fieldPos(-22, s.losYard - 1) },   // fine
+    { id: 'o-wr2', pos: fieldPos(0, s.losYard + 5) },     // past the line
+    { id: 'nobody', pos: fieldPos(0, s.losYard - 3) },    // no such player
   ]);
   assert.deepEqual(applied, ['o-wr1']);
   assert.deepEqual(skipped.sort(), ['nobody', 'o-wr2']);
@@ -303,7 +303,7 @@ test('a man who could not be moved is still in the way of the men who follow', (
   const s = createGame({ seed: 1 });
   const rb = { ...getPlayer(s, 'o-rb').pos };
   const { applied, skipped } = placeFormation(s, [
-    { id: 'o-rb', pos: fieldPos(0, 5) },  // refused: past the line, so he stays put
+    { id: 'o-rb', pos: fieldPos(0, s.losYard + 5) },  // refused: past the line, so he stays put
     { id: 'o-wr1', pos: rb },             // and his old spot is therefore occupied
   ]);
   assert.deepEqual(applied, []);

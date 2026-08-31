@@ -81,7 +81,7 @@ README.md           # "How to play" and "v1 interpretation decisions" updated
 - Produces: `OWN_GOAL_YARD = 0`, `GOAL_YARD = 100`, `END_YARD = 110` (replacing 10/20); `gameView(losYard) -> view` where the returned view's `fieldTopY`/`bottomYard`/`goalYard`/`goalPosts`/`yardLines`/`windowTopY`/`height` describe a 40-yard camera centred behind `losYard`, clamped to `[FIELD_LOW_YARD, END_YARD]`; `fieldPos`/`yardsOfY` keep their existing signatures and behavior, just built on the new constants.
 - Removes: the `TOP_YARD` export (no longer meaningful — there is no single fixed top of the drawn field any more, only the current window's).
 
-- [ ] **Step 1: Add the new constants**
+- [x] **Step 1: Add the new constants**
 
 In `lib/game/constants.js`, append a `--- the full field ---` section:
 
@@ -113,7 +113,7 @@ export const WINDOW_BEHIND_YARDS = 15;
 export const FIELD_LOW_YARD = -10;
 ```
 
-- [ ] **Step 2: Rewrite the view as a scrolling window**
+- [x] **Step 2: Rewrite the view as a scrolling window**
 
 Replace `lib/game/view.js` in full:
 
@@ -215,7 +215,7 @@ export function yardsOfY(svgY) {
 
 Note `fieldPos`/`yardsOfY` no longer route through a `gameView(0)` call — they use `ANCHOR_Y` directly, since it is a plain fixed constant now rather than something only correct when called with the drive-start yard. This is the fix design decision 9 calls out at its root; Task 4 fixes the three call sites in `render.js` that still assumed the old, always-window-0 shortcut.
 
-- [ ] **Step 3: Update `test/game/view.test.js`**
+- [x] **Step 3: Update `test/game/view.test.js`**
 
 The existing "one yard down equals one yard across," "scrimmage follows losYard," and `fieldPos`/`yardsOfY` invertibility tests all still hold — update only the fixed numbers they assert (`GOAL_YARD`/`END_YARD` are now 100/110, not 10/20; there is no more `TOP_YARD` import). Append new cases:
 
@@ -244,7 +244,7 @@ test('yard lines never repeat the goal lines themselves', () => {
 });
 ```
 
-- [ ] **Step 4: Run `npm test`.** Expect failures everywhere else that assumed `losYard === 0`/`GOAL_YARD === 10` — that is Tasks 2–4's job to fix, not this task's. Confirm only `view.test.js` is green and every other failure is one of those two assumptions (a quick `grep -rn "GOAL_YARD\|TOP_YARD\|losYard" test/` sanity-checks that).
+- [x] **Step 4: Run `npm test`.** Expect failures everywhere else that assumed `losYard === 0`/`GOAL_YARD === 10` — that is Tasks 2–4's job to fix, not this task's. Confirm only `view.test.js` is green and every other failure is one of those two assumptions (a quick `grep -rn "GOAL_YARD\|TOP_YARD\|losYard" test/` sanity-checks that).
 
 ---
 
@@ -257,7 +257,7 @@ test('yard lines never repeat the goal lines themselves', () => {
 **Interfaces:**
 - Produces: `createGame()`'s returned state gains `toGoYard`, seeded from the new `losYard`; `state.losYard` now starts at `DRIVE_START_YARD` (20) instead of 0.
 
-- [ ] **Step 1: Update `createGame`**
+- [x] **Step 1: Update `createGame`**
 
 In `lib/game/state.js`, import `DRIVE_START_YARD` and `FIRST_DOWN_YARDS` from `./constants.js` and `GOAL_YARD` from `./view.js`. In `createGame`, change:
 
@@ -280,7 +280,7 @@ toGoYard: Math.min(DRIVE_START_YARD + FIRST_DOWN_YARDS, GOAL_YARD),
 
 and update `formationPlayers(0)` to `formationPlayers(DRIVE_START_YARD)` in the same function.
 
-- [ ] **Step 2: Update `test/game/state.test.js`**
+- [x] **Step 2: Update `test/game/state.test.js`**
 
 Update the "a new game" test's `losYard`/formation-position assertions for the new start yard, and add:
 
@@ -293,7 +293,7 @@ test('a new game is 1st and 10 from the offense\'s own 20', () => {
 });
 ```
 
-- [ ] **Step 3: Run `npm test`.** `state.test.js` should be green; other files still fail on the old assumptions until their own tasks land.
+- [x] **Step 3: Run `npm test`.** `state.test.js` should be green; other files still fail on the old assumptions until their own tasks land.
 
 ---
 
@@ -306,7 +306,7 @@ test('a new game is 1st and 10 from the offense\'s own 20', () => {
 **Interfaces:**
 - Produces: `nextDown(state)` — same signature, new behavior: resets to 1st-and-10 (a fresh `toGoYard`) whenever the spot reaches or passes the current `toGoYard`, and only now ends the game (`result: 'turnover-on-downs'`) when a 4th down *fails to reach it*, from wherever that set of downs actually started — not unconditionally after four downs total.
 
-- [ ] **Step 1: Rewrite `nextDown`**
+- [x] **Step 1: Rewrite `nextDown`**
 
 Replace the body of `nextDown` in `lib/game/rules.js`:
 
@@ -366,7 +366,7 @@ export function nextDown(state) {
 
 Drop the now-unused `TOP_YARD` import.
 
-- [ ] **Step 2: Update and extend `test/game/rules.test.js`**
+- [x] **Step 2: Update and extend `test/game/rules.test.js`**
 
 Update every existing `nextDown`/spot test that hardcoded the old 10-yard goal-to-go field for the new absolute-yard numbers (a play at the old "yard 0" is now "yard 20," `GOAL_YARD - 0.5` is `99.5` not `9.5`, etc.). Append:
 
@@ -421,7 +421,7 @@ test('an enforced penalty never grants a first down even on a play that reached 
 
 Adjust exact field-setup boilerplate (how a carrier/ball position is staged) to match whatever helper pattern the existing tests in this file already use — the four cases above are the behaviors to cover, not a literal diff.
 
-- [ ] **Step 3: Run `npm test`.** `rules.test.js` and `state.test.js` should be green now; `render.js`/`app/main.js`-dependent suites (Task 4) still fail.
+- [x] **Step 3: Run `npm test`.** `rules.test.js` and `state.test.js` should be green now; `render.js`/`app/main.js`-dependent suites (Task 4) still fail.
 
 ---
 
@@ -434,7 +434,7 @@ Adjust exact field-setup boilerplate (how a carrier/ball position is staged) to 
 **Interfaces:**
 - Produces: `renderBoardShell(losYard, toGoYard) -> {viewBox, markup}` (was `renderBoardShell(losYard)`); `lineToGainMark(view, toGoYard) -> string`; `buttonColumnMidY(losYard)`, `renderMessage(text, losYard)`, `renderFieldButtons(state, opts)` all now take or derive the *current* `losYard` instead of implicitly assuming yard 0 is always what's on screen (design decision 9).
 
-- [ ] **Step 1: Thread `losYard` through the three UI-placement functions**
+- [x] **Step 1: Thread `losYard` through the three UI-placement functions**
 
 In `lib/game/render.js`:
 
@@ -466,7 +466,7 @@ export function renderBoardShell(losYard, toGoYard) {
 
 `renderFieldButtons(state, {...})` calls `buttonColumnMidY(state.losYard)` instead of the parameterless call. `renderMessage(text, losYard)` calls `gameView(losYard)` instead of `gameView(0)`.
 
-- [ ] **Step 2: Draw the line to gain**
+- [x] **Step 2: Draw the line to gain**
 
 Add a CSS class to `STYLE_GAME`:
 
@@ -497,7 +497,7 @@ export function lineToGainMark(view, toGoYard) {
 }
 ```
 
-- [ ] **Step 3: Update `test/game/render.test.js`**
+- [x] **Step 3: Update `test/game/render.test.js`**
 
 Update every call site of `renderBoardShell`/`renderMessage`/`renderFieldButtons` for the new signatures, and the fixed `GOAL_YARD`/`END_YARD` numbers baked into any existing assertions. Append:
 
@@ -515,7 +515,7 @@ test('renderBoardShell\'s viewBox scrolls with losYard instead of always startin
 });
 ```
 
-- [ ] **Step 4: Run `npm test`.** `render.test.js` should be green. Anything in `formation.test.js`/`defense.test.js`/`integration.test.js`/`turn.test.js` still failing at this point is failing only because it calls `createGame`/`nextDown` and inherited the new absolute-yard numbers — sweep those in Task 7, not here, unless a failure traces back to this task's own render changes (check the stack before assuming).
+- [x] **Step 4: Run `npm test`.** `render.test.js` should be green. Anything in `formation.test.js`/`defense.test.js`/`integration.test.js`/`turn.test.js` still failing at this point is failing only because it calls `createGame`/`nextDown` and inherited the new absolute-yard numbers — sweep those in Task 7, not here, unless a failure traces back to this task's own render changes (check the stack before assuming).
 
 ---
 
@@ -528,7 +528,7 @@ test('renderBoardShell\'s viewBox scrolls with losYard instead of always startin
 **Interfaces:**
 - Produces: `spotText(yard) -> string` (`"OWN 24"`, `"50"`, `"OPP 35"`); `downDistanceText(state) -> string` (`"1st & 10 at the OWN 20"`, `"3rd & 4 at the OPP 45"`, `"1st & Goal at the OPP 8"`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `test/game/hud.test.js`:
 
@@ -558,9 +558,9 @@ test('goal-to-go reads "Goal" instead of a yardage', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail** (`hud.js` does not exist yet).
+- [x] **Step 2: Run tests to verify they fail** (`hud.js` does not exist yet).
 
-- [ ] **Step 3: Implement `lib/game/hud.js`**
+- [x] **Step 3: Implement `lib/game/hud.js`**
 
 ```js
 /**
@@ -586,7 +586,7 @@ export function downDistanceText(state) {
 }
 ```
 
-- [ ] **Step 4: Run `npm test`.** `hud.test.js` green.
+- [x] **Step 4: Run `npm test`.** `hud.test.js` green.
 
 ---
 
@@ -597,7 +597,7 @@ export function downDistanceText(state) {
 
 **Interfaces:** No new exports — this task only changes how `app/main.js` calls the functions Tasks 1–5 changed or added.
 
-- [ ] **Step 1: Update the HUD line**
+- [x] **Step 1: Update the HUD line**
 
 Import `downDistanceText` from `../lib/game/hud.js`. In `paint()`, replace:
 
@@ -611,13 +611,13 @@ with:
 hud.textContent = `${downDistanceText(state)} — ${state.phase}`;
 ```
 
-- [ ] **Step 2: Pass the current spot to the functions Task 4 changed**
+- [x] **Step 2: Pass the current spot to the functions Task 4 changed**
 
 - `rebuildBoard()`: `renderBoardShell(state.losYard, state.toGoYard)`.
 - `drawMessage()`: `renderMessage(messageText, state.losYard)`.
 - `paint()`'s call to `renderFieldButtons` is unchanged in signature (it already takes `state`); no edit needed there beyond what Task 4 did inside `render.js`.
 
-- [ ] **Step 3: Tighten the win/lose language**
+- [x] **Step 3: Tighten the win/lose language**
 
 In `goToNextDown()`:
 
@@ -637,7 +637,7 @@ In `startNewGame()`, update the opening message:
 say('New game. 1st and 10 from your own 20 — 80 yards to the house.');
 ```
 
-- [ ] **Step 4: Manual playtest**
+- [x] **Step 4: Manual playtest**
 
 Run `npm run serve`, open the page, and play at least one full possession by hand: confirm the camera visibly scrolls as the ball moves downfield, the gold line-to-gain marker tracks each new set of downs, the HUD reads correctly through a first down and into goal-to-go territory, a stopped 4th down away from the goal ends the game with the new "you lose" wording, and a touchdown from a normal drive (not just from goal-to-go) still says "you win!". Also confirm the two on-field buttons and the message plate stay visually anchored to the current window rather than drifting off to a stale one as the drive progresses — that is exactly the bug design decision 9 exists to prevent, so it is worth specifically watching for.
 
@@ -649,11 +649,11 @@ Run `npm run serve`, open the page, and play at least one full possession by han
 - Modify: `test/game/formation.test.js`, `test/game/defense.test.js`, `test/game/turn.test.js`, `test/game/integration.test.js` (only as needed)
 - Modify: `README.md`
 
-- [ ] **Step 1: Run `npm test` and fix whatever is still red**
+- [x] **Step 1: Run `npm test` and fix whatever is still red**
 
 By this point every failure left should trace to one of two things: a hardcoded `losYard === 0`/small number that assumed the old drive-start line, or a hardcoded `GOAL_YARD`/`END_YARD` value from the old 10/20 field. Fix the numbers in place; do not change what behavior each test is actually checking (formation legality, AI alignment depths, turn-loop mechanics, integration flow) — those are unaffected by this plan and should still hold once the coordinates are updated. Confirm the full suite is green and the count is at or above the starting 329 (it should be higher — this plan adds tests in Tasks 1, 2, 3, 4, and 5).
 
-- [ ] **Step 2: Update README.md**
+- [x] **Step 2: Update README.md**
 
 In "How to play," replace:
 
@@ -663,6 +663,6 @@ with something describing the real structure — 1st and 10 from the 20, 4 downs
 
 In "v1 interpretation decisions," add a bullet alongside the existing ones documenting this plan's scope call: the game is still a single drive with no scoreboard and no safety rule — see this plan's design decisions 4 and 6 for why, phrased for a README reader rather than an implementer (i.e., "losing the ball however it happens — a turnover on downs included — ends the game; there's no possession swap or running score, and no safety rule since there's no second team to award the two points to").
 
-- [ ] **Step 3: Final check**
+- [x] **Step 3: Final check**
 
 `npm test` green, `npm run serve` playtest from Task 6 Step 4 still holds, README reads consistently with the shipped behavior.

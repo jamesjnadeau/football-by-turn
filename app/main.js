@@ -14,6 +14,7 @@ import {
   lineZoneMark, renderFieldButtons, passLandingMark, passLockMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
+import { downDistanceText } from '../lib/game/hud.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
@@ -71,7 +72,7 @@ function layer(id) {
 }
 
 function rebuildBoard() {
-  const { viewBox, markup } = renderBoardShell(state.losYard);
+  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard);
   board.attr('viewBox', viewBox);
   board.clear();
   board.svg(markup); // parses the markup string from render.js and inserts it as real SVG nodes
@@ -98,7 +99,7 @@ function paint() {
     : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state)
     : '',
   );
-  hud.textContent = `Down ${state.down} of 4 — ${state.phase}`;
+  hud.textContent = `${downDistanceText(state)} — ${state.phase}`;
   aiBtn.textContent = AI_MODES[aiModeIndex(state)].label;
   aiBtn.disabled = animating || state.phase !== 'planning';
   repositionBtn.textContent = `Reposition: ${repositioning ? 'on' : 'off'}`;
@@ -126,7 +127,7 @@ function paint() {
  * here afterwards.
  */
 function drawMessage() {
-  layer('game-message').clear().svg(renderMessage(messageText));
+  layer('game-message').clear().svg(renderMessage(messageText, state.losYard));
 }
 
 function say(text) {
@@ -687,8 +688,8 @@ function goToNextDown() {
   nextDown(state);
   if (state.phase === 'gameOver') {
     say(state.result === 'touchdown' ? 'TOUCHDOWN — you win!'
-      : state.result === 'turnover-on-downs' ? 'Turnover on downs. Game over.'
-      : 'Fumble recovered by the defense. Game over.');
+      : state.result === 'turnover-on-downs' ? 'Turnover on downs. Game over — you lose.'
+      : 'Turnover. Game over — you lose.');
   } else {
     say(`${['1st', '2nd', '3rd', '4th'][state.down - 1]} down.`);
     rebuildBoard();
@@ -702,7 +703,7 @@ function startNewGame() {
   state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
   random = mulberry32(state.seed);
   pendingWarning = false;
-  say('New game. 1st and goal from the 10.');
+  say('New game. 1st and 10 from your own 20 — 80 yards to the house.');
   rebuildBoard();
   paint();
 }

@@ -263,7 +263,7 @@ test('a stored name too long for a slot button is cut', () => {
 
 test('capturing takes where every one of the coach\'s men is standing', () => {
   const state = drawn();
-  getPlayer(state, 'o-wr1').pos = fieldPos(-22, -1);
+  getPlayer(state, 'o-wr1').pos = fieldPos(-22, state.losYard - 1);
   const play = capturePlay(state, 'Trips');
   assert.equal(Object.keys(play.spots).length, 7);          // his team only
   assert.deepEqual(play.spots['o-wr1'], { across: -22, down: -1 });
@@ -286,7 +286,7 @@ test('a play that only moves a man is not empty', () => {
 
 test('calling a play lines the formation back up on this down\'s line', () => {
   const from = drawn();
-  getPlayer(from, 'o-wr1').pos = fieldPos(-22, -1);
+  getPlayer(from, 'o-wr1').pos = fieldPos(-22, from.losYard - 1);
   const play = capturePlay(from, 'Trips');
 
   const to = afterSnap(createGame({ ai: 'defense' }));

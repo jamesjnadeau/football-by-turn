@@ -38,8 +38,15 @@ and **11 Player**. They are the same game with different-sized teams — the rul
 below are true of both. Press either and the board takes over the screen; **Back
 to Home** in the Coaches Menu brings the list back.
 
-Each drive starts 1st and goal from the offense's own 10-yard line, and the
-offense has **4 downs** to score before the ball turns over.
+The drive starts **1st and 10 from the offense's own 20**, 80 yards from the
+goal. The offense has **4 downs** to reach the line to gain — the marker moves
+ten yards on every time it does, exactly like real football, over and over
+however many sets it takes to score. Inside the 10 there's no line to gain
+past the goal itself, so it's simply **goal to go**. Losing the ball however
+that happens — failing to reach the sticks on 4th down, a fumble the defense
+recovers, an interception, a flag that wipes a touchdown — ends the game as a
+loss; only a touchdown wins.
+
 
 **Every down starts with the snap.** The centre comes to the line holding the
 ball, already aimed at the quarterback — a short backward toss, which is a
@@ -197,26 +204,34 @@ within range to make the hit.
   is offered on the first turn of a down and switches itself off at the snap.
 - **Clear Arrows** wipes every plan for the current turn, in case you want to
   start over before running it.
-- The Coaches Menu has a **Plays** section. Draw the first set of arrows for a
-  down, press **Save current play**, and name it — the play goes into one of
-  five slots, stances and a planned throw included. Press a slot to call that
-  play again on a later down; it replaces whatever you have drawn so far rather
-  than adding to it. Saving and calling are offered only on the **first turn of
-  a down** — that is what a play is — so the buttons grey out once the ball has
-  moved. Saved plays are kept in your browser, so they survive a reload and a
-  New Game. With all five slots full, saving asks which one to replace. Anyone
-  in a saved play the current game has no orders to give — a defender in a play
-  you saved while coaching both teams, say — is skipped, and the message says
-  how many.
-- When a play ends, **Next Down** appears — click it to spot the ball, advance
-  the down counter, and re-form both teams at the new line of scrimmage. After
-  a touchdown, a turnover on downs, or a fumble recovered by the defense, the
-  game is over.
-- **New Game** resets everything and starts a fresh drive from the 10.
+- The Coaches Menu has a **Plays** section. Set up a formation, draw the first
+  set of arrows for a down, press **Save current play**, and name it — the play
+  goes into one of five slots, formation, stances and a planned throw included.
+  Press a slot to call that play again on a later down; it replaces whatever
+  you have drawn *and* whoever is standing where, rather than adding to it.
+  Every man's spot is kept relative to the line of scrimmage, not the yard
+  line, so a play saved on your own 25 lines up the same way when you call it
+  from the 40. Saving and calling are offered only on the **first turn of a
+  down** — that is what a play is — so the buttons grey out once the ball has
+  moved, and moving a man before you save is as much a play as any arrow.
+  Saved plays are kept in your browser, so they survive a reload and a New
+  Game. With all five slots full, saving asks which one to replace. Anyone in
+  a saved play the current game has no orders to give — a defender in a play
+  you saved while coaching both teams, a man whose saved spot will not fit on
+  the down being played, say — is skipped, and the message says how many.
+- When a play ends, **Next Down** appears — click it to spot the ball,
+  re-form both teams at the new line of scrimmage, and rule on the down: reach
+  the line to gain and it's a fresh 1st and 10 from there; fall short and the
+  down counter simply advances. After a touchdown, or the offense losing the
+  ball any way — a turnover on downs included — the game is over.
+- **New Game** resets everything and starts a fresh drive, 1st and 10 from the
+  offense's own 20.
 - **Back to Home** leaves the drive and returns to the home screen. It abandons
-  the play you were in — the next press of **7 Player** starts a fresh drive —
-  but your saved plays are kept, the same as they are across a reload. Like
-  **Next Down** and **New Game**, it is dead while a turn is being drawn.
+  the play you were in — the next press of **7 Player** or **11 Player** starts
+  a fresh drive — but your saved plays are kept, the same as they are across a
+  reload. Like **Next Down** and **New Game**, it is dead while a turn is being
+  drawn.
+
 
 
 ## Running the tests
@@ -265,6 +280,15 @@ game:
   anyone catch a pass. An illegal formation is enforced with the same machinery
   as an illegal forward pass — five yards from the previous spot, and the down
   counts.
+- **Still a single drive, with no scoreboard and no safety rule.** Real downs
+  and a real 80-yard field don't turn this into a full two-team game: there's
+  one offense, no possession swap, and no clock. Losing the ball however it
+  happens — a turnover on downs included — ends the game; there's no running
+  score to protect and no possession swap to hand the ball back to. And
+  because there's no second team, there's no safety rule either — nothing to
+  award the two points to. A team pinned deep just keeps the ball spottable a
+  short way off its own goal line instead.
+
 
 ## Design notes
 

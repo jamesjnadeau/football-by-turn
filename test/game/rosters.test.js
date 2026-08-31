@@ -4,13 +4,17 @@ import {
   ROSTERS, DEFAULT_VARIANT, getRoster, teamSize, minOnLine,
 } from '../../lib/game/rosters.js';
 import {
-  createGame, SNAPPER_ID, SNAP_TARGET_ID, getPlayer, setPlan,
+  createGame, SNAPPER_ID, SNAP_TARGET_ID, getPlayer, setPlan, formationPlayers,
 } from '../../lib/game/state.js';
 import { nextDown } from '../../lib/game/rules.js';
+import { yardsOfY } from '../../lib/game/view.js';
 import {
   backerLane, orderedMates, containRank, coverAssignments, deepMan,
 } from '../../lib/game/defense.js';
-import { BACKER_LANE_UNITS } from '../../lib/game/constants.js';
+import {
+  BACKER_LANE_UNITS, MIN_SPOT_YARD, FIELD_LOW_YARD,
+  WINDOW_YARDS, WINDOW_BEHIND_YARDS,
+} from '../../lib/game/constants.js';
 import { runTurn } from '../../lib/game/turn.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import {
@@ -142,5 +146,24 @@ test('a computer-coached eleven-a-side down runs to a whistle and re-forms both 
   if (s.phase === 'planning') {
     assert.equal(s.players.length, 22, 'both teams re-formed eleven a side');
     assert.equal(s.variantId, '11');
+  }
+});
+
+test('every roster fits the field and the camera, even spotted as deep as the rules allow', () => {
+  for (const id of Object.keys(ROSTERS)) {
+    const s = createGame({ seed: 1, variant: id });
+    // The deepest a down can be spotted. MIN_SPOT_YARD is sized so the
+    // backfield never lines up behind its own goal line — this is what holds
+    // that claim against the tables rather than leaving it in a comment.
+    s.losYard = MIN_SPOT_YARD;
+    s.players = formationPlayers(s.losYard, id);
+    for (const p of s.players) {
+      const yard = yardsOfY(p.pos.y);
+      assert.ok(yard >= FIELD_LOW_YARD, `${id}: ${p.id} at yard ${yard} is off the drawn field`);
+      assert.ok(yard >= s.losYard - WINDOW_BEHIND_YARDS,
+        `${id}: ${p.id} at yard ${yard} is behind the camera`);
+      assert.ok(yard <= s.losYard + (WINDOW_YARDS - WINDOW_BEHIND_YARDS),
+        `${id}: ${p.id} at yard ${yard} is past the camera`);
+    }
   }
 });

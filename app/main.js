@@ -14,6 +14,7 @@ import {
   lineZoneMark, renderFieldButtons, passLandingMark, passLockMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
+import { downDistanceText } from '../lib/game/hud.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
@@ -77,7 +78,7 @@ function layer(id) {
 }
 
 function rebuildBoard() {
-  const { viewBox, markup } = renderBoardShell(state.losYard);
+  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard);
   board.attr('viewBox', viewBox);
   board.clear();
   board.svg(markup); // parses the markup string from render.js and inserts it as real SVG nodes
@@ -104,7 +105,7 @@ function paint() {
     : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state)
     : '',
   );
-  hud.textContent = `Down ${state.down} of 4 — ${state.phase}`;
+  hud.textContent = `${downDistanceText(state)} — ${state.phase}`;
   aiBtn.textContent = AI_MODES[aiModeIndex(state)].label;
   aiBtn.disabled = animating || state.phase !== 'planning';
   repositionBtn.textContent = `Reposition: ${repositioning ? 'on' : 'off'}`;
@@ -133,7 +134,7 @@ function paint() {
  * here afterwards.
  */
 function drawMessage() {
-  layer('game-message').clear().svg(renderMessage(messageText));
+  layer('game-message').clear().svg(renderMessage(messageText, state.losYard));
 }
 
 function say(text) {
@@ -417,9 +418,9 @@ function paintPlays() {
  */
 function savePlay() {
   if (animating || !canUsePlays(state)) return;
-  if (isEmptyPlay(capturePlay(state, ''))) {
+  if (isEmptyPlay(capturePlay(state, ''), state.variantId)) {
     closeMenu();
-    say('Nothing to save yet. Draw some arrows first.');
+    say('Nothing to save yet. Move someone or draw some arrows first.');
     return;
   }
   const name = (window.prompt('Name this play:', '') ?? '').trim();
@@ -445,21 +446,28 @@ function savePlay() {
 }
 
 /**
- * Calling a play replaces whatever is drawn — it is a huddle, not an edit. Any
- * of it that could not be given (a defender in a play saved in hot-seat, a tuck
- * by a man who does not have the ball this time) is counted out loud rather
- * than passed over in silence.
+ * Calling a play replaces whatever is drawn, and whoever is standing where —
+ * it is a huddle, not an edit. Any of it that could not be given (a defender
+ * in a play saved in hot-seat, a spot this down has no room for, a tuck by a
+ * man who does not have the ball this time) is counted out loud rather than
+ * passed over in silence. The defense answers the formation this leaves,
+ * exactly as it answers a drag.
  */
 function callPlay(i) {
   if (animating || !canUsePlays(state)) return;
   const play = playbook[i];
   if (!play) return;
   const { applied, skipped } = applyPlay(state, play);
+  // A called play sets a formation, and a formation is a question the defense
+  // has to answer — the same answer a drag gets. Without this the corners stay
+  // lined up over the last play's receivers.
+  realignDefense();
   pendingWarning = false; // a new plan gets a fresh warning, like any drag does
   closeMenu();
+  const note = formationNote();
   say(skipped.length === 0
-    ? `"${play.name}" called. ${applied.length} player(s) set.`
-    : `"${play.name}" called. ${applied.length} set, ${skipped.length} skipped.`);
+    ? `"${play.name}" called. ${applied.length} player(s) set. ${note}`
+    : `"${play.name}" called. ${applied.length} set, ${skipped.length} skipped. ${note}`);
   paint();
 }
 
@@ -689,8 +697,8 @@ function goToNextDown() {
   nextDown(state);
   if (state.phase === 'gameOver') {
     say(state.result === 'touchdown' ? 'TOUCHDOWN — you win!'
-      : state.result === 'turnover-on-downs' ? 'Turnover on downs. Game over.'
-      : 'Fumble recovered by the defense. Game over.');
+      : state.result === 'turnover-on-downs' ? 'Turnover on downs. Game over — you lose.'
+      : 'Turnover. Game over — you lose.');
   } else {
     say(`${['1st', '2nd', '3rd', '4th'][state.down - 1]} down.`);
     rebuildBoard();
@@ -711,7 +719,7 @@ function startNewGame() {
   // one — and the message layer say() writes into does not exist until
   // rebuildBoard() has made it.
   rebuildBoard();
-  say('New game. 1st and goal from the 10.');
+  say('New game. 1st and 10 from your own 20 — 80 yards to the house.');
   paint();
 }
 

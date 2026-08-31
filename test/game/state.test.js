@@ -2,15 +2,15 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createGame, setPlan, clearAllPlans, setMode, getPlayer, ballPos, carrier,
-  isControllable, setPass, clearPass, aimSnap,
+  isControllable, setPass, clearPass, aimSnap, defaultSpots,
 } from '../../lib/game/state.js';
 import { teamSize } from '../../lib/game/rosters.js';
 import { fieldPos } from '../../lib/game/view.js';
 
-test('a new game: 1st down at yard 0, planning, a full team a side, the centre has the ball', () => {
+test('a new game: 1st down at yard 20, planning, a full team a side, the centre has the ball', () => {
   const s = createGame({ seed: 7 });
   assert.equal(s.down, 1);
-  assert.equal(s.losYard, 0);
+  assert.equal(s.losYard, 20);
   assert.equal(s.phase, 'planning');
   assert.equal(s.turnIndex, 0);
   assert.equal(s.players.filter((p) => p.team === 'offense').length, teamSize(s));
@@ -23,9 +23,16 @@ test('a new game: 1st down at yard 0, planning, a full team a side, the centre h
   assert.equal(carrier(s).id, 'o-c');
 });
 
+test('a new game is 1st and 10 from the offense\'s own 20', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(s.down, 1);
+  assert.equal(s.losYard, 20);
+  assert.equal(s.toGoYard, 30);
+});
+
 test('offense lines up behind the LOS, defense beyond it, nobody overlapping', () => {
   const s = createGame({ seed: 1 });
-  const losY = fieldPos(0, 0).y;
+  const losY = fieldPos(0, s.losYard).y;
   for (const p of s.players) {
     if (p.team === 'offense') assert.ok(p.pos.y < losY, `${p.id} behind LOS`);
     else assert.ok(p.pos.y > losY, `${p.id} beyond LOS`);
@@ -221,4 +228,14 @@ test('Clear Arrows drops the coach\'s throw and leaves the snap standing', () =>
   // Wiping the board must not leave a down that cannot start, so the snap is
   // put straight back — aimed at the quarterback again, not out to the side.
   assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 0, y: -1 }, power: 0, auto: true });
+});
+
+test('the default spots are the formation every down opens in', () => {
+  const s = createGame({ seed: 1 });
+  const spots = defaultSpots();
+  assert.equal(Object.keys(spots).length, s.players.length);
+  for (const p of s.players) {
+    const { across, down } = spots[p.id];
+    assert.deepEqual(p.pos, fieldPos(across, s.losYard + down));
+  }
 });

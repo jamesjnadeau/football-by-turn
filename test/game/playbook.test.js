@@ -10,6 +10,7 @@ const play = (name) => ({
   plans: { 'o-qb': { dir: { x: 0, y: -1 }, throttle: 1 } },
   stances: {},
   pass: null,
+  spots: {},
 });
 
 test('a new playbook is five empty slots', () => {
@@ -62,6 +63,21 @@ test('nothing usable in storage reads as an empty playbook', () => {
 test('a playbook from a version this build does not know is dropped', () => {
   const text = JSON.stringify({ v: PLAYBOOK_VERSION + 1, slots: [play('Sweep')] });
   assert.deepEqual(parsePlaybook(text), emptyPlaybook());
+});
+
+test('a version-1 book still loads, as plays with no formation in them', () => {
+  const old = JSON.stringify({ v: 1, slots: [{ name: 'Sweep', plans: {}, stances: {}, pass: null }, null, null, null, null] });
+  const book = parsePlaybook(old);
+  assert.equal(book[0].name, 'Sweep');
+  assert.deepEqual(book[0].spots, {});
+});
+
+test('a book written today says version 2', () => {
+  assert.equal(JSON.parse(serializePlaybook(emptyPlaybook())).v, 2);
+});
+
+test('a version this build has never heard of is still an empty book', () => {
+  assert.deepEqual(parsePlaybook(JSON.stringify({ v: 3, slots: [] })), emptyPlaybook());
 });
 
 test('one corrupt play empties its slot and leaves the others alone', () => {

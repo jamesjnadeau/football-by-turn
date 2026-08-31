@@ -193,15 +193,15 @@ test('a loose ball out of bounds ends the play too, not just a carried one', () 
 });
 
 test('between downs: ball is spotted where it died, down advances, formation resets there', () => {
-  const s = createGame({ seed: 1 });
+  const s = createGame({ seed: 1 }); // 1st & 10 at the 20, toGoYard 30
   afterSnap(s);
   const qb = getPlayer(s, 'o-qb');
-  qb.pos = { x: 150, y: fieldPos(0, 4).y };
+  qb.pos = { x: 150, y: fieldPos(0, 24).y }; // a 4-yard gain, short of the sticks
   s.deadReason = 'tackled';
   s.turnIndex = 5;
   nextDown(s);
-  assert.equal(s.down, 2);
-  assert.equal(s.losYard, 4);
+  assert.equal(s.down, 2, 'short of the sticks: still working on this set');
+  assert.equal(s.losYard, 24);
   assert.equal(s.phase, 'planning');
   assert.equal(s.turnIndex, 0);
   // The next down comes up ready to snap, exactly as the first one did: the
@@ -212,13 +212,13 @@ test('between downs: ball is spotted where it died, down advances, formation res
   assert.equal(s.deadReason, null);
   // the new formation is planted around the new LOS
   const c = getPlayer(s, 'o-c');
-  assert.ok(Math.abs(c.pos.y - fieldPos(0, 3).y) < 1e-9, 'centre one yard behind the new LOS');
+  assert.ok(Math.abs(c.pos.y - fieldPos(0, 23).y) < 1e-9, 'centre one yard behind the new LOS');
 });
 
 test('failing on 4th down is a turnover on downs', () => {
-  const s = createGame({ seed: 1 });
+  const s = createGame({ seed: 1 }); // 1st & 10 at the 20, toGoYard 30
   s.down = 4;
-  getPlayer(s, 'o-qb').pos = fieldPos(0, 2);
+  getPlayer(s, 'o-qb').pos = fieldPos(0, 22); // short of the sticks
   s.deadReason = 'tackled';
   nextDown(s);
   assert.equal(s.phase, 'gameOver');
@@ -275,15 +275,15 @@ test('an unprepared defender gets no wedge at all', () => {
 test('an enforced flag wipes the play and spots the ball back from the previous line', () => {
   const s = createGame({ seed: 1 });
   afterSnap(s);
-  s.losYard = 4;
-  s.penalty = { foul: 'illegal-forward-pass', spot: 4 };
+  s.losYard = 24;
+  s.penalty = { foul: 'illegal-forward-pass', spot: 24 };
   s.deadReason = 'touchdown';      // he scored on the illegal throw
   s.forwardPasses = 1;
   nextDown(s);
   assert.equal(s.phase, 'planning', 'the touchdown does not stand');
   assert.equal(s.result, null);
   assert.equal(s.down, 2, 'the down still counts');
-  assert.equal(s.losYard, 4 - PENALTY_YARDS);
+  assert.equal(s.losYard, 24 - PENALTY_YARDS);
   assert.equal(s.penalty, null, 'the flag is spent');
   assert.equal(s.forwardPasses, 0, 'a new down gets a new forward pass');
   // The throw that drew the flag is gone; what stands is the fresh snap, which
@@ -302,12 +302,12 @@ test('the defense declines the flag when it has just taken the ball', () => {
 
 test('an incomplete pass is spotted at the previous line, and costs the down', () => {
   const s = createGame({ seed: 1 });
-  s.losYard = 3;
+  s.losYard = 23;
   s.deadReason = 'incomplete';
-  s.ball = { carrierId: null, pos: fieldPos(0, 9), vel: { x: 0, y: 0 } }; // it landed 6 on
+  s.ball = { carrierId: null, pos: fieldPos(0, 29), vel: { x: 0, y: 0 } }; // it landed 6 on
   nextDown(s);
   assert.equal(s.down, 2);
-  assert.equal(s.losYard, 3, 'an incomplete pass gains nothing');
+  assert.equal(s.losYard, 23, 'an incomplete pass gains nothing');
 });
 
 test('a flag on 4th down is a turnover on downs', () => {
@@ -321,14 +321,62 @@ test('a flag on 4th down is a turnover on downs', () => {
 });
 
 test('with no flag, an ordinary down is spotted exactly as it always was', () => {
-  const s = createGame({ seed: 1 });
+  const s = createGame({ seed: 1 }); // 1st & 10 at the 20, toGoYard 30
   afterSnap(s);
-  s.losYard = 0;
   s.deadReason = 'tackled';
-  getPlayer(s, 'o-qb').pos = fieldPos(0, 6);
+  getPlayer(s, 'o-qb').pos = fieldPos(0, 26); // short of the sticks
   nextDown(s);
   assert.equal(s.down, 2);
-  assert.ok(Math.abs(s.losYard - 6) < 1e-9, 'spotted where the play died');
+  assert.ok(Math.abs(s.losYard - 26) < 1e-9, 'spotted where the play died');
+});
+
+test('reaching the line to gain resets the down and moves the sticks 10 yards on', () => {
+  const s = createGame({ seed: 1 }); // 1st & 10 at the 20, toGoYard 30
+  afterSnap(s);
+  const carrier_ = getPlayer(s, 'o-qb');
+  carrier_.pos = fieldPos(0, 31); // spot the carrier past the sticks
+  s.deadReason = 'tackled';
+  nextDown(s);
+  assert.equal(s.down, 1);
+  assert.equal(s.losYard, 31);
+  assert.equal(s.toGoYard, 41);
+  assert.equal(s.phase, 'planning');
+});
+
+test('falling short on 4th down anywhere on the field is a loss, not just at the old fixed start', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  s.down = 4;
+  s.losYard = 55;
+  s.toGoYard = 65;
+  const carrier_ = getPlayer(s, 'o-qb');
+  carrier_.pos = fieldPos(0, 60); // short of the sticks
+  s.deadReason = 'tackled';
+  nextDown(s);
+  assert.equal(s.phase, 'gameOver');
+  assert.equal(s.result, 'turnover-on-downs');
+});
+
+test('goal-to-go inside the 10 clamps the sticks to the goal line itself', () => {
+  const s = createGame({ seed: 1 });
+  s.losYard = 95;
+  s.toGoYard = Math.min(95 + 10, GOAL_YARD);
+  assert.equal(s.toGoYard, 100);
+});
+
+test('an enforced penalty never grants a first down even on a play that reached the sticks', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  s.toGoYard = 30;
+  s.down = 2;
+  s.losYard = 25;
+  s.penalty = { foul: 'illegal-formation', spot: 25 };
+  s.deadReason = 'tackled';
+  const carrier_ = getPlayer(s, 'o-qb');
+  carrier_.pos = fieldPos(0, 35); // gained past the sticks, but the flag wipes it
+  nextDown(s);
+  assert.equal(s.down, 3); // loss of down, not a first down
+  assert.ok(s.losYard < 30); // spotted from behind the previous line, not at 35
 });
 
 /**

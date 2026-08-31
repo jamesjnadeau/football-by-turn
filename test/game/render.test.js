@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
-  coverMark, coverHaloMark, lineZoneMark, renderFieldButtons,
+  coverMark, coverHaloMark, lineZoneMark, renderFieldButtons, lineToGainMark,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
@@ -14,13 +14,13 @@ import {
 import { teamSize } from '../../lib/game/rosters.js';
 import { tackleReach } from '../../lib/game/modes.js';
 import { num, UNITS_PER_YARD_X } from '../../lib/field/geometry.js';
-import { fieldPos } from '../../lib/game/view.js';
+import { fieldPos, gameView, GOAL_YARD } from '../../lib/game/view.js';
 import { passLanding } from '../../lib/game/pass.js';
 import { lobPoint } from '../../lib/game/lob.js';
 
 test('the board shell has the field and every game layer', () => {
-  const { viewBox, markup } = renderBoardShell(0);
-  assert.match(viewBox, /^0 0 270 /);
+  const { viewBox, markup } = renderBoardShell(20, 30);
+  assert.match(viewBox, /^0 56\.25 270 170$/);
   for (const id of ['game-field', 'game-arrows', 'game-preview', 'game-players', 'game-overlay', 'game-menu', 'game-buttons', 'game-message']) {
     assert.ok(markup.includes(`id="${id}"`), id);
   }
@@ -28,7 +28,7 @@ test('the board shell has the field and every game layer', () => {
 });
 
 test('the scrimmage line draws dashed but unlabelled', () => {
-  const { markup } = renderBoardShell(0);
+  const { markup } = renderBoardShell(20, 30);
   assert.ok(markup.includes('class="rl"'), 'dashed scrimmage line survives');
   assert.ok(!markup.includes('LOS'), 'no LOS text prints over the yard numbers');
 });
@@ -196,7 +196,7 @@ test('the committed arrow and the live drag preview carry the same opacity', () 
 });
 
 test('the board shell defines the game arrowhead at full marker width', () => {
-  const { markup } = renderBoardShell(0);
+  const { markup } = renderBoardShell(20, 30);
   assert.match(markup, /<marker id="ar-g"[^>]*markerWidth="5"/, 'the head halves via stroke-width, not markerWidth');
 });
 
@@ -208,7 +208,7 @@ test('arrowMark draws a rounded path between two points', () => {
 });
 
 test('arrows and the drag preview are painted beneath the players', () => {
-  const { markup } = renderBoardShell(0);
+  const { markup } = renderBoardShell(20, 30);
   const at = (id) => markup.indexOf(`id="${id}"`);
   assert.ok(at('game-preview') > -1, 'the preview has a layer of its own');
   assert.ok(at('game-arrows') < at('game-players'), 'committed arrows under the players');
@@ -369,33 +369,34 @@ test('no throw arrow once the man who planned it no longer has the ball', () => 
 });
 
 test('the throw arc style is registered in the game stylesheet', () => {
-  const { markup } = renderBoardShell(0);
+  const { markup } = renderBoardShell(20, 30);
   assert.ok(markup.includes('.pass{'), 'the pass arrow has a style rule');
 });
 
 test('the menu is a clipboard button, not a legend spelled down the sideline', () => {
-  const { markup } = renderBoardShell(0);
+  const { markup } = renderBoardShell(20, 30);
   assert.ok(!markup.includes('COACHES MENU'), 'the words are gone from the field');
   assert.ok(!markup.includes('class="pb"'), 'and so is the legend that carried them');
   assert.ok(markup.includes('id="game-menu"'), 'the button still gets a layer of its own');
   assert.ok(markup.includes('data-menu-button'), 'built into the shell, not repainted');
-  assert.ok(menuButtonMark().includes('\u{1F4CB}'), 'a clipboard says it instead');
-  assert.ok(menuButtonMark().includes('class="fbtn-plate"'), 'and wears the same plate as its neighbours');
+  assert.ok(menuButtonMark(20).includes('\u{1F4CB}'), 'a clipboard says it instead');
+  assert.ok(menuButtonMark(20).includes('class="fbtn-plate"'), 'and wears the same plate as its neighbours');
 });
 
 test('the menu button holds the middle of the column, inside the frame', () => {
-  const { viewBox } = renderBoardShell(0);
-  const [, , w, h] = viewBox.split(' ').map(Number);
-  const menu = rectBox(menuButtonMark());
+  const { viewBox } = renderBoardShell(20, 30);
+  const [minX, minY, w, h] = viewBox.split(' ').map(Number);
+  const menu = rectBox(menuButtonMark(20));
   const others = renderFieldButtons(createGame({ seed: 1 }));
   const shuffle = rectBox(buttonGroup(others, 'data-reposition-button'));
   const run = rectBox(buttonGroup(others, 'data-run-button'));
+  const midY = minY + h / 2;
 
   assert.equal(menu.x, shuffle.x, 'all three share one column');
   assert.equal(menu.x, run.x);
-  assert.ok(menu.x + menu.w <= w, 'inside the viewBox width');
-  assert.ok(menu.y > 0 && menu.y + menu.h <= h, 'inside the viewBox height');
-  assert.ok(menu.y < 85 && menu.y + menu.h > 85, 'straddles the middle of the field at y=85');
+  assert.ok(menu.x + menu.w <= minX + w, 'inside the viewBox width');
+  assert.ok(menu.y > minY && menu.y + menu.h <= minY + h, 'inside the viewBox height');
+  assert.ok(menu.y < midY && menu.y + menu.h > midY, 'straddles the middle of the current window');
   // Evenly stacked, and never overlapping — they are three separate presses.
   assert.equal(menu.y - (shuffle.y + shuffle.h), run.y - (menu.y + menu.h), 'even gaps');
   assert.ok(menu.y - (shuffle.y + shuffle.h) > 0, 'and real ones');
@@ -406,7 +407,7 @@ test('the menu button is reachable and labelled without a pointer', () => {
   // focusable element until the menu is open — it has to carry its own
   // keyboard affordances rather than relying on the controls inside. The icon
   // carries no text, so the aria-label is the only thing that names it.
-  const mark = menuButtonMark();
+  const mark = menuButtonMark(20);
   assert.ok(mark.includes('tabindex="0"'), 'the plate is a keyboard stop');
   assert.ok(mark.includes('role="button"'), 'the plate reads as a button to assistive tech');
   assert.ok(mark.includes('aria-label="Open the Coaches Menu"'), 'the plate names itself');
@@ -427,20 +428,20 @@ test('wrapWords breaks greedily at the character budget', () => {
 });
 
 test('an empty message draws nothing', () => {
-  assert.equal(renderMessage(''), '');
-  assert.equal(renderMessage('   '), '');
+  assert.equal(renderMessage('', 20), '');
+  assert.equal(renderMessage('   ', 20), '');
 });
 
 test('a one-line message is a plate and a tspan centred in the end zone', () => {
   assert.equal(
-    renderMessage('TOUCHDOWN!'),
+    renderMessage('TOUCHDOWN!', 20),
     '<rect class="msg-plate" x="104" y="129.75" width="62" height="23" rx="2"/>' +
     '<text class="msg"><tspan x="135" y="144">TOUCHDOWN!</tspan></text>',
   );
 });
 
 test('a two-line message stacks tspans and grows the plate, staying in the end zone', () => {
-  const svg = renderMessage('Fumble recovered by the defense. Game over.');
+  const svg = renderMessage('Fumble recovered by the defense. Game over.', 20);
   assert.equal((svg.match(/<tspan /g) || []).length, 2);
   assert.ok(svg.includes('<tspan x="135" y="138.5">Fumble recovered by the defense.</tspan>'));
   assert.ok(svg.includes('<tspan x="135" y="149.5">Game over.</tspan>'));
@@ -452,27 +453,29 @@ test('a two-line message stacks tspans and grows the plate, staying in the end z
 });
 
 test('a long message grows past the end zone but never off the board', () => {
+  const view = gameView(20);
+  const windowBottom = view.windowTopY + view.height;
   // The real penalty message: three lines, taller than the 37.5-unit end zone.
   const flag = 'FLAG: forward pass from beyond the line. 5 yards from the previous spot, loss of down.';
-  const svg = renderMessage(flag);
+  const svg = renderMessage(flag, 20);
   assert.equal((svg.match(/<tspan /g) || []).length, 3, 'three lines at this budget');
   const [py, ph] = svg.match(/y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/).slice(1).map(Number);
-  assert.ok(py > 0, 'still on the board at the top');
-  assert.ok(py + ph <= 170, 'and still on the board at the bottom');
+  assert.ok(py > view.windowTopY, 'still on the board at the top');
+  assert.ok(py + ph <= windowBottom, 'and still on the board at the bottom');
   // 40 short words wrap to six lines at this budget, which is too tall to be
   // centred and still stay on the board; the clamp catches it.
-  const huge = renderMessage(new Array(40).fill('word').join(' '));
+  const huge = renderMessage(new Array(40).fill('word').join(' '), 20);
   const [hy, hh] = huge.match(/y="([-\d.]+)" width="[-\d.]+" height="([-\d.]+)"/).slice(1).map(Number);
-  assert.ok(hy >= 0 && hy + hh <= 170, 'clamped inside the viewBox');
+  assert.ok(hy >= view.windowTopY && hy + hh <= windowBottom, 'clamped inside the viewBox');
 });
 
 test('message text is escaped', () => {
-  assert.ok(renderMessage("QB can't do that.").includes('can&#39;t'));
-  assert.ok(renderMessage('A & B').includes('A &amp; B'));
+  assert.ok(renderMessage("QB can't do that.", 20).includes('can&#39;t'));
+  assert.ok(renderMessage('A & B', 20).includes('A &amp; B'));
 });
 
 test('the message layer is the topmost layer on the board', () => {
-  const { markup } = renderBoardShell(0);
+  const { markup } = renderBoardShell(20, 30);
   const at = (id) => markup.indexOf(`id="${id}"`);
   assert.ok(at('game-message') > -1, 'the message has a layer of its own');
   assert.ok(at('game-message') > at('game-overlay'), 'above the loose-ball overlay');
@@ -539,6 +542,18 @@ test('the line-zone band follows the line of scrimmage down the field', () => {
   s.losYard = 5;
   const y = Number(lineZoneMark(s).match(/y="([-\d.]+)"/)[1]);
   assert.equal(y + ON_LINE_YARDS * UNITS_PER_YARD_X, fieldPos(0, 5).y);
+});
+
+test('the line to gain is drawn at the sticks and omitted once they reach the goal', () => {
+  const view = gameView(50);
+  assert.match(lineToGainMark(view, 60), /class="ftg"/);
+  assert.equal(lineToGainMark(view, GOAL_YARD), '');
+});
+
+test('renderBoardShell\'s viewBox scrolls with losYard instead of always starting at 0', () => {
+  const near = renderBoardShell(20, 30).viewBox;
+  const far = renderBoardShell(80, 90).viewBox;
+  assert.notEqual(near, far);
 });
 
 
@@ -613,15 +628,15 @@ test('both quick-press buttons are reachable by keyboard, like the menu rect', (
 });
 
 test('the quick-press buttons sit on the board, above and below the menu plate', () => {
-  const boardHeight = Number(renderBoardShell(0).viewBox.split(' ')[3]);
-  const menu = rectBox(menuButtonMark());
+  const [, boardTop, , boardHeight] = renderBoardShell(20, 30).viewBox.split(' ').map(Number);
+  const menu = rectBox(menuButtonMark(20));
   const markup = renderFieldButtons(createGame({ seed: 1 }));
   const shuffle = rectBox(buttonGroup(markup, 'data-reposition-button'));
   const run = rectBox(buttonGroup(markup, 'data-run-button'));
 
   assert.ok(shuffle.y + shuffle.h <= menu.y, 'the shuffle is above the label');
   assert.ok(run.y >= menu.y + menu.h, 'and the run button below it');
-  assert.ok(shuffle.y >= 0 && run.y + run.h <= boardHeight, 'both are on the board');
+  assert.ok(shuffle.y >= boardTop && run.y + run.h <= boardTop + boardHeight, 'both are on the board');
   assert.equal(shuffle.x, run.x, 'they share the label\'s column');
   assert.ok(shuffle.x + shuffle.w <= 270, 'and stay inside the viewBox');
 });
@@ -632,9 +647,9 @@ test('the button column clears the yard numbers and the edge of the frame', () =
   // button centred on the old legend's baseline came within 1.3 of that —
   // close enough to read as a field marking, which is what moved the column.
   const YARD_NUMBERS_RIGHT = 251.23;
-  const boardWidth = Number(renderBoardShell(0).viewBox.split(' ')[2]);
+  const boardWidth = Number(renderBoardShell(20, 30).viewBox.split(' ')[2]);
   const marks = [
-    menuButtonMark(),
+    menuButtonMark(20),
     ...['data-reposition-button', 'data-run-button']
       .map((a) => buttonGroup(renderFieldButtons(createGame({ seed: 1 })), a)),
   ];

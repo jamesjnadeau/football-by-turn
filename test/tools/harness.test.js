@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MAX_TURNS_PER_PLAY, scenario, playOnePlay, defenseCoach,
-  scriptedOffenseCoach, evaluateDefense,
+  scriptedOffenseCoach, evaluateDefense, learnedOffenseCoach, evaluateMatch,
 } from '../../tools/harness.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { makeGenome } from '../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
+import { OFFENSE_SPEC } from '../../lib/game/learned/offense-spec.js';
 
 test('scenario deals a plannable hot-seat down inside the field', () => {
   const rand = mulberry32(11);
@@ -51,4 +52,20 @@ test('evaluateDefense aggregates deterministically', () => {
   assert.ok(Number.isFinite(a.yardsPerPlay));
   assert.ok(a.touchdownRate >= 0 && a.touchdownRate <= 1);
   assert.ok(a.turnoverRate >= 0 && a.turnoverRate <= 1);
+});
+
+test('evaluateMatch pits two learned genomes deterministically', () => {
+  const off = makeGenome(OFFENSE_SPEC);
+  const def = makeGenome(DEFENSE_SPEC);
+  const a = evaluateMatch(off, def, { plays: 3, seed: 6 });
+  const b = evaluateMatch(off, def, { plays: 3, seed: 6 });
+  assert.deepEqual(a, b);
+  assert.ok(Number.isFinite(a.yardsPerPlay));
+});
+
+test('learnedOffenseCoach stands its formation and coaches the play', () => {
+  const off = makeGenome(OFFENSE_SPEC);
+  const s = scenario(mulberry32(8));
+  learnedOffenseCoach(off)(s);
+  assert.ok(s.aiPlay, 'a call was made at the snap');
 });

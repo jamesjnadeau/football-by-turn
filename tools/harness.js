@@ -19,8 +19,9 @@ import { yardsOfY, GOAL_YARD } from '../lib/game/view.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import { applyOrders, applyAiModes } from '../lib/game/ai.js';
 import { learnedOrders } from '../lib/game/learned/defense-policy.js';
-import { applyLearnedDefenseFormation } from '../lib/game/learned/formation.js';
+import { applyLearnedDefenseFormation, applyLearnedOffenseFormation } from '../lib/game/learned/formation.js';
 import { autoplanOffense } from '../lib/game/offense.js';
+import { coachLearnedOffense } from '../lib/game/learned/offense-policy.js';
 import { FIRST_DOWN_YARDS } from '../lib/game/constants.js';
 
 /** A play that has not died by now never will (both sides re-plan every
@@ -119,4 +120,27 @@ export function evaluateDefense(values, { plays, seed, offenseCoach = scriptedOf
     touchdownRate: touchdowns / plays,
     turnoverRate: turnovers / plays,
   };
+}
+
+/**
+ * The learned offense as a coach function: its genome's formation at the
+ * top of the down (the auto snap re-aims itself — it is locked on the QB,
+ * and releasePass re-solves a locked throw at the whistle), then the
+ * whole-down brain every turn.
+ */
+export function learnedOffenseCoach(values) {
+  return (state) => {
+    if (state.turnIndex === 0 && state.phase === 'planning') {
+      applyLearnedOffenseFormation(state, values);
+    }
+    coachLearnedOffense(state, values);
+  };
+}
+
+/** Learned offense vs learned defense: one stats object, read positively by
+ *  the offense's fitness and negatively by the defense's. */
+export function evaluateMatch(offValues, defValues, { plays, seed }) {
+  return evaluateDefense(defValues, {
+    plays, seed, offenseCoach: learnedOffenseCoach(offValues),
+  });
 }

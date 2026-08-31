@@ -51,8 +51,13 @@ test('it refuses once the down is running', () => {
 });
 
 test('createGame applies the shipped genome for a learned-level computer offense', () => {
-  const saved = OFFENSE_GENOME.values['pos:o-rb:down'];
+  // Both offsets are pinned explicitly (not just 'down') so this test does
+  // not depend on whatever 'pos:o-rb:across' co-evolution happens to have
+  // trained into the shipped genome — only on the mechanism under test.
+  const savedDown = OFFENSE_GENOME.values['pos:o-rb:down'];
+  const savedAcross = OFFENSE_GENOME.values['pos:o-rb:across'];
   OFFENSE_GENOME.values['pos:o-rb:down'] = -9;
+  OFFENSE_GENOME.values['pos:o-rb:across'] = 0;
   try {
     const s = createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' });
     assert.deepEqual(getPlayer(s, 'o-rb').pos, fieldPos(0, s.losYard - 9));
@@ -61,6 +66,7 @@ test('createGame applies the shipped genome for a learned-level computer offense
     const d = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
     assert.deepEqual(getPlayer(d, 'o-rb').pos, fieldPos(0, d.losYard - 7));
   } finally {
-    OFFENSE_GENOME.values['pos:o-rb:down'] = saved;
+    OFFENSE_GENOME.values['pos:o-rb:down'] = savedDown;
+    OFFENSE_GENOME.values['pos:o-rb:across'] = savedAcross;
   }
 });

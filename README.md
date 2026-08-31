@@ -28,16 +28,23 @@ a different one (`python3 serve.py 8099`).
 
 ## Training the learned AI
 
-The `Defense: computer (learned)` level plays a trained genome shipped in
-`lib/game/learned/defense-genome.js`. To retrain it:
+The two learned levels — `Defense: computer (learned)` and
+`Offense: computer (learned)` — play trained genomes shipped in
+`lib/game/learned/defense-genome.js` and `offense-genome.js`. To retrain
+them against each other (competitive co-evolution, the normal way):
+
+    npm run train:coevolve -- --generations 20 --pop 12 --plays 12 --seed 1
+
+To retrain just the defense against the scripted offense (the bootstrap the
+first genome came from):
 
     npm run train:defense -- --generations 30 --pop 16 --plays 24 --seed 1
 
-Training is a seeded evolutionary search over the genome's ~30 parameters
-(starting spots, man/zone scheme gate, coverage weights), simulating whole
-plays headlessly through the same engine the browser runs. It is fully
-deterministic for a seed and writes its champion back into the genome module,
-which is committed like any other source file.
+Training is a seeded evolutionary search over each side's ~30 parameters
+(starting spots, play-calling, coverage scheme and matchups, routes and
+reads), simulating whole plays headlessly through the same engine the
+browser runs. It is fully deterministic for a seed and writes the champions
+back into the genome modules, which are committed like any other source.
 
 ## Deploying
 

@@ -30,8 +30,10 @@ import {
 import { followYard, yardsOfY } from '../lib/game/view.js';
 import { attachInput } from './input.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
-import { PLAY_SLOTS, firstEmptySlot, putPlay } from '../lib/game/playbook.js';
-import { loadPlaybook, savePlaybook } from './playbook-store.js';
+import {
+  PLAY_SLOTS, firstEmptySlot, putPlay, bookFor, putBook, playbookSide, playbookHeading,
+} from '../lib/game/playbook.js';
+import { loadLibrary, saveLibrary } from './playbook-store.js';
 import { autoplanOffense } from '../lib/game/offense.js';
 import { realignLearnedDefense } from '../lib/game/learned/formation.js';
 
@@ -41,6 +43,7 @@ const board = SVG(document.getElementById('board'));
 const hud = document.getElementById('hud');
 const menu = document.getElementById('menu');
 const closeMenuBtn = document.getElementById('close-menu');
+const playsHeading = document.getElementById('plays-heading');
 const savePlayBtn = document.getElementById('save-play');
 const playSlotsEl = document.getElementById('play-slots');
 const runBtn = document.getElementById('run');
@@ -75,9 +78,20 @@ let animating = false;
 // the player's choice of whether to see velocities — on by default, but
 // including having turned it off — should survive that.
 let showVelocity = true;
-// Not game state: the playbook outlives New Game, and lives in the browser
-// rather than in `state`, which is replaced wholesale.
-let playbook = loadPlaybook();
+// Not game state: the playbooks outlive New Game, and live in the browser
+// rather than in `state`, which is replaced wholesale. Two books, one per
+// side of the ball — a defensive coach is never offered arrows drawn for men
+// he does not have.
+let library = loadLibrary();
+
+/**
+ * The five slots for the side being coached right now. Asked fresh every time
+ * rather than kept in a variable: the Defense button can hand the human the
+ * other team mid-drive, and the menu has to follow it.
+ */
+function myBook() {
+  return bookFor(library, playbookSide(state));
+}
 // Whether drags are moving players around the line rather than giving them
 // orders. A coaching input mode, like `showVelocity` — the game does not care
 // which one the coach is in, only where his players ended up standing. It is
@@ -476,12 +490,19 @@ for (let i = 0; i < PLAY_SLOTS; i++) {
  * A play is what you come to the line with, so both saving and calling one are
  * offered only on the first turn of a down. Off it the buttons go grey rather
  * than disappearing: a grey button explains itself, a vanished one does not.
+ *
+ * Which five plays these are follows the side the human is coaching, and the
+ * heading says which — a coach who hands the computer the other team is
+ * looking at a different book a moment later, and five relabelled buttons with
+ * nothing to explain them read as five lost plays.
  */
 function paintPlays() {
   const usable = !animating && canUsePlays(state);
+  const book = myBook();
+  playsHeading.textContent = playbookHeading(state);
   savePlayBtn.disabled = !usable;
   for (let i = 0; i < PLAY_SLOTS; i++) {
-    const play = playbook[i];
+    const play = book[i];
     slotBtns[i].textContent = play ? `${i + 1}. ${play.name}` : `${i + 1}. (empty)`;
     slotBtns[i].disabled = !usable || !play;
   }
@@ -502,7 +523,9 @@ function savePlay() {
   const name = (window.prompt('Name this play:', '') ?? '').trim();
   if (!name) return; // cancelled, or named nothing
   const play = capturePlay(state, name); // capturePlay is what cuts the name to length
-  let slot = firstEmptySlot(playbook);
+  const side = playbookSide(state);
+  const book = bookFor(library, side);
+  let slot = firstEmptySlot(book);
   if (slot === -1) {
     const answer = window.prompt(
       `All ${PLAY_SLOTS} slots are full. Replace which one (1-${PLAY_SLOTS})?`,
@@ -512,8 +535,10 @@ function savePlay() {
     if (!Number.isInteger(n) || n < 1 || n > PLAY_SLOTS) return;
     slot = n - 1;
   }
-  playbook = putPlay(playbook, slot, play);
-  const kept = savePlaybook(playbook);
+  // Into this side's book only. putBook copies, so the other side's five are
+  // the same five they were.
+  library = putBook(library, side, putPlay(book, slot, play));
+  const kept = saveLibrary(library);
   closeMenu();
   say(kept
     ? `Saved "${play.name}" to slot ${slot + 1}.`
@@ -531,7 +556,7 @@ function savePlay() {
  */
 function callPlay(i) {
   if (animating || !canUsePlays(state)) return;
-  const play = playbook[i];
+  const play = myBook()[i];
   if (!play) return;
   const { applied, skipped } = applyPlay(state, play);
   // A called play sets a formation, and a formation is a question the defense

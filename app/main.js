@@ -32,6 +32,7 @@ import { attachInput } from './input.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
 import { PLAY_SLOTS, firstEmptySlot, putPlay } from '../lib/game/playbook.js';
 import { loadPlaybook, savePlaybook } from './playbook-store.js';
+import { autoplanOffense } from '../lib/game/offense.js';
 
 // SVG(el) adopts the existing <svg id="board"> node rather than creating a
 // nested one — every read/write below goes through this wrapper.
@@ -43,6 +44,7 @@ const savePlayBtn = document.getElementById('save-play');
 const playSlotsEl = document.getElementById('play-slots');
 const runBtn = document.getElementById('run');
 const clearBtn = document.getElementById('clear');
+const autoplanBtn = document.getElementById('autoplan-offense');
 const aiBtn = document.getElementById('ai');
 const repositionBtn = document.getElementById('reposition');
 const personnelBtn = document.getElementById('personnel');
@@ -155,6 +157,7 @@ function paint() {
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
   runBtn.disabled = animating || state.phase !== 'planning';
+  autoplanBtn.disabled = animating || state.phase !== 'planning' || state.aiTeam === 'offense';
   clearBtn.disabled = animating;
   nextBtn.disabled = animating;
   newBtn.disabled = animating;
@@ -551,6 +554,7 @@ function pressBoardButton(target) {
   if (target.closest('[data-menu-button]')) openMenu();
   else if (target.closest('[data-reposition-button]')) toggleReposition();
   else if (target.closest('[data-run-button]')) pressRun();
+  else if (target.closest('[data-autoplan-button]')) pressAutoplanOffense();
   else return false;
   return true;
 }
@@ -658,6 +662,7 @@ function pressRun() {
     // again until finish(), and until then every button is still live.
     animating = true;
     runBtn.disabled = true;
+    autoplanBtn.disabled = true;
     clearBtn.disabled = true;
     nextBtn.disabled = true;
     newBtn.disabled = true;
@@ -673,6 +678,25 @@ function pressRun() {
 runBtn.addEventListener('click', () => {
   closeMenu();
   pressRun();
+});
+
+/**
+ * Draw up the QB run option for the human's own offense: the menu's Autoplan
+ * offense button and the board's quick-press icon both come here, same as
+ * pressRun's own shortcut discipline.
+ */
+function pressAutoplanOffense() {
+  if (animating || state.phase !== 'planning') return;
+  const note = autoplanOffense(state);
+  if (note === null) return; // declined silently -- the computer is coaching this team
+  pendingWarning = false;
+  say(note);
+  paint();
+}
+
+autoplanBtn.addEventListener('click', () => {
+  closeMenu();
+  pressAutoplanOffense();
 });
 
 clearBtn.addEventListener('click', () => {

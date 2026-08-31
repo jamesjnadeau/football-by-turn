@@ -417,17 +417,24 @@ test('the menu button holds the middle of the column, inside the frame', () => {
   const menu = rectBox(menuButtonMark(20));
   const others = renderFieldButtons(createGame({ seed: 1 }));
   const shuffle = rectBox(buttonGroup(others, 'data-reposition-button'));
+  const autoplan = rectBox(buttonGroup(others, 'data-autoplan-button'));
   const run = rectBox(buttonGroup(others, 'data-run-button'));
   const midY = minY + h / 2;
 
-  assert.equal(menu.x, shuffle.x, 'all three share one column');
+  assert.equal(menu.x, shuffle.x, 'all four share one column');
+  assert.equal(menu.x, autoplan.x);
   assert.equal(menu.x, run.x);
   assert.ok(menu.x + menu.w <= minX + w, 'inside the viewBox width');
   assert.ok(menu.y > minY && menu.y + menu.h <= minY + h, 'inside the viewBox height');
   assert.ok(menu.y < midY && menu.y + menu.h > midY, 'straddles the middle of the current window');
-  // Evenly stacked, and never overlapping — they are three separate presses.
-  assert.equal(menu.y - (shuffle.y + shuffle.h), run.y - (menu.y + menu.h), 'even gaps');
-  assert.ok(menu.y - (shuffle.y + shuffle.h) > 0, 'and real ones');
+  // Evenly stacked, and never overlapping — four separate presses: shuffle,
+  // menu, autoplan, run.
+  const gap1 = menu.y - (shuffle.y + shuffle.h);
+  const gap2 = autoplan.y - (menu.y + menu.h);
+  const gap3 = run.y - (autoplan.y + autoplan.h);
+  assert.equal(gap1, gap2, 'even gaps');
+  assert.equal(gap2, gap3, 'even gaps');
+  assert.ok(gap1 > 0, 'and real ones');
 });
 
 test('the menu button is reachable and labelled without a pointer', () => {
@@ -647,11 +654,11 @@ test('the shuffle button shows which way it is set', () => {
   assert.ok(on.includes('fbtn-on'), 'the plate fills in');
 });
 
-test('both quick-press buttons are reachable by keyboard, like the menu rect', () => {
+test('all three quick-press buttons are reachable by keyboard, like the menu rect', () => {
   const markup = renderFieldButtons(createGame({ seed: 1 }));
-  assert.equal(markup.match(/tabindex="0"/g).length, 2);
-  assert.equal(markup.match(/role="button"/g).length, 2);
-  assert.equal(markup.match(/aria-label="/g).length, 2);
+  assert.equal(markup.match(/tabindex="0"/g).length, 3);
+  assert.equal(markup.match(/role="button"/g).length, 3);
+  assert.equal(markup.match(/aria-label="/g).length, 3);
 });
 
 test('the quick-press buttons sit on the board, above and below the menu plate', () => {
@@ -691,26 +698,30 @@ test('the board furniture follows the camera, not the line of scrimmage', () => 
   assert.ok(plateY >= top && plateY <= top + height, 'and so is the message plate');
 });
 
-test('all three plates keep one column when the camera has scrolled away', () => {
+test('all four plates keep one column when the camera has scrolled away', () => {
   // The menu plate used to be built once into the board shell and never
   // repainted, so a scrolling run left it stranded at the top of the field
   // while the quick-press buttons followed the ball. They are one column of
-  // three; they have to be placed from one camera.
+  // four; they have to be placed from one camera.
   const s2 = createGame({ seed: 1 });
   const camera = s2.losYard + 30;
   const menu = rectBox(menuButtonMark(s2.losYard, camera));
   const btns = renderFieldButtons(s2, { cameraYard: camera });
   const shuffle = rectBox(buttonGroup(btns, 'data-reposition-button'));
+  const autoplan = rectBox(buttonGroup(btns, 'data-autoplan-button'));
   const run = rectBox(buttonGroup(btns, 'data-run-button'));
 
   assert.equal(menu.x, shuffle.x, 'one column');
+  assert.equal(menu.x, autoplan.x);
   assert.equal(menu.x, run.x);
   assert.ok(shuffle.y + shuffle.h <= menu.y, 'the shuffle sits above the menu plate');
-  assert.ok(run.y >= menu.y + menu.h, 'and the run button below it');
+  assert.ok(autoplan.y >= menu.y + menu.h, 'the autoplan icon sits below it');
+  assert.ok(run.y >= autoplan.y + autoplan.h, 'and the run button below that');
   // Adjacent, not merely ordered: a plate placed from a different camera would
   // still be above or below, just a long way off.
   assert.ok(menu.y - (shuffle.y + shuffle.h) < menu.h, 'the shuffle is next to it');
-  assert.ok(run.y - (menu.y + menu.h) < menu.h, 'and so is the run button');
+  assert.ok(autoplan.y - (menu.y + menu.h) < menu.h, 'and so is the autoplan icon');
+  assert.ok(run.y - (autoplan.y + autoplan.h) < menu.h, 'and so is the run button');
 });
 
 test('the button column clears the yard numbers and the edge of the frame', () => {

@@ -216,23 +216,34 @@ test('a whole smart turn runs, and leaves nothing of the computer behind', () =>
   'no plan and no halo for the human to read');
 });
 
-test('the Defense button cycles smart, basic, hot-seat, and back', () => {
+test('the Defense button cycles smart -> learned -> basic -> hot-seat and back', () => {
   const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' });
   assert.equal(aiModeIndex(s), 0);
   assert.equal(AI_MODES[0].label, 'Defense: computer (smart)');
 
   let next = nextAiMode(s);
-  assert.deepEqual([next.ai, next.level], ['defense', 'pursuit']);
-  s.aiTeam = next.ai; s.aiLevel = next.level;
+  s.aiTeam = next.ai;
+  s.aiLevel = next.level;
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: computer (learned)');
+
+  next = nextAiMode(s);
+  s.aiTeam = next.ai;
+  s.aiLevel = next.level;
   assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: computer (basic)');
 
   next = nextAiMode(s);
-  assert.equal(next.ai, null);
-  s.aiTeam = next.ai; s.aiLevel = next.level;
+  s.aiTeam = next.ai;
+  s.aiLevel = next.level;
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: you');
+
+  // Hot-seat is hot-seat whatever level it is carrying.
+  s.aiLevel = 'learned';
   assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: you');
 
   next = nextAiMode(s);
-  assert.deepEqual([next.ai, next.level], ['defense', 'smart'], 'round it goes');
+  s.aiTeam = next.ai;
+  s.aiLevel = next.level;
+  assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: computer (smart)');
 });
 
 test('hot-seat reads as hot-seat whatever level it is carrying', () => {

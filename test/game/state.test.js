@@ -116,6 +116,20 @@ test('mode legality: tuck = non-lineman carrier only, prepared = defense only, h
   assert.equal(getPlayer(s, 'o-c').charge, 0);
 });
 
+test('cut block is offensive linemen only -- every role in the default roster', () => {
+  const s = createGame({ seed: 1 });
+  for (const id of ['o-c', 'o-lg', 'o-rg']) {
+    assert.equal(setMode(s, id, 'cutBlock'), true, `${id} is a lineman and should be able to cut block`);
+    setMode(s, id, 'normal');
+  }
+  for (const id of ['o-wr1', 'o-wr2', 'o-qb', 'o-rb']) {
+    assert.equal(setMode(s, id, 'cutBlock'), false, `${id} is offense but not a lineman`);
+  }
+  for (const id of ['d-nt', 'd-dt1', 'd-dt2', 'd-cb1', 'd-cb2', 'd-lb', 'd-s']) {
+    assert.equal(setMode(s, id, 'cutBlock'), false, `${id} is defense`);
+  }
+});
+
 test('the computer opponent is opt-in, and its players take no orders', () => {
   const hotSeat = createGame({ seed: 1 });
   assert.equal(hotSeat.aiTeam, null, 'the library default is still hot-seat');

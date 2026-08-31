@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 import {
   boxDefenders, callFeatures, chooseCall, chooseSide, planLearnedRun,
   eligibleReceivers, routeDir, planLearnedPassSnap, receiverScore, planThrow,
+  coachLearnedOffense, tuckIfPressured,
 } from '../../../lib/game/learned/offense-policy.js';
 import { OFFENSE_SPEC } from '../../../lib/game/learned/offense-spec.js';
 import { makeGenome } from '../../../lib/game/learned/genome.js';
 import { createGame, getPlayer, ballPos } from '../../../lib/game/state.js';
 import { fieldPos } from '../../../lib/game/view.js';
+import { runTurn } from '../../../lib/game/turn.js';
+import { nextDown } from '../../../lib/game/rules.js';
+import { mulberry32 } from '../../../lib/game/rng.js';
 
 test('the box is the defenders crowding the line near the ball', () => {
   const s = createGame({ seed: 1 });
@@ -191,4 +195,66 @@ test('the hold clock forces the throw', () => {
   s.turnIndex = 2;
   assert.equal(planThrow(s, g, qb), true); // clock's up: best available
   assert.ok(s.plannedPass);
+});
+
+test('state carries an aiPlay slot, born null and reset every down', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(s.aiPlay, null);
+  s.aiPlay = { call: 'run', side: 1, give: false };
+  s.deadReason = 'tackled';
+  s.phase = 'playOver';
+  nextDown(s);
+  assert.equal(s.aiPlay, null);
+});
+
+test('turn 0 decides the call and remembers it', () => {
+  const s = createGame({ seed: 1 });
+  const g = { ...makeGenome(OFFENSE_SPEC), 'call:bias': 4 }; // always pass
+  coachLearnedOffense(s, g);
+  assert.deepEqual(s.aiPlay, { call: 'pass' });
+  assert.ok(getPlayer(s, 'o-wr1').plan, 'routes are on');
+
+  const s2 = createGame({ seed: 1 });
+  const g2 = { ...makeGenome(OFFENSE_SPEC), 'call:bias': -4 }; // always run
+  coachLearnedOffense(s2, g2);
+  assert.equal(s2.aiPlay.call, 'run');
+});
+
+test('a run play coaches the carrier to daylight, tucked under pressure', () => {
+  const s = createGame({ seed: 1 });
+  s.turnIndex = 2;
+  s.aiPlay = { call: 'run', side: 1, give: false };
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const qb = getPlayer(s, 'o-qb');
+  getPlayer(s, 'd-nt').pos = fieldPos(0, s.losYard - 2); // in his face
+  coachLearnedOffense(s, makeGenome(OFFENSE_SPEC));
+  assert.ok(qb.plan, 'the carrier has somewhere to go');
+  assert.equal(qb.mode, 'tucked');
+  assert.ok(getPlayer(s, 'o-wr1').plan, 'everyone else blocks');
+});
+
+test('a loose ball sends the whole offense after it', () => {
+  const s = createGame({ seed: 1 });
+  s.turnIndex = 3;
+  s.aiPlay = { call: 'run', side: 1, give: true };
+  s.ball = { carrierId: null, pos: fieldPos(2, s.losYard - 2), vel: { x: 0, y: 0 }, loose: 0 };
+  s.plannedPass = null;
+  coachLearnedOffense(s, makeGenome(OFFENSE_SPEC));
+  for (const p of s.players.filter((pl) => pl.team === 'offense')) {
+    assert.ok(p.plan, `${p.id} chases`);
+  }
+});
+
+test('a full learned-offense down runs turn by turn without incident', () => {
+  const s = createGame({ seed: 21 });
+  const g = makeGenome(OFFENSE_SPEC);
+  const random = mulberry32(21);
+  for (let t = 0; t < 12 && s.phase !== 'playOver'; t++) {
+    coachLearnedOffense(s, g);
+    runTurn(s, random);
+  }
+  // Whatever the play became, the engine stayed coherent.
+  assert.ok(['playOver', 'planning'].includes(s.phase));
+  assert.equal(typeof s.turnIndex, 'number');
 });

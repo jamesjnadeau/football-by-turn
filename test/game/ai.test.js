@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   aiPlayers, pursuitTarget, defensePlans, coachAi, clearAiPlans, applyAiModes,
-  coachSmartDefense, AI_MODES, aiModeIndex, nextAiMode,
+  coachSmartDefense, AI_MODES, aiModeIndex, nextAiMode, defaultModeForSide,
 } from '../../lib/game/ai.js';
 import { createGame, getPlayer, setPlan, setMode } from '../../lib/game/state.js';
 import { runTurn } from '../../lib/game/turn.js';
@@ -245,4 +245,20 @@ test('hot-seat reads as hot-seat whatever level it is carrying', () => {
   assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: you');
   s.aiLevel = 'smart';
   assert.equal(AI_MODES[aiModeIndex(s)].label, 'Defense: you');
+});
+
+test('picking a side picks the computer for the other one', () => {
+  assert.deepEqual(defaultModeForSide('offense'), { ai: 'defense', level: 'learned' });
+  assert.deepEqual(defaultModeForSide('defense'), { ai: 'offense', level: 'learned' });
+  // Training mode is the current mode, as is — and so is anything unrecognized.
+  assert.deepEqual(defaultModeForSide('training'), { ai: 'defense', level: 'smart' });
+  assert.deepEqual(defaultModeForSide(undefined), { ai: 'defense', level: 'smart' });
+  // Every answer is a real mode the in-game button also knows.
+  for (const side of ['offense', 'defense', 'training']) {
+    const m = defaultModeForSide(side);
+    assert.ok(
+      AI_MODES.some((e) => e.ai === m.ai && e.level === m.level),
+      `${side} maps to a listed mode`,
+    );
+  }
 });

@@ -1,6 +1,7 @@
 import { SVG } from './vendor/svg.esm.js';
 import {
   createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable, setPass, ballPos,
+  aimSnap,
 } from '../lib/game/state.js';
 import {
   canReposition, placePlayer, spotFault, alignDefense, lineCount, setPersonnel,
@@ -44,8 +45,13 @@ import {
   loadCoachLog, saveCoachLog, clearCoachLog,
   loadTendencies, saveTendencies, clearTendencies,
 } from './coach-store.js';
+import { ghostReadiness, BROWSER_TRAINING_RUN } from '../lib/game/train/vs-ghost.js';
+import { serializeBundle } from '../lib/game/train/bundle.js';
+import {
+  loadGenomeBundles, saveGenomeBundle, clearGenomeBundles, overrideValues,
+} from './genome-store.js';
 import { autoplanOffense } from '../lib/game/offense.js';
-import { realignLearnedDefense } from '../lib/game/learned/formation.js';
+import { realignLearnedDefense, maybeApplyLearnedFormations } from '../lib/game/learned/formation.js';
 
 // SVG(el) adopts the existing <svg id="board"> node rather than creating a
 // nested one — every read/write below goes through this wrapper.
@@ -68,6 +74,9 @@ const newBtn = document.getElementById('new');
 const homeBtn = document.getElementById('home-btn');
 const copyLogBtn = document.getElementById('copy-log');
 const clearLogBtn = document.getElementById('clear-log');
+const trainBtn = document.getElementById('train');
+const copyGenomeBtn = document.getElementById('copy-genome');
+const discardGenomeBtn = document.getElementById('discard-genome');
 
 let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
 // Which game this drive is: the id of the home-screen button that started it.
@@ -102,6 +111,17 @@ let library = loadLibrary();
 // replays); the counts are what the learned defense actually reads.
 let coachLog = loadCoachLog();
 let tendencies = loadTendencies();
+// What this coach has trained in his own browser: one bundle per side, or
+// null. Not game state, for the same reason the playbook and the coaching log
+// are not — New Game replaces `state` wholesale and a trained genome outlives
+// a drive. `trainedSide` is which one the Copy button hands over; only one is
+// ever trained in practice, and defense is the normal one.
+let genomeBundles = loadGenomeBundles();
+let trainedSide = genomeBundles.defense ? 'defense'
+  : genomeBundles.offense ? 'offense' : null;
+// The live training worker, or null. One at a time: a second run started on
+// top of the first would race it for the same override.
+let trainer = null;
 
 /**
  * The five slots for the side being coached right now. Asked fresh every time
@@ -204,6 +224,12 @@ function paint() {
   copyLogBtn.textContent = `Copy coaching log (${coachLog.length})`;
   copyLogBtn.disabled = animating || coachLog.length === 0;
   clearLogBtn.disabled = animating || (coachLog.length === 0 && tendencies.plays === 0);
+  trainBtn.disabled = animating || trainer !== null || coachLog.length === 0;
+  copyGenomeBtn.textContent = trainedSide
+    ? `Copy trained ${trainedSide} genome`
+    : 'Copy trained genome';
+  copyGenomeBtn.disabled = animating || trainedSide === null;
+  discardGenomeBtn.disabled = animating || trainedSide === null;
   runBtn.disabled = animating || state.phase !== 'planning';
   autoplanBtn.disabled = animating || state.phase !== 'planning' || state.aiTeam === 'offense';
   clearBtn.disabled = animating;
@@ -768,6 +794,9 @@ function pressRun() {
     debugBtn.disabled = true;
     copyLogBtn.disabled = true;
     clearLogBtn.disabled = true;
+    trainBtn.disabled = true;
+    copyGenomeBtn.disabled = true;
+    discardGenomeBtn.disabled = true;
     animate(frames, finish);
   } else finish();
 }
@@ -910,6 +939,119 @@ clearLogBtn.addEventListener('click', () => {
 });
 
 /**
+ * Put the freshly trained genome on the board. The brain reads it from the
+ * next order it gives; the FORMATION is a pre-snap picture, so it only changes
+ * while there still is one — maybeApplyLearnedFormations writes through
+ * applyLearnedDefenseFormation, which is gated on the planning phase and turn
+ * zero and does nothing the rest of the time. aimSnap follows because an
+ * offense genome can move the quarterback, and the automatic snap is aimed at
+ * where he stands — the same two lines, in the same order, that createGame and
+ * nextDown end on.
+ */
+function applyGenomeOverrides() {
+  state.genomeOverrides = overrideValues(genomeBundles);
+  maybeApplyLearnedFormations(state);
+  aimSnap(state);
+}
+
+function stopTraining() {
+  if (trainer) trainer.terminate();
+  trainer = null;
+}
+
+/**
+ * Train a genome against a ghost of THIS coach, here, on this device — the
+ * same run tools/train-vs-ghost.js makes, in a worker, seeded from whatever
+ * genome is already playing so that a second press keeps climbing.
+ *
+ * The side is read off the log rather than chosen: the ghost imitates the side
+ * you were recorded coaching and the genome that gets trained is the other one
+ * (lib/game/train/vs-ghost.js's ghostReadiness). A log too thin to imitate is
+ * refused out loud rather than trained against badly.
+ */
+function startTraining() {
+  if (animating || trainer !== null) return;
+  const ready = ghostReadiness(coachLog, state.variantId);
+  if (!ready.ok) {
+    say(ready.reason);
+    return;
+  }
+  const job = {
+    ...BROWSER_TRAINING_RUN,
+    log: coachLog,
+    side: ready.side,
+    snapshots: ready.snapshots,
+    seedGenome: genomeBundles[ready.side] ? genomeBundles[ready.side].values : null,
+    exportedAt: new Date().toISOString(),
+  };
+  trainer = new Worker(new URL('./train-worker.js', import.meta.url), { type: 'module' });
+  trainer.addEventListener('message', (e) => {
+    if (e.data.type === 'progress') {
+      say(`Training the ${ready.side} — generation ${e.data.gen + 1}`
+        + ` of ${BROWSER_TRAINING_RUN.generations}, best ${e.data.score.toFixed(2)}.`);
+      return;
+    }
+    const { bundle } = e.data;
+    stopTraining();
+    genomeBundles = { ...genomeBundles, [bundle.side]: bundle };
+    trainedSide = bundle.side;
+    if (!saveGenomeBundle(bundle.side, bundle)) {
+      say('Trained — but this browser refused to save it, so copy it now or it goes away on reload.');
+    } else {
+      say(`Trained a new ${bundle.side} against ${ready.snapshots} of your calls`
+        + ` (fitness ${bundle.meta.fitness.toFixed(2)}). It is playing now —`
+        + ' Copy trained genome sends it in.');
+    }
+    applyGenomeOverrides();
+    paint();
+  });
+  trainer.addEventListener('error', () => {
+    stopTraining();
+    say('Training could not start — this page has to be served over http (npm run serve), not opened as a file.');
+    paint();
+  });
+  trainer.postMessage(job);
+  say(`${ready.reason} This takes a few seconds.`);
+  paint();
+}
+
+trainBtn.addEventListener('click', () => {
+  closeMenu();
+  startTraining();
+});
+
+/**
+ * Hand the trained genome over as a bundle — the JSON file
+ * tools/import-genome.js reads. Clipboard first, prompt as the fallback, the
+ * same bargain the coaching-log copy button strikes and for the same reason.
+ */
+copyGenomeBtn.addEventListener('click', async () => {
+  closeMenu();
+  if (animating || trainedSide === null) return;
+  const text = serializeBundle(genomeBundles[trainedSide]);
+  try {
+    await navigator.clipboard.writeText(text);
+    say(`Copied your trained ${trainedSide} genome. Save it as JSON and send it in.`);
+  } catch {
+    window.prompt('Copy this genome bundle:', text);
+    say('The browser refused the clipboard — the genome is in the prompt instead.');
+  }
+});
+
+/** Back to the genome this build ships. Both sides, always — a coach asking
+ *  for the shipped AI back does not mean half of it. */
+discardGenomeBtn.addEventListener('click', () => {
+  closeMenu();
+  if (animating || trainedSide === null) return;
+  genomeBundles = { defense: null, offense: null };
+  trainedSide = null;
+  clearGenomeBundles();
+  applyGenomeOverrides();
+  say('Back to the shipped genome. Your trained one is gone from this browser.');
+  paint();
+});
+
+/**
  * A finished play moves the game on by itself after DEAD_BALL_PAUSE_SECONDS —
  * the coach reads the call, sees where everyone stopped, and the next down
  * comes up without a button press. The timer id is kept so that a coach who
@@ -950,6 +1092,7 @@ function startNewGame() {
   const mode = defaultModeForSide(sideId);
   state = createGame({
     seed: (Math.random() * 2 ** 31) | 0, ai: mode.ai, aiLevel: mode.level, variant: variantId,
+    genomeOverrides: overrideValues(genomeBundles),
   });
   // The new drive inherits what the old ones taught the computer.
   state.tendencyCounts = tendencies;

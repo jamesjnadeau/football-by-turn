@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   positionGroup, defendDir, losY, pastLine, groupMates,
   interceptPoint, leverageAim, containRank, rushLineman, flowLinebacker,
-  deepestThreat, deepMan, deepAim, coverAssignments, coverBack,
+  deepestThreat, deepestOpenThreat, deepMan, deepAim, coverAssignments, coverBack,
   smartOrder, smartOrders,
 } from '../../lib/game/defense.js';
 import { createGame, getPlayer } from '../../lib/game/state.js';
@@ -199,6 +199,12 @@ test('the deepest threat is the opponent nearest the goal being defended', () =>
 
 test('the deep man plays behind the deepest threat and the ball, splitting them', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  // This roster fields three receiver-threats (both WRs and the RB) for only
+  // two corners, so the RB is always the odd man out for a dedicated back —
+  // see 'the backer covers whoever a bunch left open' below. Neutralised here
+  // so this test is about the deepest-threat/ball split alone, not about who
+  // is genuinely left open.
+  getPlayer(s, 'o-rb').radius = RADIUS_LINE;
   // Deepest opponent is the line, one yard behind the LOS; the ball is the QB,
   // shallower still, so the line sets the depth.
   const lineY = getPlayer(s, 'o-c').pos.y;
@@ -212,11 +218,104 @@ test('the deep man plays behind the deepest threat and the ball, splitting them'
 
 test('the corners take the receivers; the deep man takes nobody', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  // Neutralise the RB as a threat — see the comment in the deep-man test
+  // above — so this is the plain two-corners-two-WRs case the name describes,
+  // with nobody left over for the backer to help with.
+  getPlayer(s, 'o-rb').radius = RADIUS_LINE;
   const map = coverAssignments(s, 'defense');
   assert.equal(map.get('d-cb1'), 'o-wr1');
   assert.equal(map.get('d-cb2'), 'o-wr2');
   assert.equal(map.has('d-s'), false, 'the last man back is free');
   assert.equal(map.size, 2);
+});
+
+/**
+ * Flex the RB out next to WR1 so both corners are drawn to the left side of
+ * the field — one takes WR1, the other loses the greedy race for WR2 and
+ * settles for the nearer RB instead — leaving WR2, isolated on the right,
+ * with no dedicated back anywhere near him. This is the bug: two corners can
+ * still burn themselves on one side of a bunch and leave the far side wide
+ * open, and nothing used to notice.
+ */
+function bunchOneSideIsolateWr2(s) {
+  // WR1 runs a deep route, so the man who WAS covering him (before he gets
+  // reassigned to the isolated WR2 below) also happens to be this defense's
+  // deepest, best-covered threat -- which is what makes the free safety's old
+  // "just play over whoever is deepest" logic wrong here, not merely
+  // untested.
+  getPlayer(s, 'o-wr1').pos = { x: 78.75, y: losY(s) + 20 };
+  getPlayer(s, 'o-rb').pos = { x: 88.75, y: 118.75 }; // flexed out next to WR1
+  getPlayer(s, 'o-wr2').pos = { x: 191.25, y: losY(s) + 5 }; // isolated, alone on the right
+  getPlayer(s, 'd-cb2').pos = { x: 100, y: 130 }; // drawn toward the bunch
+  return s;
+}
+
+test('the backer covers whoever a bunch left open', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  bunchOneSideIsolateWr2(s);
+
+  const map = coverAssignments(s, 'defense');
+  assert.equal(map.get('d-cb1'), 'o-wr1', 'the near corner still takes WR1');
+  assert.equal(map.get('d-cb2'), 'o-rb', 'the other corner loses the race and settles for the RB');
+  assert.equal(map.get('d-lb'), 'o-wr2', 'the backer mops up whoever is left — WR2, alone on the far side');
+
+  assert.deepEqual(coverBack(s, getPlayer(s, 'd-lb')), { aim: null, cover: 'o-wr2' },
+    'and coverBack sees it exactly like a back would');
+  assert.deepEqual(smartOrder(s, getPlayer(s, 'd-lb')), { aim: null, cover: 'o-wr2' },
+    'smartOrder actually sends him there, rather than leaving him to mirror the ball');
+});
+
+test('the deep man shades toward whoever a bunch left open, not merely whoever is deepest', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  bunchOneSideIsolateWr2(s);
+
+  // WR1 -- deep AND covered by CB1 -- is still the deepest opponent on the
+  // field by raw depth alone.
+  assert.equal(deepestThreat(s, 'defense').id, 'o-wr1');
+  // But he already has a man. WR2 does not, so he is who the free safety
+  // actually has to worry about.
+  assert.equal(deepestOpenThreat(s, 'defense').id, 'o-wr2');
+
+  const wr2 = getPlayer(s, 'o-wr2').pos;
+  const bp = getPlayer(s, 'o-c').pos; // the carrier, pre-snap
+  const shaded = {
+    x: (wr2.x + bp.x) / 2,
+    y: Math.max(wr2.y, bp.y) + AI_DEEP_CUSHION_UNITS,
+  };
+  assert.deepEqual(deepAim(s, getPlayer(s, 'd-s')), shaded,
+    'over WR2, not over the deeper but covered WR1');
+  assert.deepEqual(smartOrder(s, getPlayer(s, 'd-s')), { aim: shaded, cover: null });
+
+  // The old, coverage-blind anchor -- deepest opponent overall -- would have
+  // played over WR1 instead. Confirms the fix actually changes the number,
+  // not just which function's name gets called.
+  const wr1 = getPlayer(s, 'o-wr1').pos;
+  const oldAnchor = {
+    x: (wr1.x + bp.x) / 2,
+    y: Math.max(wr1.y, bp.y) + AI_DEEP_CUSHION_UNITS,
+  };
+  assert.notDeepEqual(shaded, oldAnchor);
+});
+
+test('a full-strength secondary leaves the backer alone — nobody is left open to begin with', () => {
+  // The eleven-a-side roster fields exactly as many dedicated backs (two
+  // corners and a free safety... but the FS himself is free, so really the
+  // corners and the extra safety, d-fs) as it does receiver-threats (both
+  // WRs and the RB), by design -- see rosters.js's own comment on
+  // ELEVEN_OFFENSE. At the default alignment nobody is bunched and nobody
+  // is short a man, so the fix must be a no-op here: both linebackers keep
+  // doing their own job, and coverAssignments hands out no more than the
+  // three receivers it always did.
+  const s = createGame({ seed: 1, ai: 'defense', variant: '11' });
+  const map = coverAssignments(s, 'defense');
+  assert.equal(map.size, 3, 'wr1, wr2 and the rb — all dedicated backs, no backer needed');
+  assert.equal(map.has('d-lb'), false);
+  assert.equal(map.has('d-lb2'), false);
+  assert.equal(deepestOpenThreat(s, 'defense'), null, 'nobody is left open');
+
+  assert.deepEqual(smartOrder(s, getPlayer(s, 'd-lb')), flowLinebacker(s, getPlayer(s, 'd-lb')),
+    'both backers still just mirror the ball — no assignment pulled them out of it');
+  assert.deepEqual(smartOrder(s, getPlayer(s, 'd-lb2')), flowLinebacker(s, getPlayer(s, 'd-lb2')));
 });
 
 test('a defensive back does not cover a man who cannot run with him', () => {
@@ -259,6 +358,10 @@ test('once the carrier is past the line everybody converges on him', () => {
 
 test('behind the line, each position does its own job', () => {
   const s = createGame({ seed: 1, ai: 'defense' });
+  // Neutralise the RB as a threat — see the comment above 'the deep man plays
+  // behind the deepest threat...' — so the backer has nobody to help with and
+  // plays his own position, which is what this test is about.
+  getPlayer(s, 'o-rb').radius = RADIUS_LINE;
   assert.deepEqual(smartOrder(s, getPlayer(s, 'd-dt2')), rushLineman(s, getPlayer(s, 'd-dt2')));
   assert.deepEqual(smartOrder(s, getPlayer(s, 'd-lb')), flowLinebacker(s, getPlayer(s, 'd-lb')));
   assert.deepEqual(smartOrder(s, getPlayer(s, 'd-cb1')), coverBack(s, getPlayer(s, 'd-cb1')));

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   learnedDefenseSpots, applyLearnedDefenseFormation, maybeApplyLearnedFormations,
+  realignLearnedDefense,
 } from '../../../lib/game/learned/formation.js';
 import { DEFENSE_SPEC } from '../../../lib/game/learned/defense-spec.js';
 import { DEFENSE_GENOME } from '../../../lib/game/learned/defense-genome.js';
@@ -94,4 +95,40 @@ test('maybeApplyLearnedFormations leaves other variants alone', () => {
   } finally {
     DEFENSE_GENOME.values['pos:d-s:down'] = saved;
   }
+});
+
+test('realignLearnedDefense puts a dragged-away defender back on his genome spot', () => {
+  // The bug this guards: app/main.js's realignDefense() used to always run
+  // the rule-based alignDefense after any offense change, stomping a
+  // learned defense's formation. Simulate that stomp by hand — apply the
+  // learned formation, then move a man the way alignDefense/a drag would —
+  // and confirm realignLearnedDefense puts him straight back.
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  const genomeSpot = { ...getPlayer(s, 'd-s').pos };
+  getPlayer(s, 'd-s').pos = { x: genomeSpot.x + 30, y: genomeSpot.y + 5 };
+  assert.equal(realignLearnedDefense(s), true);
+  assert.deepEqual(getPlayer(s, 'd-s').pos, genomeSpot);
+});
+
+test('realignLearnedDefense declines and touches nobody when aiLevel is not learned', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' });
+  const before = { ...getPlayer(s, 'd-s').pos };
+  getPlayer(s, 'd-s').pos = { x: before.x + 30, y: before.y + 5 };
+  const moved = { ...getPlayer(s, 'd-s').pos };
+  assert.equal(realignLearnedDefense(s), false);
+  assert.deepEqual(getPlayer(s, 'd-s').pos, moved);
+});
+
+test('realignLearnedDefense declines when the variant does not match the trained one', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned', variant: '11' });
+  const before = { ...getPlayer(s, 'd-s').pos };
+  getPlayer(s, 'd-s').pos = { x: before.x + 30, y: before.y + 5 };
+  const moved = { ...getPlayer(s, 'd-s').pos };
+  assert.equal(realignLearnedDefense(s), false);
+  assert.deepEqual(getPlayer(s, 'd-s').pos, moved);
+});
+
+test('realignLearnedDefense declines when the computer is not coaching defense', () => {
+  const s = createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' });
+  assert.equal(realignLearnedDefense(s), false);
 });

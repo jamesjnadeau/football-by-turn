@@ -33,6 +33,7 @@ import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/pl
 import { PLAY_SLOTS, firstEmptySlot, putPlay } from '../lib/game/playbook.js';
 import { loadPlaybook, savePlaybook } from './playbook-store.js';
 import { autoplanOffense } from '../lib/game/offense.js';
+import { realignLearnedDefense } from '../lib/game/learned/formation.js';
 
 // SVG(el) adopts the existing <svg id="board"> node rather than creating a
 // nested one — every read/write below goes through this wrapper.
@@ -276,10 +277,14 @@ function formationNote() {
 /**
  * Answer the offense's new look. Only when the computer is coaching the
  * defense: in hot-seat the coach is placing both teams by hand, and aligning
- * over the top of him would throw away the spots he just set.
+ * over the top of him would throw away the spots he just set. A learned
+ * defense doesn't actually answer the look — its genome spots are fixed —
+ * so it just holds its ground instead; only the rule-based fallback reads
+ * the offense's current positions.
  */
 function realignDefense() {
   if (state.aiTeam !== 'defense') return;
+  if (realignLearnedDefense(state)) return;
   for (const { id, pos } of alignDefense(state)) getPlayer(state, id).pos = pos;
 }
 

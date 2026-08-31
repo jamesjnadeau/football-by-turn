@@ -40,6 +40,22 @@ first genome came from):
 
     npm run train:defense -- --generations 30 --pop 16 --plays 24 --seed 1
 
+To train the defense against a ghost of **you** — the coach the game has
+actually been recording:
+
+    npm run train:vs-ghost -- --log coach-log.json --side defense
+
+Every time you press **Run Turn**, the game writes down the call you just
+made — where your men were standing, every arrow, every cover order, the
+throw — and keeps it in the browser. **Copy coaching log** in the Coaches
+Menu hands the whole record over as JSON; save it as a file and point the
+trainer at it. The trainer replays your recorded calls as the opponent
+(nearest recorded situation to the live one, deterministically) and evolves
+the genome against thousands of simulated downs of *your* football, dealing
+half its scenarios from the down-and-distances you actually played. Pass
+`--side offense` to train the computer's offense against a ghost of your
+defense instead. **Forget my tendencies** in the same menu clears the record.
+
 Training is a seeded evolutionary search over each side's ~30 parameters
 (starting spots, play-calling, coverage scheme and matchups, routes and
 reads), simulating whole plays headlessly through the same engine the

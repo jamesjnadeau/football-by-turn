@@ -6,6 +6,7 @@
     "test": "node --test",
     "serve": "python3 serve.py",
     "train:defense": "node tools/train-defense.js",
-    "train:coevolve": "node tools/train-coevolve.js"
+    "train:coevolve": "node tools/train-coevolve.js",
+    "train:vs-ghost": "node tools/train-vs-ghost.js"
   }
 }

@@ -3,8 +3,12 @@ import assert from 'node:assert/strict';
 import {
   ROSTERS, DEFAULT_VARIANT, getRoster, teamSize, minOnLine,
 } from '../../lib/game/rosters.js';
-import { createGame, SNAPPER_ID, SNAP_TARGET_ID } from '../../lib/game/state.js';
+import {
+  createGame, SNAPPER_ID, SNAP_TARGET_ID, getPlayer,
+} from '../../lib/game/state.js';
 import { nextDown } from '../../lib/game/rules.js';
+import { backerLane, orderedMates } from '../../lib/game/defense.js';
+import { BACKER_LANE_UNITS } from '../../lib/game/constants.js';
 
 test('every roster fields as many a side as it claims, with unique ids and a snap to take', () => {
   for (const roster of Object.values(ROSTERS)) {
@@ -36,4 +40,10 @@ test('a game remembers the variant it was dealt, and keeps it across a down', ()
   nextDown(s);
   assert.equal(s.variantId, '7', 'the next down is played with the same teams');
   assert.equal(s.players.length, 14);
+});
+
+test('a lone backer keeps no lane — he plays the ball, as he always has', () => {
+  const s = createGame({ seed: 1, ai: 'defense', variant: '7' });
+  assert.equal(backerLane(s, getPlayer(s, 'd-lb')), 0);
+  assert.deepEqual(orderedMates(s, getPlayer(s, 'd-lb')).map((p) => p.id), ['d-lb']);
 });

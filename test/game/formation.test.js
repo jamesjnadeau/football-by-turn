@@ -463,11 +463,17 @@ test('at zero pull the learned look is the genome look, exactly', () => {
 });
 
 test('at zero pull a trained genome is still the genome look, exactly', () => {
+  // The shipped genome carries real adapt weights now, so this has to SET the
+  // pull to zero rather than assume it. What is being guarded is that a
+  // trained genome's own spots still round-trip untouched when nothing pulls
+  // on them — not that the shipped genome happens to pull on nothing.
   const s = createGame({ seed: 1 });
-  assert.deepEqual(
-    learnedLook(s, DEFENSE_GENOME.values),
-    learnedDefenseSpots(s, DEFENSE_GENOME.values),
-  );
+  const g = { ...DEFENSE_GENOME.values };
+  for (const group of ['line', 'backer', 'back', 'deep']) {
+    g[`adapt:${group}:width`] = 0;
+    g[`adapt:${group}:depth`] = 0;
+  }
+  assert.deepEqual(learnedLook(s, g), learnedDefenseSpots(s, g));
 });
 
 test('a full-width pull stands the front and the corners where alignDefense does', () => {

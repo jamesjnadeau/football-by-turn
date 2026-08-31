@@ -16,8 +16,8 @@ test('a spot behind the line, inbounds and clear of everyone, has no fault', () 
 
 test('the offense may not line up past the line, and the defense may not line up behind it', () => {
   const s = createGame({ seed: 1 });
-  assert.equal(spotFault(s, 'o-wr1', fieldPos(-20, 2)), 'past-line');
-  assert.equal(spotFault(s, 'd-cb1', fieldPos(-20, -2)), 'past-line');
+  assert.equal(spotFault(s, 'o-wr1', fieldPos(-20, s.losYard + 2)), 'past-line');
+  assert.equal(spotFault(s, 'd-cb1', fieldPos(-20, s.losYard - 2)), 'past-line');
 });
 
 test('a spot with any part of the body outside a sideline is out of bounds', () => {
@@ -141,16 +141,16 @@ test('repositioning is offered on the first turn of a down and nowhere else', ()
 
 test('repositioning: allowed only at turn 0 planning, and only on your own side of the LOS', () => {
   const s = createGame({ seed: 1 });
-  const ok = placePlayer(s, 'o-wr1', fieldPos(-20, -2));
+  const ok = placePlayer(s, 'o-wr1', fieldPos(-20, s.losYard - 2));
   assert.equal(ok, true);
-  assert.deepEqual(getPlayer(s, 'o-wr1').pos, fieldPos(-20, -2));
+  assert.deepEqual(getPlayer(s, 'o-wr1').pos, fieldPos(-20, s.losYard - 2));
   // offense may not set up past the LOS
-  assert.equal(placePlayer(s, 'o-wr1', fieldPos(-20, 2)), false);
+  assert.equal(placePlayer(s, 'o-wr1', fieldPos(-20, s.losYard + 2)), false);
   // defense may not set up behind it
-  assert.equal(placePlayer(s, 'd-cb1', fieldPos(-20, -2)), false);
+  assert.equal(placePlayer(s, 'd-cb1', fieldPos(-20, s.losYard - 2)), false);
   // once the play has run a turn, nobody repositions
   s.turnIndex = 1;
-  assert.equal(placePlayer(s, 'o-wr1', fieldPos(-15, -2)), false);
+  assert.equal(placePlayer(s, 'o-wr1', fieldPos(-15, s.losYard - 2)), false);
 });
 
 test('repositioning refuses a spot the formation rulebook faults', () => {

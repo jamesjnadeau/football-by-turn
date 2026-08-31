@@ -12,7 +12,7 @@ import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
   planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
   lineZoneMark, renderFieldButtons, passLandingMark, passLockMark, cameraViewBox,
-  menuButtonMark,
+  menuButtonMark, liveLobMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { downDistanceText } from '../lib/game/hud.js';
@@ -139,13 +139,20 @@ function paint() {
   // it still reads as a man rather than as a man behind glass. While
   // repositioning there are no arrows to draw anyway — that is the mode.
   layer('game-arrows').clear().svg(
-    // Repositioning draws no ORDERS — that is the mode, and moving a man drops
-    // his anyway. The snap is not one of his orders though, and it is aimed
-    // between the two men most likely to be moved, so it stays on the board:
-    // it is the one arrow that answers "what did that just do?".
-    repositioning ? lineZoneMark(state) + (state.plannedPass?.auto ? renderPassArrow(state) : '')
-    : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state)
-    : '',
+    // The landing circle outlives the plan that drew it — state.plannedPass is
+    // gone by the end of the very turn a lob is thrown, but the throw itself
+    // can still be hanging turns later, and the coach still needs to see
+    // where it might come down. Drawn in every mode below, since a lob in the
+    // air is a fact about the board, not an order still being given.
+    liveLobMark(state) + (
+      // Repositioning draws no ORDERS — that is the mode, and moving a man drops
+      // his anyway. The snap is not one of his orders though, and it is aimed
+      // between the two men most likely to be moved, so it stays on the board:
+      // it is the one arrow that answers "what did that just do?".
+      repositioning ? lineZoneMark(state) + (state.plannedPass?.auto ? renderPassArrow(state) : '')
+      : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state)
+      : ''
+    ),
   );
   hud.textContent = `${downDistanceText(state)} — ${state.phase}`;
   aiBtn.textContent = AI_MODES[aiModeIndex(state)].label;

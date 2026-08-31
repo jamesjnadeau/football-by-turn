@@ -4,6 +4,7 @@ import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
   coverMark, coverHaloMark, lineZoneMark, renderFieldButtons, lineToGainMark, passLockMark,
+  liveLobMark,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
@@ -828,6 +829,26 @@ test('the loose ball is drawn bigger while it is over everyone\'s heads', () => 
   lob.elapsed = 40;
   s.ball.pos = lobPoint(lob);
   assert.ok(!renderLooseBall(s).includes('scale('), 'and its ordinary size on the ground');
+});
+
+test('a lob still in the air draws its landing circle, turn after turn', () => {
+  const s = createGame({ seed: 1 });
+  const lob = {
+    from: { x: 135, y: 70 }, to: { x: 135, y: 150 }, aim: { x: 135, y: 152 }, radius: 5,
+    substeps: 40, elapsed: 30,
+  };
+  s.ball = { carrierId: null, pos: lobPoint(lob), vel: { x: 0, y: 0 }, loose: 0, forward: true, lob };
+  const svg = liveLobMark(s);
+  assert.ok(svg.includes('class="pass-land"'));
+  assert.ok(svg.includes(`cx="${num(lob.aim.x)}"`) && svg.includes(`cy="${num(lob.aim.y)}"`),
+    'centred on the throw as aimed, not on the scattered landing spot');
+  assert.ok(svg.includes(`r="${num(lob.radius)}"`));
+});
+
+test('the landing circle is gone once the ball is no longer a lob', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null }; // caught, or never thrown at all
+  assert.equal(liveLobMark(s), '');
 });
 
 test('the lob\'s two marks are styled in the game stylesheet', () => {

@@ -70,6 +70,8 @@ test('a planned lob starts at the hand, lands inside the circle, and knows how l
   assert.equal(lob.elapsed, 0);
   assert.ok(dist(lob.to, aim) <= scatterRadius(PASS_REACH_MAX) + 1e-9);
   assert.equal(lob.substeps, lobSubsteps(dist(lob.from, lob.to)));
+  assert.deepEqual(lob.aim, aim, 'the raw aim rides along too, not just where it landed');
+  assert.equal(lob.radius, scatterRadius(dist(from, aim)), 'and the guess it was thrown into');
   const same = planLob(from, aim, mulberry32(3));
   assert.deepEqual(same.to, lob.to, 'the same seed throws the same ball');
   const other = planLob(from, aim, mulberry32(4));

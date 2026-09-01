@@ -20,7 +20,7 @@
 import { writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { genomeModuleSource } from '../lib/game/learned/genome.js';
-import { trainVsGhost } from '../lib/game/train/vs-ghost.js';
+import { trainVsGhost, blendedDefenseFitness } from '../lib/game/train/vs-ghost.js';
 import { loadGhostLog } from './ghost.js';
 
 export * from '../lib/game/train/vs-ghost.js';
@@ -74,17 +74,36 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     plays: numArg('plays', 16),
     seed: numArg('seed', 1),
     sigma: numArg('sigma', 0.08),
+    ghostShare: numArg('ghost-share', 0.5),
   };
   console.log(
     `training ${side} against a ghost of ${usable.length} recorded ${ghostSide} snapshots:`,
     opts,
   );
+  // The champion's blend is the only score evolve.js hands onGeneration; its
+  // two components (what we actually need to see, to catch a search quietly
+  // buying a ghost edge by losing general competence) have to be recovered by
+  // re-running the same blended evaluation on the champion alone, at the same
+  // (seed, gen) the generation itself just used. That is one genome's worth of
+  // extra work per generation against popSize's worth already spent scoring
+  // the generation, so it is cheap, and it keeps evolve.js's contract — a bare
+  // score per candidate — exactly what every other trainer already relies on.
+  const logComponents = side === 'defense'
+    ? (gen, champion) => {
+      const { ghostScore, generalScore } = blendedDefenseFitness(champion.genome, {
+        log, plays: opts.plays, seed: opts.seed * 1000003 + gen, ghostShare: opts.ghostShare,
+      });
+      console.log(
+        `gen ${gen}: champion ${champion.score.toFixed(3)} `
+        + `(ghost ${ghostScore.toFixed(3)}, general ${generalScore.toFixed(3)})`,
+      );
+    }
+    : (gen, champion) => console.log(`gen ${gen}: champion ${champion.score.toFixed(3)}`);
   const { best, score } = trainVsGhost({
     log,
     side,
     ...opts,
-    onGeneration: (gen, scored) =>
-      console.log(`gen ${gen}: champion ${scored[0].score.toFixed(3)}`),
+    onGeneration: (gen, scored) => logComponents(gen, scored[0]),
   });
   const file = side === 'defense' ? 'defense-genome.js' : 'offense-genome.js';
   const exportName = side === 'defense' ? 'DEFENSE_GENOME' : 'OFFENSE_GENOME';

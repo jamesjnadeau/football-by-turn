@@ -370,7 +370,7 @@ git add lib/game/gesture.js test/game/gesture.test.js && git commit -m "feat: a 
   True when the point is within `passer.radius + PICK_SLOP_UNITS` of his
   centre. `app/main.js` (Task 3) is the only caller.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `test/game/pass.test.js`, add `backOnPasser` to the existing import from
 `../../lib/game/pass.js` (the list that already carries `receiverAt`,
@@ -400,13 +400,13 @@ test('a throw drag that ends on the passer himself is a cancel', () => {
 `PICK_SLOP_UNITS`, `createGame` and `getPlayer` are already imported by this
 file; no other import changes are needed.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `node --test test/game/pass.test.js`
 Expected: FAIL with `SyntaxError: The requested module
 '../../lib/game/pass.js' does not provide an export named 'backOnPasser'`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 In `lib/game/pass.js`, directly after the closing brace of `receiverAt`, add:
 
@@ -433,7 +433,7 @@ export function backOnPasser(passer, point) {
 `dist` and `PICK_SLOP_UNITS` are already imported at the top of `pass.js`; no
 import changes are needed.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `node --test test/game/pass.test.js`
 Expected: PASS.
@@ -441,7 +441,7 @@ Expected: PASS.
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/game/pass.js test/game/pass.test.js && git commit -m "feat: a throw drag dropped back on the passer is a cancel"

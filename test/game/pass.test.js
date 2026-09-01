@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import {
   isForward, passFoul, releasePass,
   passSpeed, passReach, passTravel, powerForTravel, passOrigin, passAim,
-  receiverAt, lockOnPass, passLanding,
+  receiverAt, lockOnPass, passLanding, backOnPasser,
 } from '../../lib/game/pass.js';
 import { createGame, getPlayer, setPass, setPlan } from '../../lib/game/state.js';
 import { fieldPos } from '../../lib/game/view.js';
 import { len } from '../../lib/game/vec.js';
 import {
   PASS_SPEED_MIN, PASS_SPEED_MAX, PASS_SPAWN_EPSILON, PASS_GRACE_SUBSTEPS,
-  PICKUP_RADIUS_BONUS, DT, BALL_FRICTION, SUBSTEPS_PER_TURN,
+  PICKUP_RADIUS_BONUS, DT, BALL_FRICTION, SUBSTEPS_PER_TURN, PICK_SLOP_UNITS,
 } from '../../lib/game/constants.js';
 import { PASS_REACH_MAX } from '../../lib/game/flight.js';
 import { mulberry32 } from '../../lib/game/rng.js';
@@ -382,4 +382,23 @@ test('the lock is re-aimed at the whistle, so the route can be drawn after the t
   assert.ok(Math.abs(flew.x - solved.dir.x) < 1e-9, 'thrown at the man, not along the drag');
   assert.ok(Math.abs(flew.y - solved.dir.y) < 1e-9);
   assert.ok(Math.abs(len(s.ball.vel) - passSpeed(solved.power)) < 1e-9, 'and at the solved pace');
+});
+
+test('a throw drag that ends on the passer himself is a cancel', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  const edge = qb.radius + PICK_SLOP_UNITS;
+  assert.equal(backOnPasser(qb, qb.pos), true, 'dead centre');
+  assert.equal(
+    backOnPasser(qb, { x: qb.pos.x + edge - 0.01, y: qb.pos.y }), true,
+    'inside the same fat-finger margin every other pick uses',
+  );
+  assert.equal(
+    backOnPasser(qb, { x: qb.pos.x + edge + 0.01, y: qb.pos.y }), false,
+    'past it: a real throw, however short',
+  );
+  assert.equal(
+    backOnPasser(qb, { x: qb.pos.x, y: qb.pos.y - edge + 0.01 }), true,
+    'it is a disc, not a forward-only test',
+  );
 });

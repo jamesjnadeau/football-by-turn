@@ -403,15 +403,26 @@ test('a genome that hates spread subs to nickel, then to dime', () => {
 });
 
 test('the empty backfield is a tell of its own, separate from width', () => {
+  // Width cannot see this: both looks below are the same number of yards
+  // across, and only the count of men off the ball changes.
   const s = createGame({ seed: 1 });
-  const g = { ...makeGenome(DEFENSE_SPEC), 'sub:backs': 4, 'sub:nickel:bias': -1 };
-  // Default seven-a-side: some men are off the line, but not enough to cross.
-  const before = learnedPersonnel(s, g);
-  // Put a back on the line and the fraction falls; pull one off and it rises.
-  placePlayer(s, 'o-rb', fieldPos(-20, s.losYard - 6));
-  placePlayer(s, 'o-wr1', fieldPos(-10, s.losYard - 5));
-  assert.ok(['stacked', 'nickel'].includes(before));
+  const backs = (st) => {
+    const them = st.players.filter((p) => p.team === 'offense');
+    return them.filter((p) => !onTheLine(st, p)).length / them.length;
+  };
+  const packed = backs(s);
+  // Pull a receiver off the line without moving him sideways: the fraction
+  // rises, the width does not budge.
+  const wr = getPlayer(s, 'o-wr1');
+  placePlayer(s, 'o-wr1', { x: wr.pos.x, y: fieldPos(0, s.losYard - 5).y });
+  const emptied = backs(s);
+  assert.ok(emptied > packed, 'the look did not actually empty out');
+  // A cut placed between the two fractions is crossed by one and not the other.
+  const cut = -4 * (packed + emptied) / 2;
+  const g = { ...makeGenome(DEFENSE_SPEC), 'sub:backs': 4, 'sub:nickel:bias': cut };
   assert.equal(learnedPersonnel(s, g), 'nickel');
+  const s2 = createGame({ seed: 1 });
+  assert.equal(learnedPersonnel(s2, g), 'stacked');
 });
 ```
 
@@ -422,7 +433,8 @@ import { makeGenome } from '../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 ```
 
-and add `learnedPersonnel` to the `formation.js` import block.
+and add `learnedPersonnel` to the `formation.js` import block. `onTheLine`,
+`getPlayer`, `placePlayer` and `fieldPos` are already imported in that file.
 
 - [ ] **Step 2: Run them and watch them fail**
 
@@ -1043,28 +1055,41 @@ git commit -m "feat: the computer answers the formation it is shown"
 
 Append to `test/game/rules.test.js`:
 
+`nextDown` takes the state and nothing else — it derives the new spot from
+where the ball died — so the down has to be killed first, the way every other
+`nextDown` test in this file does it.
+
 ```js
-test('a learned defense comes to the new down already answering the formation', () => {
-  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
-  const saved = { ...DEFENSE_GENOME.values };
-  // Borrow the shipped genome for one down: a corner who walks all the way to
-  // the answer, so the effect is visible rather than a fraction of a yard.
-  DEFENSE_GENOME.values['adapt:back:width'] = 1;
+/** Where d-cb1 comes to the line on the NEXT down, for a defense whose genome
+ *  answers the formation by `width` of the way. */
+function cornerAfterNextDown(width) {
+  const saved = DEFENSE_GENOME.values;
+  DEFENSE_GENOME.values = { ...saved, 'adapt:back:width': width };
   try {
-    s.losYard = 40;
-    nextDown(s, 45);
-    const cb = getPlayer(s, 'd-cb1');
-    const wr = s.players.filter((p) => p.team === 'offense')
-      .reduce((a, b) => (Math.abs(b.pos.x - cb.pos.x) < Math.abs(a.pos.x - cb.pos.x) ? b : a));
-    assert.ok(Math.abs(cb.pos.x - wr.pos.x) < 6,
-      'the corner did not come to the line over anybody');
+    const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+    s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+    getPlayer(s, 'o-qb').pos = fieldPos(0, 25);
+    s.deadReason = 'tackled';
+    nextDown(s);
+    assert.equal(s.phase, 'planning');
+    return { ...getPlayer(s, 'd-cb1').pos };
   } finally {
     DEFENSE_GENOME.values = saved;
   }
+}
+
+test('a learned defense comes to the new down already answering the formation', () => {
+  // Not "is he near a receiver" — his genome spot may be near one anyway.
+  // The question is whether nextDown consulted the adapt weight at all.
+  const held = cornerAfterNextDown(0);
+  const answered = cornerAfterNextDown(1);
+  assert.ok(Math.abs(held.x - answered.x) > 1,
+    'the corner stood in the same place whether he answers the formation or not');
 });
 ```
 
-Add to that file's imports whichever of `createGame`, `getPlayer`, `nextDown` are missing, plus:
+`createGame`, `getPlayer`, `nextDown` and `fieldPos` are already imported in
+that file. Add:
 
 ```js
 import { DEFENSE_GENOME } from '../../lib/game/learned/defense-genome.js';
@@ -1259,3 +1284,186 @@ git commit -m "feat: retrain both genomes against a defense that can answer"
 **Placeholders.** None: every code step carries the actual code, every test step the actual assertions, every command the actual flags.
 
 **Type consistency.** `defenseKeys` returns `{ keys, ball, middle }` in Task 2 and is destructured as exactly that in Tasks 2 and 4. `key.group` takes the five values `'line' | 'back' | 'deep' | 'backer' | 'other'` in Task 2 and Task 4's `answerYards` handles all five, mapping `'other'` onto the backer knobs. `learnedLook(state, values, team)` and `learnedPersonnel(state, values)` are called with those signatures in Task 6. `applyLearnedLook(state, values)` and `answerOffense(state, values)` are called with those signatures in Task 7. `MAX_YARD` is exported in Task 4 Step 3 before Task 4 Step 4 imports it.
+
+---
+
+## Task 9: A training offense that does not stand still
+
+**Files:**
+- Modify: `tools/harness.js` (`scenario`)
+- Test: `test/tools/harness.test.js` (create if absent; check `test/tools/` first)
+
+**Interfaces:**
+- Produces: `scenario(rand, variant)` returns a state whose offense is dealt a *varied* legal look rather than the roster default every time.
+
+**Why this task exists, discovered during Task 8:** `scenario` rebuilt the offense with `formationPlayers(losYard, variant)` on every play, `lib/game/offense.js` never moves an offensive player pre-snap, and the learned offense applies a fixed genome formation. So every training play showed the defense the *same* formation. The `adapt:*` weights therefore had no fitness signal at all — the answer was always the same answer, and the genome's absolute spots already encoded it — and the small non-zero values a run produced were drift, not learning. Without this task the feature is correct, wired, and untrainable.
+
+**What can and cannot vary, and why.** The seven-a-side offense fields five of seven on the line and `minOnLine` is 5, so *every* on-line man is required and none may come off. Two consequences, both load-bearing:
+- The off-the-line fraction is pinned at 2/7, so `sub:backs` cannot vary in this variant no matter what this task does. Substitution can only ever learn from `spread` and `toGo` here. Do not try to fix that by fielding an illegal formation.
+- Depth variation for the on-line receivers is limited to the band that keeps them on the line: `down` in `[-2, -1]`, since `ON_LINE_YARDS` is 2 and the offense may not cross the line at all.
+
+**What to vary:**
+- `o-wr1` and `o-wr2` across, over the full legal width — including looks where **both** are on the same side, which is what gives a strength-shaded answer (`middle`) something to learn from.
+- Those same two receivers' `down` within `[-2, -1]`.
+- `o-qb` and `o-rb` across within `[-8, 8]`, keeping their depths.
+
+Leave `o-c`, `o-lg`, `o-rg` where they are: the snapper must stay between the hashes (`spotFault` refuses him elsewhere) and a varying interior buys nothing the receivers do not already buy.
+
+**Determinism is not optional.** Every value comes from the passed-in `rand`, never `Math.random`. Two candidate genomes evaluated with the same seed must see the same downs *and the same offensive looks*, or their fitnesses stop being comparable and the whole common-random-numbers premise of `evaluateDefense` breaks.
+
+- [ ] **Step 1: Write the failing tests**
+
+Check whether `test/tools/` exists (`ls test/tools`). Tests under `test/` are run by `npm test` (`node --test`). Create `test/tools/harness.test.js` with:
+
+```js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { scenario } from '../../tools/harness.js';
+import { mulberry32 } from '../../lib/game/rng.js';
+import { spotFault, formationFoul } from '../../lib/game/formation.js';
+
+test('every look scenario deals is one the rulebook would allow', () => {
+  // The formations training sees have to be formations the game would let a
+  // coach line up in — otherwise the defense is evolving against downs that
+  // could never be played.
+  const rand = mulberry32(3);
+  for (let i = 0; i < 200; i++) {
+    const s = scenario(rand);
+    assert.equal(formationFoul(s), null, `foul on look ${i}`);
+    for (const p of s.players) {
+      assert.equal(spotFault(s, p.id, p.pos), null, `${p.id} on look ${i}`);
+    }
+  }
+});
+
+test('the offense does not stand in the same place every play', () => {
+  // The whole reason this exists: a defense cannot learn to answer a look
+  // that never changes.
+  const rand = mulberry32(5);
+  const looks = new Set();
+  const spreads = [];
+  for (let i = 0; i < 50; i++) {
+    const s = scenario(rand);
+    const wr = s.players.filter((p) => p.id === 'o-wr1' || p.id === 'o-wr2');
+    looks.add(wr.map((p) => `${p.pos.x.toFixed(1)},${p.pos.y.toFixed(1)}`).join('|'));
+    const xs = s.players.filter((p) => p.team === 'offense').map((p) => p.pos.x);
+    spreads.push(Math.max(...xs) - Math.min(...xs));
+  }
+  assert.ok(looks.size > 40, `only ${looks.size} distinct looks in 50 plays`);
+  // And the spread genuinely varies, since that is the feature the scheme gate
+  // and the substitution both read.
+  assert.ok(Math.max(...spreads) - Math.min(...spreads) > 20, 'spread barely moved');
+});
+
+test('both receivers land on one side often enough to teach a strength read', () => {
+  const rand = mulberry32(7);
+  let strong = 0;
+  for (let i = 0; i < 200; i++) {
+    const s = scenario(rand);
+    const [a, b] = ['o-wr1', 'o-wr2'].map((id) => s.players.find((p) => p.id === id));
+    const mid = s.players.filter((p) => p.team === 'offense')
+      .reduce((sum, p) => sum + p.pos.x, 0) / 7;
+    if ((a.pos.x - mid) * (b.pos.x - mid) > 0) strong++;
+  }
+  assert.ok(strong > 20, `only ${strong} of 200 looks put both receivers one side`);
+});
+
+test('the same seed deals the same looks', () => {
+  // Common random numbers: two genomes scored at one seed must face identical
+  // downs AND identical formations, or their fitnesses are not comparable.
+  const one = [];
+  const two = [];
+  for (const sink of [one, two]) {
+    const rand = mulberry32(11);
+    for (let i = 0; i < 20; i++) {
+      sink.push(scenario(rand).players.map((p) => `${p.id}:${p.pos.x},${p.pos.y}`).join());
+    }
+  }
+  assert.deepEqual(one, two);
+});
+```
+
+- [ ] **Step 2: Run them and watch them fail**
+
+```bash
+node --test test/tools/harness.test.js
+```
+
+Expected: the legality and determinism tests pass (the default formation is legal and deterministic); `the offense does not stand in the same place every play` and the strength test fail, because today every look is identical.
+
+- [ ] **Step 3: Deal a varied look in `scenario`**
+
+In `tools/harness.js`, after `state.players = formationPlayers(state.losYard, variant);` and **before** `aimSnap(state);`, deal the offense a look. Write a helper above `scenario`:
+
+```js
+/**
+ * Move the offense's skill players somewhere legal and different every play.
+ *
+ * Training used to show the defense one formation forever — scenario dealt the
+ * roster default, the scripted offense never moves anybody pre-snap, and the
+ * learned offense stands a fixed genome formation. A defense cannot learn to
+ * answer a look that never changes, so every adapt weight was scored as noise.
+ *
+ * Only the skill players move, and only inside the band that keeps the
+ * formation legal: the seven-a-side offense fields exactly minOnLine men on
+ * the line, so both receivers must STAY on it (down within ON_LINE_YARDS of
+ * the ball, and never across it), and the interior three are left alone
+ * because the snapper has to stand where the ball is spotted.
+ *
+ * Every draw comes from the passed rand: two genomes at one seed must face the
+ * same downs and the same looks, or common random numbers stops holding and
+ * their fitnesses stop being comparable.
+ */
+function dealOffensiveLook(state, rand) {
+  const at = (id) => state.players.find((p) => p.id === id);
+  const span = (lo, hi) => lo + rand() * (hi - lo);
+  // Both receivers on one side a fair share of the time: a formation with a
+  // strong side is the only thing that teaches a strength-shaded answer.
+  const strongSide = rand() < 0.35 ? (rand() < 0.5 ? -1 : 1) : 0;
+  const wr = strongSide === 0
+    ? [span(-24, -4), span(4, 24)]
+    : [strongSide * span(4, 24), strongSide * span(4, 24)];
+  ['o-wr1', 'o-wr2'].forEach((id, i) => {
+    const p = at(id);
+    if (!p) return;
+    p.pos = fieldPos(wr[i], state.losYard + span(-2, -1));
+  });
+  for (const id of ['o-qb', 'o-rb']) {
+    const p = at(id);
+    if (!p) continue;
+    p.pos = fieldPos(span(-8, 8), yardsOfY(p.pos.y));
+  }
+  // Two men dealt onto the same spot is a look the rulebook would refuse, and
+  // a refused look is not a down anybody can learn from. Nudge rather than
+  // redraw, so the draw stays one rand call per player.
+  for (const p of state.players) {
+    for (const q of state.players) {
+      if (q === p) continue;
+      const gap = Math.hypot(p.pos.x - q.pos.x, p.pos.y - q.pos.y);
+      const need = p.radius + q.radius;
+      if (gap >= need || gap === 0) continue;
+      const push = (need - gap) / gap;
+      p.pos = { x: p.pos.x + (p.pos.x - q.pos.x) * push, y: p.pos.y };
+    }
+  }
+}
+```
+
+Call it: `dealOffensiveLook(state, rand);`
+
+You will need `fieldPos` and `yardsOfY` in `harness.js`'s imports from `../lib/game/view.js` (`yardsOfY` is already imported; check `fieldPos`).
+
+**If the legality sweep fails**, the separation nudge or the across bands are wrong — tighten the bands or clamp inside the sidelines using `SIDELINE_LEFT`/`SIDELINE_RIGHT` from `../lib/field/geometry.js`. Do not loosen the legality assertion; a training look that `spotFault` would refuse is a down nobody can play.
+
+- [ ] **Step 4: Run the full suite**
+
+```bash
+npm test
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tools/harness.js test/tools/harness.test.js
+git commit -m "feat: training deals the defense a different look every play"
+```

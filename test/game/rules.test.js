@@ -6,6 +6,7 @@ import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
 import { SIDELINE_LEFT, SIDELINE_RIGHT } from '../../lib/field/geometry.js';
 import { NEARBY_RADIUS, PENALTY_YARDS } from '../../lib/game/constants.js';
 import { lobPoint } from '../../lib/game/lob.js';
+import { DEFENSE_GENOME } from '../../lib/game/learned/defense-genome.js';
 
 /**
  * The snap taken: the ball in the quarterback's hands and nothing pending.
@@ -477,4 +478,31 @@ test('the air over the sideline is not out of bounds', () => {
   const bl = deepLob(b, 30, { forward: false });
   b.ball.pos = { x: SIDELINE_RIGHT + 20, y: lobPoint(bl).y };
   assert.deepEqual(checkDeadBall(b), [{ type: 'out-of-bounds' }]);
+});
+
+/** Where d-cb1 comes to the line on the NEXT down, for a defense whose genome
+ *  answers the formation by `width` of the way. */
+function cornerAfterNextDown(width) {
+  const saved = DEFENSE_GENOME.values;
+  DEFENSE_GENOME.values = { ...saved, 'adapt:back:width': width };
+  try {
+    const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+    s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+    getPlayer(s, 'o-qb').pos = fieldPos(0, 25);
+    s.deadReason = 'tackled';
+    nextDown(s);
+    assert.equal(s.phase, 'planning');
+    return { ...getPlayer(s, 'd-cb1').pos };
+  } finally {
+    DEFENSE_GENOME.values = saved;
+  }
+}
+
+test('a learned defense comes to the new down already answering the formation', () => {
+  // Not "is he near a receiver" — his genome spot may be near one anyway.
+  // The question is whether nextDown consulted the adapt weight at all.
+  const held = cornerAfterNextDown(0);
+  const answered = cornerAfterNextDown(1);
+  assert.ok(Math.abs(held.x - answered.x) > 1,
+    'the corner stood in the same place whether he answers the formation or not');
 });

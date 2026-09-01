@@ -1,6 +1,6 @@
 # The coaches menu, out on the board — implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Put nine more of the Coaches Menu's controls on the board as
 quick-press plates — 🧹 🤖 👥 joining the existing column, and 💾 1️⃣–5️⃣ in a
@@ -33,8 +33,11 @@ and its menu line cannot wear different marks.
   `fielded(name)`, so no lesson fields it and the tutorial needs no change.
 - **The board's press functions are the menu's press functions.** Never write a
   second copy of a rule; extract and share.
-- Icons, as codepoints: 🧹 `\u{1F9F9}`, 🤖 `\u{1F916}`, 👥 `\u{1F465}`,
-  💾 `\u{1F4BE}`, keycaps `1️⃣` … `5️⃣`.
+- Icons, as codepoints, and written into the table in that form: 🧹
+  `\u{1F9F9}`, 🤖 `\u{1F916}`, 👥 `\u{1F465}`, 💾 `\u{1F4BE}`, and the keycaps
+  `1\u{FE0F}\u{20E3}` … `5\u{FE0F}\u{20E3}` — a keycap is a digit plus a
+  variation selector plus U+20E3, and a paste that loses the selector leaves a
+  bare digit that still looks nearly right.
 - Commit after every task. Do not run `git push`.
 
 ---
@@ -54,7 +57,7 @@ have. The field is unchanged — it simply sits in a wider frame.
 - Produces: `GAME_VIEWBOX_WIDTH` — a module-private constant, value `280`. Later
   tasks assume the crop is this wide.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `test/game/render.test.js`:
 
@@ -74,7 +77,7 @@ test('the game crops wider than the field, to make room for the button columns',
 `cameraViewBox` is already exported; add it to the import list at the top of
 the file if it is not already there.
 
-- [ ] **Step 2: Run the test and watch it fail**
+- [x] **Step 2: Run the test and watch it fail**
 
 ```bash
 npm test 2>&1 | grep -A 5 "crops wider"
@@ -82,7 +85,7 @@ npm test 2>&1 | grep -A 5 "crops wider"
 
 Expected: FAIL — `Expected values to be strictly equal: 270 !== 280`.
 
-- [ ] **Step 3: Widen the crop**
+- [x] **Step 3: Widen the crop**
 
 In `lib/game/render.js`, just below the `FIELD_BTN_*` constants, add:
 
@@ -120,7 +123,7 @@ sentence "so the free strip runs from about x 251 to the viewBox's 270" with:
  * has learned the position of.
 ```
 
-- [ ] **Step 4: Run the full suite and find the two stale assertions**
+- [x] **Step 4: Run the full suite and find the two stale assertions**
 
 ```bash
 npm test 2>&1 | tail -20
@@ -129,7 +132,7 @@ npm test 2>&1 | tail -20
 Expected: the new test PASSES, and exactly two older tests now fail because
 they hardcode the old width.
 
-- [ ] **Step 5: Update the two stale assertions**
+- [x] **Step 5: Update the two stale assertions**
 
 `test/game/render.test.js:25` — the shell's whole viewBox string:
 
@@ -146,7 +149,7 @@ second time:
   assert.ok(shuffle.x + shuffle.w <= frameWidth, 'and stay inside the viewBox');
 ```
 
-- [ ] **Step 6: Run the full suite**
+- [x] **Step 6: Run the full suite**
 
 ```bash
 npm test 2>&1 | tail -8
@@ -154,7 +157,7 @@ npm test 2>&1 | tail -8
 
 Expected: `pass 838`, `fail 0`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add lib/game/render.js test/game/render.test.js
@@ -185,7 +188,7 @@ tutorial's ring.
   - `fieldButtonMark({ attr, attrValue, icon, label, cx, cy, on, off, pressed })`
     — `cx` is now required; `attrValue` defaults to `'1'`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```js
 test('plates in one column share an x and are told apart by their row', () => {
@@ -203,7 +206,7 @@ test('the anchor still refuses a name there is no button for', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests and watch them pass**
+- [x] **Step 2: Run the tests and watch them pass**
 
 ```bash
 npm test 2>&1 | grep -A 3 "share an x"
@@ -212,7 +215,7 @@ npm test 2>&1 | grep -A 3 "share an x"
 Expected: PASS. These two pin the behaviour that must survive the edit —
 write them first, watch them pass, and they become the net for Step 3.
 
-- [ ] **Step 3: Add `col` and thread `cx` through**
+- [x] **Step 3: Add `col` and thread `cx` through**
 
 In `FIELD_BUTTONS`, give every entry `col: 0`, and note why in the table's
 comment:
@@ -315,7 +318,7 @@ And in `renderFieldButtons`, each of the three existing blocks changes from
 Do the same for the `autoplan` and `run` blocks, keeping their existing
 `label` and `off` expressions exactly as they are.
 
-- [ ] **Step 4: Run the full suite**
+- [x] **Step 4: Run the full suite**
 
 ```bash
 npm test 2>&1 | tail -8
@@ -324,7 +327,7 @@ npm test 2>&1 | tail -8
 Expected: `pass 840`, `fail 0`. Nothing has moved — every existing plate is
 `col: 0`, so every existing geometry assertion still holds.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/game/render.js test/game/render.test.js
@@ -346,7 +349,7 @@ git commit -m "refactor: the button table places a plate by column as well as ro
   `clear` (slot 3), all `col: 0` — drawn by `renderFieldButtons`, each behind
   `fielded(name)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `FIELD_BUTTONS` is module-private, so assert against the markup and against
 `fieldButtonAnchor`, which is the table's public face.
@@ -397,9 +400,34 @@ test('the new controls grey on the same conditions their menu buttons do', () =>
   assert.ok(buttonGroup(renderFieldButtons(aiDef), 'data-personnel-button').includes('fbtn-off'),
     'personnel is dead when the computer coaches the defense');
 });
+
+// Each of these rules has TWO legs, and `animating` is only one of them. A
+// test that greys a plate by animating alone passes just as happily against
+// `off: animating` with the real condition deleted — so the other leg gets a
+// case of its own, with nothing being drawn.
+test('clear and defense grey once the down is over, with nothing being drawn', () => {
+  const s = createGame({ seed: 1 });
+  s.phase = 'playOver';
+  const still = renderFieldButtons(s, { animating: false });
+  for (const attr of ['data-clear-button', 'data-ai-button']) {
+    const dead = buttonGroup(still, attr);
+    assert.ok(dead.includes('fbtn-off'), `${attr} is greyed off the planning phase`);
+    assert.ok(dead.includes('aria-disabled="true"'), `${attr} says so to a screen reader`);
+  }
+});
+
+test('personnel greys once the play is under way, with nothing being drawn', () => {
+  // canReposition() is personnel's other leg: a package cannot be changed
+  // mid-down, animation or no.
+  const s = createGame({ seed: 1 });
+  s.turnIndex = 1;
+  const dead = buttonGroup(renderFieldButtons(s, { animating: false }), 'data-personnel-button');
+  assert.ok(dead.includes('fbtn-off'), 'no new package once the first turn has run');
+  assert.ok(dead.includes('aria-disabled="true"'), 'and it says so to a screen reader');
+});
 ```
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 ```bash
 npm test 2>&1 | grep -E "used to be menu-only|stack in the column|fields none|grey on the same" -A 4
@@ -409,7 +437,7 @@ Expected: FAIL — the attributes are absent and `fieldButtonAnchor` returns
 `null` for the new names, so `buttonGroup(...)` returns `null` and the
 `.includes` calls throw.
 
-- [ ] **Step 3: Add the three entries**
+- [x] **Step 3: Add the three entries**
 
 In `FIELD_BUTTONS`, after `run`:
 
@@ -424,7 +452,7 @@ In `FIELD_BUTTONS`, after `run`:
   clear: { attr: 'data-clear-button', icon: '\u{1F9F9}', col: 0, slot: 3 },
 ```
 
-- [ ] **Step 4: Draw them**
+- [x] **Step 4: Draw them**
 
 In `renderFieldButtons`, after the `run` block and before `return`:
 
@@ -481,7 +509,7 @@ verified with
 `grep -n "^import" lib/game/ai.js lib/game/rosters.js | grep render`, which
 matches nothing.
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 ```bash
 npm test 2>&1 | tail -8
@@ -489,7 +517,7 @@ npm test 2>&1 | tail -8
 
 Expected: `pass 844`, `fail 0`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/game/render.js test/game/render.test.js
@@ -511,7 +539,7 @@ git commit -m "feat: clear, defense and personnel come out onto the board"
   `book` (array of `PLAY_SLOTS` entries, each a play object or `undefined`;
   defaults to `[]`). The five slots render `data-play-button="0"` … `="4"`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```js
 test('the playbook is a second column, one pitch right and row-aligned', () => {
@@ -542,11 +570,26 @@ test('an empty slot is greyed and a filled one is live', () => {
     'and the label names the play, since the plate cannot');
 });
 
-test('the whole playbook is dead once the down is under way', () => {
+test('the whole playbook is dead while the turn is being drawn', () => {
   const s = createGame({ seed: 1 });
   const drawing = renderFieldButtons(s, { book: [{ name: 'Fly sweep' }], animating: true });
   assert.ok(buttonGroup(drawing, 'data-save-button').includes('fbtn-off'));
   assert.ok(buttonGroup(drawing, 'data-play-button="0"').includes('fbtn-off'));
+});
+
+// "Under way" is turnIndex, not the animation flag — the canUsePlays leg of
+// the rule, and the one a test that only ever sets `animating: true` leaves
+// completely unpinned.
+test('the whole playbook is dead once the down is under way', () => {
+  const s = createGame({ seed: 1 });
+  s.turnIndex = 1;
+  const under = renderFieldButtons(s, { book: [{ name: 'Fly sweep' }], animating: false });
+  assert.ok(buttonGroup(under, 'data-save-button').includes('fbtn-off'),
+    'there is no coming-to-the-line play left to save');
+  for (let i = 0; i < PLAY_SLOTS; i++) {
+    assert.ok(buttonGroup(under, `data-play-button="${i}"`).includes('fbtn-off'),
+      `slot ${i} cannot be called mid-down, saved play or not`);
+  }
 });
 
 test('a lesson fields no playbook plates unless it names them', () => {
@@ -599,7 +642,7 @@ import { PLAY_SLOTS } from '../../lib/game/playbook.js';
 and `FIELD_BUTTON_ICONS`, `fieldButtonNames` to the `render.js` import list —
 both are added in Step 3.
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 ```bash
 npm test 2>&1 | grep -E "second column|plate per playbook|empty slot is greyed|whole playbook is dead|no playbook plates|off-table icon" -A 4
@@ -607,7 +650,7 @@ npm test 2>&1 | grep -E "second column|plate per playbook|empty slot is greyed|w
 
 Expected: FAIL — the exports do not exist and no playbook plate is drawn.
 
-- [ ] **Step 3: Add the six entries and the table's public face**
+- [x] **Step 3: Add the six entries and the table's public face**
 
 In `FIELD_BUTTONS`, after `clear`:
 
@@ -641,7 +684,7 @@ export function fieldButtonNames() {
 }
 ```
 
-- [ ] **Step 4: Draw the playbook column**
+- [x] **Step 4: Draw the playbook column**
 
 Import what the greying needs, at the top of `lib/game/render.js`:
 
@@ -698,7 +741,7 @@ export function renderFieldButtons(
   }
 ```
 
-- [ ] **Step 5: Run the full suite**
+- [x] **Step 5: Run the full suite**
 
 ```bash
 npm test 2>&1 | tail -8
@@ -706,7 +749,7 @@ npm test 2>&1 | tail -8
 
 Expected: `pass 851`, `fail 0`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/game/render.js test/game/render.test.js
@@ -730,7 +773,7 @@ There is no `node --test` coverage here: this file needs a DOM. The gate is the
 browser check in Task 7, and the discipline is that no rule may be written
 twice.
 
-- [ ] **Step 1: Extract the three handlers**
+- [x] **Step 1: Extract the three handlers**
 
 Replace the `clearBtn`, `aiBtn` and `personnelBtn` listeners with named
 functions plus thin listeners. The bodies are moved verbatim except for the
@@ -787,7 +830,7 @@ aiBtn.addEventListener('click', () => { closeMenu(); pressAi(); });
 personnelBtn.addEventListener('click', () => { closeMenu(); pressPersonnel(); });
 ```
 
-- [ ] **Step 2: Close the Clear button's greying gap**
+- [x] **Step 2: Close the Clear button's greying gap**
 
 In `paint()`, `clearBtn.disabled = animating;` has always disagreed with its
 own handler, which returns early off the planning phase — so the button looked
@@ -797,7 +840,7 @@ pressable and did nothing. Bring it in line with the plate:
   clearBtn.disabled = animating || state.phase !== 'planning';
 ```
 
-- [ ] **Step 3: Dispatch the new plates**
+- [x] **Step 3: Dispatch the new plates**
 
 In `pressBoardButton`, after the `data-autoplan-button` line and before
 `else return false;`:
@@ -829,7 +872,7 @@ falling through to `return true`, because a press that hit no plate at all must
 still report `false` — that is what lets a keyboard press fall through to the
 browser.
 
-- [ ] **Step 4: Hand the renderer the coached side's book**
+- [x] **Step 4: Hand the renderer the coached side's book**
 
 In `aimCamera`, add `book` to the options `renderFieldButtons` is called with:
 
@@ -840,7 +883,7 @@ In `aimCamera`, add `book` to the options `renderFieldButtons` is called with:
     }),
 ```
 
-- [ ] **Step 5: Run the suite, then load the game**
+- [x] **Step 5: Run the suite, then load the game**
 
 ```bash
 npm test 2>&1 | tail -8
@@ -854,7 +897,7 @@ thirteen plates on the board. Do not use `Bash` to run the server — use the
 Browser pane's `preview_start`, with a `.claude/launch.json` entry running
 `npm run serve` on the port `serve.py` uses.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/main.js
@@ -873,12 +916,12 @@ git commit -m "feat: the new plates press the same functions the menu does"
 - Consumes: `FIELD_BUTTON_ICONS` from Task 4.
 - Produces: nothing later tasks depend on.
 
-- [ ] **Step 1: Import the icons**
+- [x] **Step 1: Import the icons**
 
 Add `FIELD_BUTTON_ICONS` to the existing `lib/game/render.js` import block in
 `app/main.js`.
 
-- [ ] **Step 2: Prefix the labels that are rewritten every paint**
+- [x] **Step 2: Prefix the labels that are rewritten every paint**
 
 In `paint()`, four labels gain their icon:
 
@@ -895,7 +938,7 @@ In `paint()`, four labels gain their icon:
   autoplanBtn.textContent = `${FIELD_BUTTON_ICONS.autoplan} Autoplan ${coachedSide(state)}`;
 ```
 
-- [ ] **Step 3: Prefix the three static labels, once**
+- [x] **Step 3: Prefix the three static labels, once**
 
 `run`, `clear` and `save-play` never have their text rewritten, so they are
 labelled at startup. Put this next to the other one-time menu wiring, just
@@ -915,7 +958,7 @@ for (const [btn, name] of [[runBtn, 'run'], [clearBtn, 'clear'], [savePlayBtn, '
 }
 ```
 
-- [ ] **Step 4: Label the slots with their keycaps**
+- [x] **Step 4: Label the slots with their keycaps**
 
 In `paintPlays()`, the slot's own number is now carried by the keycap:
 
@@ -923,7 +966,7 @@ In `paintPlays()`, the slot's own number is now carried by the keycap:
     slotBtns[i].textContent = `${FIELD_BUTTON_ICONS[`play${i + 1}`]} ${play ? play.name : '(empty)'}`;
 ```
 
-- [ ] **Step 5: Put the clipboard on the menu's heading**
+- [x] **Step 5: Put the clipboard on the menu's heading**
 
 In `index.html`, so the plate that opens the menu and the menu it opens wear
 the same mark:
@@ -932,7 +975,7 @@ the same mark:
       <h1>📋 Coaches Menu</h1>
 ```
 
-- [ ] **Step 6: Run the suite and reload the preview**
+- [x] **Step 6: Run the suite and reload the preview**
 
 ```bash
 npm test 2>&1 | tail -8
@@ -944,7 +987,7 @@ Reload the browser preview, open the Coaches Menu, and confirm every button
 that has a plate shows that plate's icon, and that Velocity, Next Down, New
 Game, Back to Home, the log section and the training section show none.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add app/main.js index.html
@@ -960,21 +1003,21 @@ gate on everything `app/main.js` does.
 
 **Files:** none changed unless a defect is found.
 
-- [ ] **Step 1: Open the game**
+- [x] **Step 1: Open the game**
 
 Start the preview via the Browser pane (`preview_start`), pick a game off the
 home screen, and take a screenshot. Confirm: two columns of plates, thirteen
 in total, the field not clipped at either sideline, and nothing overlapping the
 yard numbers.
 
-- [ ] **Step 2: Press all nine, and check each against its menu twin**
+- [x] **Step 2: Press all nine, and check each against its menu twin**
 
 For each of 🧹 🤖 👥 💾 1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣: press the plate, note what the
 message plate says and what changed on the field; then do the same from the
 menu button and confirm the two are identical. 💾 and the digits need a play
 saved first — save one from the board, then call it back.
 
-- [ ] **Step 3: Check the greying**
+- [x] **Step 3: Check the greying**
 
 - Run a turn: while it animates, every plate should be greyed.
 - After the whistle (`phase` is no longer `planning`): 🧹 🤖 ⏩ 🎁 greyed,
@@ -986,24 +1029,24 @@ saved first — save one from the board, then call it back.
   live, since the computer is not on the defense in that mode either.
 - An empty playbook: 1️⃣–5️⃣ all greyed, 💾 live.
 
-- [ ] **Step 4: Check the keyboard**
+- [x] **Step 4: Check the keyboard**
 
 Tab through the board. Every one of the thirteen plates should take focus, and
 Enter and Space should work it without scrolling the page.
 
-- [ ] **Step 5: Run a tutorial lesson**
+- [x] **Step 5: Run a tutorial lesson**
 
 From the home screen, start "How to play". Confirm the lesson's board shows
 **only** the plates that lesson fields — no 🧹, no 🤖, no 👥, no playbook
 column — and that the coach card is still centred over the field. Play the
 first lesson to its whistle.
 
-- [ ] **Step 6: Read the console**
+- [x] **Step 6: Read the console**
 
 Check the browser console for errors and warnings across everything above.
 Expected: none.
 
-- [ ] **Step 7: Final check and commit**
+- [x] **Step 7: Final check and commit**
 
 ```bash
 npm test 2>&1 | tail -8

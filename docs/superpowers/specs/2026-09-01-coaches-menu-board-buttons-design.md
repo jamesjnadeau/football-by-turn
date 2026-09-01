@@ -108,6 +108,28 @@ plate and the menu line cannot wear different marks — that is the whole of
 "users can relate the two", enforced by there being one place to write an emoji
 down.
 
+What that constraint governs, exactly: the icons the code **renders**. A menu
+label, a plate, a test's expected markup — anything that puts an emoji in front
+of a user, or asserts on one, reads it from `FIELD_BUTTONS`. It is not a ban on
+the character appearing anywhere in the repository. Emoji in prose are fine and
+stay: this document's own tables, the section headings and messages in
+`lib/game/autoplan.js` and `lib/game/hud.js`, and a handful of test names all
+keep theirs, and none of them is to be swept.
+
+The narrower case that does still deserve fixing is a **comment that spells out
+a table value next to code that reads that same value** — it is a second copy
+of the icon, sitting where it will not be updated when the table is, and where
+a reader has no way to tell which of the two is current. `index.html`'s dialog
+heading is the one deliberate exception in the other direction: static markup
+with no script to compose it from the table, so a test asserts the heading
+carries `FIELD_BUTTON_ICONS.menu` rather than the table writing it.
+
+Where an icon must be written down in source — the table itself — it is written
+as `\u{…}` escapes rather than as literal characters, keycaps included. A
+keycap is three codepoints (`1`, U+FE0F, U+20E3), and a careless paste or a
+diff tool that drops the variation selector leaves a bare digit that still
+looks very nearly right.
+
 The five playbook slots share one attribute, `data-play-button`, whose *value*
 is the slot index. `fieldButtonMark` gains an optional `attrValue` (default
 `'1'`, which is what every existing plate renders) so the five can be told

@@ -676,11 +676,57 @@ test('the shuffle button shows which way it is set', () => {
   assert.ok(on.includes('fbtn-on'), 'the plate fills in');
 });
 
-test('all three quick-press buttons are reachable by keyboard, like the menu rect', () => {
+test('all six quick-press buttons are reachable by keyboard, like the menu rect', () => {
   const markup = renderFieldButtons(createGame({ seed: 1 }));
-  assert.equal(markup.match(/tabindex="0"/g).length, 3);
-  assert.equal(markup.match(/role="button"/g).length, 3);
-  assert.equal(markup.match(/aria-label="/g).length, 3);
+  assert.equal(markup.match(/tabindex="0"/g).length, 6);
+  assert.equal(markup.match(/role="button"/g).length, 6);
+  assert.equal(markup.match(/aria-label="/g).length, 6);
+});
+
+test('the first column carries the three controls that used to be menu-only', () => {
+  const markup = renderFieldButtons(createGame({ seed: 1 }));
+  for (const attr of ['data-clear-button', 'data-ai-button', 'data-personnel-button']) {
+    assert.ok(markup.includes(attr), `${attr} is on the board`);
+  }
+});
+
+test('the new controls stack in the column the four old ones are in', () => {
+  const pitch = fieldButtonAnchor('run', 20).y - fieldButtonAnchor('autoplan', 20).y;
+  for (const name of ['ai', 'personnel', 'clear']) {
+    assert.equal(fieldButtonAnchor(name, 20).x, fieldButtonAnchor('menu', 20).x,
+      `${name} is in the first column`);
+  }
+  // Slots -3, -2, 3 against the menu's 0.
+  assert.equal(fieldButtonAnchor('ai', 20).y, fieldButtonAnchor('menu', 20).y - 3 * pitch);
+  assert.equal(fieldButtonAnchor('personnel', 20).y, fieldButtonAnchor('menu', 20).y - 2 * pitch);
+  assert.equal(fieldButtonAnchor('clear', 20).y, fieldButtonAnchor('menu', 20).y + 3 * pitch);
+});
+
+test('a lesson fields none of the new controls unless it names them', () => {
+  const markup = renderFieldButtons(createGame({ seed: 1 }), { allow: ['run', 'menu'] });
+  for (const attr of ['data-clear-button', 'data-ai-button', 'data-personnel-button']) {
+    assert.ok(!markup.includes(attr), `${attr} stays off a lesson's board`);
+  }
+});
+
+test('the new controls grey on the same conditions their menu buttons do', () => {
+  const s = createGame({ seed: 1 });
+  const live = renderFieldButtons(s);
+  assert.ok(!buttonGroup(live, 'data-clear-button').includes('fbtn-off'), 'clear is live before the snap');
+  assert.ok(!buttonGroup(live, 'data-ai-button').includes('fbtn-off'), 'defense is live before the snap');
+  assert.ok(!buttonGroup(live, 'data-personnel-button').includes('fbtn-off'), 'personnel is live before the snap');
+
+  const drawing = renderFieldButtons(s, { animating: true });
+  for (const attr of ['data-clear-button', 'data-ai-button', 'data-personnel-button']) {
+    assert.ok(buttonGroup(drawing, attr).includes('fbtn-off'),
+      `${attr} is dead while the turn is drawn`);
+  }
+
+  // The computer's own package to pick: not the human's to press.
+  const aiDef = createGame({ seed: 1 });
+  aiDef.aiTeam = 'defense';
+  assert.ok(buttonGroup(renderFieldButtons(aiDef), 'data-personnel-button').includes('fbtn-off'),
+    'personnel is dead when the computer coaches the defense');
 });
 
 test('the quick-press buttons sit on the board, above and below the menu plate', () => {

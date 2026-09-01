@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
@@ -733,6 +734,30 @@ test('the new controls grey on the same conditions their menu buttons do', () =>
     'personnel is dead when the computer coaches the defense');
 });
 
+test('clear and defense grey once the down is over, with nothing being drawn', () => {
+  // The animation flag is only half of each of these rules. Pinned without it
+  // so that dropping the phase leg leaves a test failing rather than a board
+  // offering a broom on a play that is already over.
+  const s = createGame({ seed: 1 });
+  s.phase = 'playOver';
+  const still = renderFieldButtons(s, { animating: false });
+  for (const attr of ['data-clear-button', 'data-ai-button']) {
+    const dead = buttonGroup(still, attr);
+    assert.ok(dead.includes('fbtn-off'), `${attr} is greyed off the planning phase`);
+    assert.ok(dead.includes('aria-disabled="true"'), `${attr} says so to a screen reader`);
+  }
+});
+
+test('personnel greys once the play is under way, with nothing being drawn', () => {
+  // canReposition() is the other leg of personnel's rule, and the one the
+  // animation flag hides: a package cannot be changed mid-down.
+  const s = createGame({ seed: 1 });
+  s.turnIndex = 1;
+  const dead = buttonGroup(renderFieldButtons(s, { animating: false }), 'data-personnel-button');
+  assert.ok(dead.includes('fbtn-off'), 'no new package once the first turn has run');
+  assert.ok(dead.includes('aria-disabled="true"'), 'and it says so to a screen reader');
+});
+
 test('the quick-press buttons sit on the board, above and below the menu plate', () => {
   const [, boardTop, , boardHeight] = renderBoardShell(20, 30).viewBox.split(' ').map(Number);
   const menu = rectBox(menuButtonMark(20));
@@ -857,11 +882,26 @@ test('an empty slot is greyed and a filled one is live', () => {
     'and the label names the play, since the plate cannot');
 });
 
-test('the whole playbook is dead once the down is under way', () => {
+test('the whole playbook is dead while the turn is being drawn', () => {
   const s = createGame({ seed: 1 });
   const drawing = renderFieldButtons(s, { book: [{ name: 'Fly sweep' }], animating: true });
   assert.ok(buttonGroup(drawing, 'data-save-button').includes('fbtn-off'));
   assert.ok(buttonGroup(drawing, 'data-play-button="0"').includes('fbtn-off'));
+});
+
+test('the whole playbook is dead once the down is under way', () => {
+  // Which is turnIndex, not the animation flag: a play is what you come to the
+  // line with, so once the first turn has run there is neither one to save nor
+  // one to call, and the plates say so while the board sits perfectly still.
+  const s = createGame({ seed: 1 });
+  s.turnIndex = 1;
+  const under = renderFieldButtons(s, { book: [{ name: 'Fly sweep' }], animating: false });
+  assert.ok(buttonGroup(under, 'data-save-button').includes('fbtn-off'),
+    'there is no coming-to-the-line play left to save');
+  for (let i = 0; i < PLAY_SLOTS; i++) {
+    assert.ok(buttonGroup(under, `data-play-button="${i}"`).includes('fbtn-off'),
+      `slot ${i} cannot be called mid-down, saved play or not`);
+  }
 });
 
 test('a lesson fields no playbook plates unless it names them', () => {
@@ -902,6 +942,15 @@ test('every plate the table names is drawn, and no plate wears an off-table icon
   for (const m of drawn.matchAll(/class="fbtn-icon"[^>]*>([^<]+)</g)) {
     assert.ok(icons.includes(m[1]), `${m[1]} is written down in the table`);
   }
+});
+
+test('the menu dialog wears the same clipboard its plate wears', () => {
+  // index.html holds the one emoji literal in the codebase — static markup,
+  // with no script to compose it from the table. So the table checks the
+  // markup instead, which is the same guarantee by the other end.
+  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+  assert.ok(html.includes(`${FIELD_BUTTON_ICONS.menu} Coaches Menu`),
+    'the heading carries the clipboard the board carries');
 });
 
 test('the snap draws exactly like any other lock-on: a halo under the quarterback and an arrow to his edge', () => {

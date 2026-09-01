@@ -205,7 +205,10 @@ function aimCamera(cam) {
   layer('game-buttons').clear().svg(
     renderFieldButtons(state, {
       repositioning, animating, cameraYard: cam, allow: lesson ? lesson.buttons() : null,
-      book: myBook(),
+      // The book and the Defense label are both handed over rather than read
+      // there: the renderer draws, and this is the file that already knows
+      // what is in the library and which way the setting is turned.
+      book: myBook(), aiLabel: AI_MODES[aiModeIndex(state)].label,
     }),
   );
   layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cam));

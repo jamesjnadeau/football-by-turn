@@ -13,7 +13,7 @@ import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
   planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
   lineZoneMark, renderFieldButtons, passLandingMark, passLockMark, cameraViewBox,
-  menuButtonMark, liveLobMark, fieldButtonAnchor,
+  menuButtonMark, liveLobMark, fieldButtonAnchor, FIELD_BUTTON_ICONS,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { downDistanceText, gameOverMessage, kickoffMessage, humanSide, coachedSide } from '../lib/game/hud.js';
@@ -254,11 +254,11 @@ function paint() {
     ),
   );
   hud.textContent = `${downDistanceText(state)} — ${state.phase}`;
-  aiBtn.textContent = AI_MODES[aiModeIndex(state)].label;
+  aiBtn.textContent = `${FIELD_BUTTON_ICONS.ai} ${AI_MODES[aiModeIndex(state)].label}`;
   aiBtn.disabled = animating || state.phase !== 'planning';
-  repositionBtn.textContent = `Reposition: ${repositioning ? 'on' : 'off'}`;
+  repositionBtn.textContent = `${FIELD_BUTTON_ICONS.reposition} Reposition: ${repositioning ? 'on' : 'off'}`;
   repositionBtn.disabled = animating || !canReposition(state);
-  personnelBtn.textContent = `Personnel: ${personnelId(state.variantId)}`;
+  personnelBtn.textContent = `${FIELD_BUTTON_ICONS.personnel} Personnel: ${personnelId(state.variantId)}`;
   // Not the human's to press when the computer is coaching the defense: it
   // picks its own package now, and the two would fight on every press.
   personnelBtn.disabled = animating || !canReposition(state) || state.aiTeam === 'defense';
@@ -274,17 +274,17 @@ function paint() {
   copyGenomeBtn.disabled = animating || trainedSide === null;
   discardGenomeBtn.disabled = animating || trainedSide === null;
   runBtn.disabled = animating || state.phase !== 'planning';
-  autoplanBtn.textContent = `Autoplan ${coachedSide(state)}`;
+  autoplanBtn.textContent = `${FIELD_BUTTON_ICONS.autoplan} Autoplan ${coachedSide(state)}`;
   autoplanBtn.disabled = animating || state.phase !== 'planning';
   clearBtn.disabled = animating || state.phase !== 'planning';
   nextBtn.disabled = animating;
   newBtn.disabled = animating;
   homeBtn.disabled = animating;
   nextBtn.hidden = state.phase !== 'playOver';
-  // The board's own two buttons are redrawn every paint rather than built with
-  // the board, which is what lets the shuffle disappear at the snap and the
-  // run button grey out — the menu hit rect beside them never changes, so it
-  // stays in the shell.
+  // The board's own quick-press buttons are redrawn every paint rather than
+  // built with the board, which is what lets the shuffle disappear at the
+  // snap and the run button grey out — the menu hit rect beside them never
+  // changes, so it stays in the shell.
   // The crop is re-asserted on every paint, not just on a rebuild: a play that
   // scrolled downfield ends with the camera well past the line of scrimmage,
   // and the board has to stay there until the next down re-spots the ball.
@@ -713,6 +713,18 @@ for (let i = 0; i < PLAY_SLOTS; i++) {
 }
 
 /**
+ * The menu's own buttons wear the icons their plates wear. Written from the
+ * same table the board reads, so the two can never say different things —
+ * which is the whole point of a coach being able to relate one to the other.
+ *
+ * Only the three whose text is never rewritten need doing here; the rest get
+ * their icon from paint()'s templates.
+ */
+for (const [btn, name] of [[runBtn, 'run'], [clearBtn, 'clear'], [savePlayBtn, 'save']]) {
+  btn.textContent = `${FIELD_BUTTON_ICONS[name]} ${btn.textContent}`;
+}
+
+/**
  * A play is what you come to the line with, so both saving and calling one are
  * offered only on the first turn of a down. Off it the buttons go grey rather
  * than disappearing: a grey button explains itself, a vanished one does not.
@@ -729,7 +741,7 @@ function paintPlays() {
   savePlayBtn.disabled = !usable;
   for (let i = 0; i < PLAY_SLOTS; i++) {
     const play = book[i];
-    slotBtns[i].textContent = play ? `${i + 1}. ${play.name}` : `${i + 1}. (empty)`;
+    slotBtns[i].textContent = `${FIELD_BUTTON_ICONS[`play${i + 1}`]} ${play ? play.name : '(empty)'}`;
     slotBtns[i].disabled = !usable || !play;
   }
 }
@@ -807,14 +819,15 @@ function closeMenu() {
 }
 
 /**
- * What a press on the board itself does: open the menu, or work one of the two
- * quick-press buttons. Every one of these nodes is re-created — the menu rect
- * by rebuildBoard(), the buttons by every paint() — so the listener goes on
- * the board and matches on the way up rather than on the nodes themselves.
+ * What a press on the board itself does: open the menu, or work whichever
+ * quick-press plate the press landed on. Every one of these nodes is
+ * re-created — the menu rect by rebuildBoard(), the plates by every paint()
+ * — so the listener goes on the board and matches on the way up rather than
+ * on the nodes themselves.
  *
- * The two buttons are shortcuts and nothing more: they call the same functions
- * the menu's own Reposition and Run Turn do, so there is no second copy of
- * either rule to keep in step.
+ * The plates are shortcuts and nothing more: each one calls the same
+ * function the menu's own matching control does, so there is no second copy
+ * of any rule to keep in step.
  */
 function pressBoardButton(target) {
   if (!target.closest) return false;

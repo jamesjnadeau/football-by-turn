@@ -276,6 +276,12 @@ function paint() {
     : 'Copy trained genome';
   copyGenomeBtn.disabled = animating || trainedSide === null;
   discardGenomeBtn.disabled = animating || trainedSide === null;
+  // Run, Clear and Save current play are the three menu buttons whose text is
+  // never rewritten, so they take their icon once at startup by being prefixed
+  // in place. Do not give any of them a textContent template here: it would
+  // paint over the prefix and the icon would simply stop appearing, with no
+  // test to catch it — the menu's own labels need a DOM, so none of them is
+  // under `node --test` at all.
   runBtn.disabled = animating || state.phase !== 'planning';
   autoplanBtn.textContent = `${FIELD_BUTTON_ICONS.autoplan} Autoplan ${coachedSide(state)}`;
   autoplanBtn.disabled = animating || state.phase !== 'planning';

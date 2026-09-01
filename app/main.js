@@ -333,8 +333,13 @@ function lessonSaw() {
   if (!lesson) return;
   const seen = lesson.saw(state, { repositioning, menuOpen: menu.open });
   if (seen.replay) {
-    say('Not quite — let us run that one again.');
-    dealLesson();
+    // Passed through to dealLesson rather than said here: say() followed by a
+    // dealLesson() that wipes messageText and rebuilds is two synchronous
+    // steps with no frame painted between them, so the coach never actually
+    // sees the line — only the silent reset. dealLesson says it AFTER the
+    // rebuild instead, so the fresh down and the reason both land in one
+    // paint.
+    dealLesson('Not quite — let us run that one again.');
     return;
   }
   if (seen.finished) {
@@ -1327,16 +1332,29 @@ let inputAttached = false;
 // knows about the game, and the game knows nothing about home.
 let exitToHome = () => {};
 
-/** Deal the lesson's current scenario onto the board. */
-function dealLesson() {
+/**
+ * Deal the lesson's current scenario onto the board, saying `note` over it.
+ *
+ * `note` is said AFTER rebuildBoard() rather than before, and the two happen
+ * in the same call with no yield back to the browser in between — say() and
+ * dealLesson()'s own rebuild used to run as two separate synchronous steps
+ * (say the line, then wipe it by dealing a fresh, blank-message board), and a
+ * browser never paints a frame in between two synchronous statements. The
+ * coach saw the board reset with no explanation of why. Folding the note into
+ * the deal itself means the fresh down and the sentence explaining it always
+ * land in the same painted frame — the default of '' is what every other
+ * caller (a fresh lesson, the "next lesson" press) still lands on a blank
+ * message, exactly as before.
+ */
+function dealLesson(note = '') {
   cancelAutoAdvance();
   stopRepositioning();
   const dealt = lesson.deal();
   state = dealt.state;
   random = dealt.random;
   pendingWarning = false;
-  messageText = '';
-  rebuildBoard();
+  rebuildBoard(); // the message layer does not exist until this has run
+  say(note);
   paint();
 }
 

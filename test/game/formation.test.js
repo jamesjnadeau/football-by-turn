@@ -596,9 +596,13 @@ test('everything a training run can express still lands legal', () => {
 
 test('answerOffense subs the package and stands the men, for a learned defense only', () => {
   const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
-  const g = { ...makeGenome(DEFENSE_SPEC), 'sub:spread': 4, 'sub:nickel:bias': -3 };
-  placePlayer(s, 'o-wr1', fieldPos(-24, s.losYard - 1));
-  placePlayer(s, 'o-wr2', fieldPos(24, s.losYard - 1));
+  const g = { ...makeGenome(DEFENSE_SPEC), 'sub:spread': 4, 'sub:nickel:bias': -2 };
+  // Assert the setup, don't assume it: placePlayer REFUSES a spot a defender is
+  // already standing on, and a genome that lines somebody up on the numbers can
+  // silently block the receiver this test needs wide. Without these the test
+  // fails as a substitution bug when it is really a placement that never happened.
+  assert.ok(placePlayer(s, 'o-wr1', fieldPos(-23, s.losYard - 1)), 'o-wr1 could not be split wide');
+  assert.ok(placePlayer(s, 'o-wr2', fieldPos(23, s.losYard - 1)), 'o-wr2 could not be split wide');
   assert.equal(answerOffense(s, g), true);
   assert.equal(personnelId(s.variantId), 'nickel');
   assert.ok(s.players.some((p) => p.id === 'd-lb2'), 'the extra backer never came on');

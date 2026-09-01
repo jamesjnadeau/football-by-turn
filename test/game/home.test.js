@@ -62,3 +62,22 @@ test('side-screen text is escaped like every other home string', () => {
   assert.ok(html.includes('&quot;label&quot; &amp; more'));
   assert.ok(html.includes('&lt;i&gt;note&lt;/i&gt;'));
 });
+
+test('the how-to-play button sits below the games, and is pressable', () => {
+  const m = homeMarkup();
+  assert.ok(m.includes('data-tutorial'));
+  assert.ok(m.includes('How to play'));
+  assert.ok(m.indexOf('data-variant="11"') < m.indexOf('data-tutorial'),
+    'under the game chooser, as the last thing on the screen');
+});
+
+test('a coach who has been through it is told so, rather than nagged', () => {
+  const fresh = homeMarkup(undefined, { tutorialDone: false });
+  const done = homeMarkup(undefined, { tutorialDone: true });
+  assert.notEqual(fresh, done);
+  assert.match(done, /again/i, 'it is an invitation, not a badge');
+});
+
+test('the tutorial is not a variant: it cannot be listed or started as one', () => {
+  assert.ok(!homeMarkup().includes('data-variant="tutorial"'));
+});

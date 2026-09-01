@@ -1911,7 +1911,7 @@ git add lib/game/tutorial/render.js lib/game/render.js test/game/tutorial/render
 
 **Files:**
 - Create: `app/tutorial.js`, `app/tutorial-store.js`
-- Test: `test/game/tutorial/bridge.test.js` (create)
+- Test: `test/app/tutorial.test.js` (create — `test/app/` is a new directory: no `app/` module is under test today, and this one is testable precisely because it takes nothing from the DOM)
 
 **Interfaces:**
 - Consumes: everything from Tasks 1–8.
@@ -1920,7 +1920,7 @@ git add lib/game/tutorial/render.js lib/game/render.js test/game/tutorial/render
   - `allows(action)` → `null` or a nudge string
   - `saw(state, { repositioning, menuOpen })` → `{ replay: boolean, finished: boolean }` — advances the step, and reports whether the scenario must be re-dealt or the tutorial is over
   - `showsMenu()` → boolean; whether the 📋 plate belongs on the board right now
-  - `card(state)` → the card object, from `cardFor`
+  - `card()` → the card object, from `cardFor`
   - `highlight()` → `{kind, ...}` or `null`, the current step's
   - `buttons()` → the current scenario's `buttons` array
   - `next()` → `{ finished: boolean }` — the card's control; moves to the next scenario or ends
@@ -1928,18 +1928,18 @@ git add lib/game/tutorial/render.js lib/game/render.js test/game/tutorial/render
 
 `app/tutorial-store.js` produces `loadTutorialDone()` → boolean and `saveTutorialDone()`.
 
-**Why the bridge is testable at all:** it touches `localStorage` only through the store module, and takes nothing from the DOM. `test/game/tutorial/bridge.test.js` imports `app/tutorial.js` directly under Node.
+**Why the bridge is testable at all:** it touches `localStorage` only through the store module, and takes nothing from the DOM. `test/app/tutorial.test.js` imports `app/tutorial.js` directly under Node.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `test/game/tutorial/bridge.test.js`:
+Create `test/app/tutorial.test.js`:
 
 ```js
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLesson } from '../../../app/tutorial.js';
-import { SCENARIOS } from '../../../lib/game/tutorial/script.js';
-import { runTurn } from '../../../lib/game/turn.js';
+import { createLesson } from '../../app/tutorial.js';
+import { SCENARIOS } from '../../lib/game/tutorial/script.js';
+import { runTurn } from '../../lib/game/turn.js';
 
 test('a lesson deals its first scenario at the fifty, computer on the other side', () => {
   const lesson = createLesson();
@@ -1968,10 +1968,10 @@ test('the gate refuses what the first step did not ask for', () => {
 test('a step that lands moves the card on', () => {
   const lesson = createLesson();
   const { state, random } = lesson.deal();
-  const before = lesson.card(state).progress;
+  const before = lesson.card().progress;
   runTurn(state, random);
   lesson.saw(state, { repositioning: false });
-  assert.notEqual(lesson.card(state).progress, before);
+  assert.notEqual(lesson.card().progress, before);
 });
 
 test('a play that dies early is replayed, with the attempt counted', () => {
@@ -2027,7 +2027,7 @@ test('the control walks the lessons, and the last one finishes the tutorial', ()
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `node --test test/game/tutorial/bridge.test.js`
+Run: `node --test test/app/tutorial.test.js`
 Expected: FAIL — `app/tutorial.js` does not exist.
 
 - [ ] **Step 3: Write the store**
@@ -2153,7 +2153,7 @@ export function createLesson() {
       return { replay: false, finished: false };
     },
 
-    card(state) {
+    card() {
       return cardFor(scenario(), stepIndex, { attempt: attempts, isLastScenario: isLast() });
     },
 
@@ -2172,13 +2172,9 @@ export function createLesson() {
 }
 ```
 
-Note `card(state)` takes `state` it does not use; keep the parameter, because
-main.js calls it beside every other state-shaped question and a signature that
-suddenly did not need one would be the odd one out.
-
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `node --test test/game/tutorial/bridge.test.js`
+Run: `node --test test/app/tutorial.test.js`
 Expected: PASS. `app/tutorial-store.js` is imported by the bridge but only called from `next()`; under Node there is no `window`, which is exactly why the store's `try` exists — the "control walks the lessons" test exercises that path.
 
 Run: `npm test`
@@ -2187,7 +2183,7 @@ Expected: no new failures.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add app/tutorial.js app/tutorial-store.js test/game/tutorial/bridge.test.js && git commit -m "feat: the bridge that deals a lesson and judges it"
+git add app/tutorial.js app/tutorial-store.js test/app/tutorial.test.js && git commit -m "feat: the bridge that deals a lesson and judges it"
 ```
 
 ---
@@ -2402,7 +2398,7 @@ function aimCamera(cam) {
  */
 function lessonMark(cam) {
   if (!lesson) return '';
-  const card = lesson.card(state);
+  const card = lesson.card();
   return coachCardMark(card, state.losYard, cam) + highlightMark(anchorFor(card.highlight, cam));
 }
 
@@ -2716,6 +2712,150 @@ Check each of these:
 
 ```bash
 git add app/main.js && git commit -m "feat: the gate that turns a drive into a lesson"
+```
+
+---
+
+### Task 12: A lesson that cannot end re-deals
+
+Added during execution, from a Task 6 review finding. See the ledger's
+`Task 6: Ruling`.
+
+**The gap.** Every scenario's closing beat carries `needsLivePlay: false` — it
+must, because that step's whole job is to wait for the whistle, and treating
+"still planning" as off script would fail the very step it is trying to let
+finish. But `offScript` only fires on a penalty or on `playOver`/`gameOver`, so
+a down that never ends is invisible to it. A fumble nobody recovers leaves
+`phase` at `'planning'` forever: `done` never fires, `offScript` never fires,
+and the lesson silently stalls with no message saying why.
+
+This is reachable by a real coach, not only by the tuned demo — dragging or
+double-tapping a turn earlier than the model answer shifts the RNG stream, the
+same class of variation that made seed 3003 differ from 3005 during Task 6.
+`Skip lesson` is always on the card, so nobody is trapped; but a beginner's
+tutorial that stops responding without explanation is exactly the confusion
+this feature exists to prevent.
+
+**Files:**
+- Modify: `lib/game/tutorial/machine.js` (`offScript`)
+- Modify: `lib/game/tutorial/script.js` (one comment)
+- Test: `test/game/tutorial/machine.test.js`
+
+**Interfaces:**
+- Consumes: `offScript(scenario, index, state)` (Task 5), unchanged signature.
+- Produces: `MAX_LESSON_TURNS`, exported from `lib/game/tutorial/machine.js`.
+  `offScript` returns true past that many turns whatever the phase.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `test/game/tutorial/machine.test.js`. Add `MAX_LESSON_TURNS` to the
+existing import from `../../../lib/game/tutorial/machine.js`.
+
+```js
+test('a down that will not end is off script, even though nothing has gone wrong yet', () => {
+  const live = { phase: 'planning', penalty: null, turnIndex: MAX_LESSON_TURNS };
+  assert.equal(offScript(SCENARIO, 2, live), false, 'at the cap it is still a live play');
+  assert.equal(
+    offScript(SCENARIO, 2, { ...live, turnIndex: MAX_LESSON_TURNS + 1 }), true,
+    'past it, the lesson re-deals rather than waiting for a whistle that is not coming');
+});
+
+test('the turn cap catches the closing beat too, which no other check can', () => {
+  // The closing beat carries needsLivePlay:false, so the playOver check can
+  // never fire on it. Before the cap, a fumble nobody recovered stalled here
+  // forever: done waits for a whistle, offScript waits for the same whistle.
+  assert.equal(stepAt(SCENARIO, 2).needsLivePlay, false, 'the step this test is about');
+  assert.equal(
+    offScript(SCENARIO, 2, { phase: 'planning', penalty: null, turnIndex: MAX_LESSON_TURNS + 1 }),
+    true);
+});
+
+test('the cap leaves every authored beat room to land', () => {
+  // The integration test's own runout backstop uses 30 turns; the cap must sit
+  // above anything a lesson legitimately asks for, or a slow scenario would
+  // re-deal itself forever.
+  assert.ok(MAX_LESSON_TURNS >= 30, 'above the longest run a lesson can ask for');
+});
+
+test('the sign-off card is never off script, however long the down ran', () => {
+  assert.equal(
+    offScript(SCENARIO, 3, { phase: 'planning', penalty: null, turnIndex: 999 }), false);
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `node --test test/game/tutorial/machine.test.js`
+Expected: FAIL — `MAX_LESSON_TURNS` is not exported, and `offScript` has no
+turn cap.
+
+- [ ] **Step 3: Add the cap**
+
+In `lib/game/tutorial/machine.js`, above `offScript`:
+
+```js
+/**
+ * How many turns a lesson may run before it is treated as never going to end.
+ *
+ * A play ends by tackle, fumble recovery, out-of-bounds, incompletion or
+ * touchdown, and by nothing else — there is no turn limit in the game. That is
+ * right for football and wrong for a lesson: a fumble nobody recovers leaves a
+ * live ball on the grass and a down that stays in `planning` for as long as
+ * anyone keeps pressing. The closing beat cannot notice, because it carries
+ * `needsLivePlay: false` — it is the step waiting for the whistle, so it cannot
+ * also treat "no whistle yet" as a failure.
+ *
+ * Well above anything an authored beat asks for (the integration test's own
+ * run-out backstop stops at 30), so this only ever catches a down that has
+ * genuinely stopped going anywhere.
+ */
+export const MAX_LESSON_TURNS = 40;
+```
+
+Then extend `offScript`. The cap is judged before the step's own opinion,
+because a down this long is not the script's whatever step is showing — but
+the sign-off card (`step === null`) must stay exempt, since the tutorial is
+over by then and the turn count is simply whatever the last lesson left behind:
+
+```js
+export function offScript(scenario, index, state) {
+  if (state.penalty) return true;
+  const step = stepAt(scenario, index);
+  if (step === null) return false; // the sign-off gates nothing, however long the down ran
+  // The only check that can catch a play which simply never ends. The phase
+  // test below cannot: a hung down never leaves `planning`, and the closing
+  // beat opts out of the phase test anyway by carrying needsLivePlay: false.
+  if (state.turnIndex > MAX_LESSON_TURNS) return true;
+  if (!step.needsLivePlay) return false;
+  return state.phase === 'playOver' || state.phase === 'gameOver';
+}
+```
+
+- [ ] **Step 4: Record the seed history where the next tuner will find it**
+
+In `lib/game/tutorial/script.js`, on `PLAYING_DEFENSE`, immediately above its
+`seed` line:
+
+```js
+  // 3005, not 3003: at 3003 the quarterback fumbles on turn two and neither
+  // man recovers, so the ball sits live on the grass and the down never ends.
+  // That hang is what MAX_LESSON_TURNS now catches; the seed is what stops the
+  // scripted path walking into it in the first place.
+```
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `node --test test/game/tutorial/machine.test.js`
+Expected: PASS.
+
+Run: `npm test`
+Expected: no new failures. In particular the integration test must stay green —
+none of its scenarios runs anywhere near 40 turns.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add lib/game/tutorial/machine.js lib/game/tutorial/script.js test/game/tutorial/machine.test.js && git commit -m "fix: a lesson that cannot end re-deals instead of stalling"
 ```
 
 ---

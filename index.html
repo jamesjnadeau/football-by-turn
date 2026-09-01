@@ -35,6 +35,12 @@
     .home-choice:disabled {
       background: #fff; color: #666; border-color: #ccc; cursor: default;
     }
+    /* The tutorial is an offer, not the thing you came for: outlined rather
+       than filled, so it reads as secondary without reading as unavailable
+       the way the disabled rule above does. */
+    .home-choice-quiet {
+      background: #fff; color: #1a7f37; border-color: #1a7f37;
+    }
     .home-choice-label { display: block; font-size: 1.1rem; font-weight: 600; }
     .home-choice-note { display: block; font-size: .85rem; opacity: .85; margin-top: .25rem; }
 

@@ -15,6 +15,7 @@ import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 import { learnedDefenseSpots } from '../../lib/game/learned/formation.js';
 import { DEFENSE_GENOME } from '../../lib/game/learned/defense-genome.js';
 import { mulberry32 } from '../../lib/game/rng.js';
+import { runTurn } from '../../lib/game/turn.js';
 
 test('a spot behind the line, inbounds and clear of everyone, has no fault', () => {
   const s = createGame({ seed: 1 });
@@ -371,6 +372,36 @@ test('an unrecognised personnel package falls back to stacked rather than strand
   const s = createGame({ seed: 1, variant: '7' });
   assert.ok(setPersonnel(s, 'wishbone'));
   assert.equal(s.variantId, '7');
+});
+
+test('setPersonnel clears a cover order naming a defender who left the field', () => {
+  // Nickel and dime both drop d-dt2 (rosters.js) and keep d-nt in his place —
+  // the same "stale order on a departed man" reasoning setPersonnel already
+  // applies to a MOVED man's plan and cover, just triggered by a substitution
+  // rather than a drag.
+  const s = createGame({ seed: 1, variant: '7' });
+  assert.ok(setCover(s, 'o-lg', 'd-dt2'));
+  assert.ok(setCover(s, 'o-rg', 'd-nt'));
+
+  assert.ok(setPersonnel(s, 'nickel'));
+
+  assert.equal(getPlayer(s, 'o-lg').cover, null,
+    'his man is gone from the field');
+  assert.equal(getPlayer(s, 'o-rg').cover, 'd-nt',
+    'his man survived the swap, so the order stands');
+});
+
+test('a substitution that would strand a cover order does not crash the next turn', () => {
+  // The reported crash: a blocker covering d-dt2, the defense subs to nickel
+  // (which drops him), and the next runTurn used to throw "unknown player
+  // d-dt2" out of coverAim/updateCoverPlans. Regression test lives here,
+  // alongside the setPersonnel fix, because it is setPersonnel's contract —
+  // "a substitution leaves no dangling orders behind" — being proven all the
+  // way through a live turn rather than just by inspecting state.players.
+  const s = createGame({ seed: 1, variant: '7' });
+  assert.ok(setCover(s, 'o-lg', 'd-dt2'));
+  assert.ok(setPersonnel(s, 'nickel'));
+  assert.doesNotThrow(() => runTurn(s, mulberry32(1)));
 });
 
 test('defenseKeys pairs the front with the interior and the corners with the widest', () => {

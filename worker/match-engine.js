@@ -9,7 +9,11 @@
  * the same reason runTurn takes `random` rather than rolling its own dice:
  * a test has to be able to name the exact millisecond a deadline landed on.
  */
-import { createGame, serializeState } from '../lib/game/state.js';
+import { createGame, serializeState, hydrateState } from '../lib/game/state.js';
+import { applyPlay, sanitizePlay } from '../lib/game/play.js';
+import { runTurn } from '../lib/game/turn.js';
+import { nextDown } from '../lib/game/rules.js';
+import { mulberry32 } from '../lib/game/rng.js';
 
 export const HUDDLE_SECONDS = 30;    // spec: first turn of a down -- formations are being set
 export const TURN_CLOCK_SECONDS = 12; // spec: every turn after -- adjusting a picture already drawn
@@ -73,6 +77,71 @@ export function applyMatchMessage(record, message, now) {
 
   if (record.status !== 'active') return { record, messages: [] };
 
-  // Task 7 fills in 'commit'.
+  if (message.type === 'commit') {
+    if (message.turnIndex !== record.state.turnIndex) return { record, messages: [] };
+    const play = sanitizePlay(message.play);
+    if (!play) return { record, messages: [] };
+    const state = cloneState(record.state);
+    // placeFormation (inside applyPlay) is the same placement rule the board
+    // enforces during repositioning -- a spot it refuses is simply skipped,
+    // the way an illegal drag is: the rest of the play still applies.
+    applyPlay(state, play, message.side);
+    const committed = { ...record.committed, [message.side]: play };
+    const withCommit = { ...record, state, committed };
+    if (committed.offense !== null && committed.defense !== null) {
+      return runResolvedTurn(withCommit, now);
+    }
+    return { record: withCommit, messages: [] };
+  }
+
   return { record, messages: [] };
+}
+
+function cloneState(state) {
+  return hydrateState(serializeState(state));
+}
+
+export function stripForSide(state, side) {
+  const stripped = cloneState(state);
+  for (const p of stripped.players) {
+    if (p.team === side) continue;
+    p.plan = null;
+    p.cover = null;
+  }
+  if (stripped.plannedPass && stripped.plannedPass.from
+    && getTeamOf(stripped, stripped.plannedPass.from) !== side) {
+    stripped.plannedPass = null;
+  }
+  return stripped;
+}
+
+function getTeamOf(state, id) {
+  return state.players.find((p) => p.id === id)?.team ?? null;
+}
+
+function runResolvedTurn(record, now) {
+  const random = mulberry32(record.seed + record.state.turnIndex);
+  const state = cloneState(record.state);
+  const { frames, events } = runTurn(state, random);
+  if (state.phase === 'playOver') {
+    // The whistle already ran (a score, a turnover, a down that just ended);
+    // nextDown deals the next one or ends the game, the same call goToNextDown
+    // makes in single-player.
+    nextDown(state);
+  }
+  const lastCommitted = {
+    offense: record.committed.offense ?? record.lastCommitted.offense,
+    defense: record.committed.defense ?? record.lastCommitted.defense,
+  };
+  const deadlineAt = now + TURN_CLOCK_SECONDS * 1000;
+  const next = {
+    ...record, state, lastCommitted, committed: { offense: null, defense: null }, deadlineAt,
+    status: state.phase === 'gameOver' ? 'over' : record.status,
+    reason: state.phase === 'gameOver' ? 'down' : record.reason,
+  };
+  const messages = ['offense', 'defense'].map((side) => ({
+    to: side, type: 'turn', frames, events, down: state.down, deadlineAt,
+    state: stripForSide(state, side),
+  }));
+  return { record: next, messages };
 }

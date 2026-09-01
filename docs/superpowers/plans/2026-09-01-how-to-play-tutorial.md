@@ -559,7 +559,7 @@ import { getRoster } from '../../../lib/game/rosters.js';
 import { createGame } from '../../../lib/game/state.js';
 
 const GESTURES = ['drag', 'passdrag', 'doubletap', 'click'];
-const VERBS = ['run', 'reposition', 'drag', 'cover', 'doubletap', 'pass', 'move', 'none'];
+const VERBS = ['run', 'runout', 'reposition', 'drag', 'cover', 'doubletap', 'pass', 'move', 'none'];
 const BUTTONS = ['reposition', 'autoplan', 'run'];
 
 test('every lesson is played on the fifty, on a roster that exists', () => {
@@ -687,7 +687,9 @@ function whistleStep(text) {
     allow: { action: 'run' },
     nudge: 'Press the fast-forward button to keep the play going.',
     needsLivePlay: false,
-    demo: [{ verb: 'run' }],
+    // `runout`, not `run`: this beat ends when the whistle goes, and one
+    // half-second turn is very unlikely to be the one that does it.
+    demo: [{ verb: 'runout' }],
     done: (state) => playOver(state),
   };
 }
@@ -944,7 +946,7 @@ const WHERE_THEY_STAND = {
       allow: { action: 'any' },
       nudge: null,
       needsLivePlay: false,
-      demo: [{ verb: 'drag', id: 'o-qb', to: spot(-8, -1) }, { verb: 'run' }],
+      demo: [{ verb: 'drag', id: 'o-qb', to: spot(-8, -1) }, { verb: 'runout' }],
       done: (state) => playOver(state),
     },
   ],
@@ -1270,6 +1272,14 @@ function deal(scenario) {
 function perform(run, verb) {
   const { state, ctx } = run;
   if (verb.verb === 'run') { runTurn(state, run.random); return; }
+  if (verb.verb === 'runout') {
+    // To the whistle, however many turns that takes. The capped loop is a
+    // backstop: a play that will not die is a bug in the scenario, and it
+    // should fail as an assertion rather than hang the suite.
+    for (let i = 0; i < 30 && state.phase === 'planning'; i += 1) runTurn(state, run.random);
+    assert.notEqual(state.phase, 'planning', 'the play never ended');
+    return;
+  }
   if (verb.verb === 'reposition') { ctx.repositioning = !ctx.repositioning; return; }
   if (verb.verb === 'none') return;
   if (verb.verb === 'drag') {
@@ -1428,7 +1438,7 @@ test('the board can be built without a Coaches Menu, and always has a lesson lay
 });
 ```
 
-If `num` is not already imported in the test file, inline the rounding the file uses elsewhere or import it the same way neighbouring assertions do — check how the existing button tests assert coordinates and match them.
+`num` is already imported in `test/game/render.test.js` from `../../lib/field/geometry.js`; the same rounding is what `fieldButtonMark` writes, which is why the assertion can compare strings at all.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -1675,7 +1685,7 @@ Create `lib/game/tutorial/render.js`:
  */
 import { escapeText } from '../../field/escape.js';
 import { gameView } from '../view.js';
-import { SIDELINE_LEFT, SIDELINE_RIGHT, CENTRE_X } from '../../field/geometry.js';
+import { SIDELINE_LEFT, SIDELINE_RIGHT, CENTRE_X, num } from '../../field/geometry.js';
 import { wrapWords } from '../render.js';
 
 /** Wider than the referee's plate: a lesson is a paragraph, not a shout. */
@@ -1689,10 +1699,6 @@ const CARD_FOOT_HEIGHT = 4;
 const CARD_BTN_W = 26;
 const CARD_BTN_H = 6;
 const CARD_MARGIN_BOTTOM = 3;
-
-function num(n) {
-  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, '');
-}
 
 /**
  * The card. Sized to its own words rather than to a fixed box, and clamped to
@@ -1919,8 +1925,9 @@ Create `app/tutorial.js`:
  * lesson is judging.
  */
 import { SCENARIOS, TUTORIAL_LOS_YARD } from '../lib/game/tutorial/script.js';
-import { allows as machineAllows, advance, offScript, cardFor } from '../lib/game/tutorial/machine.js';
-import { stepAt } from '../lib/game/tutorial/machine.js';
+import {
+  allows as machineAllows, advance, offScript, cardFor, stepAt,
+} from '../lib/game/tutorial/machine.js';
 import { createGame } from '../lib/game/state.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import { saveTutorialDone } from './tutorial-store.js';
@@ -2091,6 +2098,14 @@ export function homeMarkup(variants = VARIANTS, { tutorialDone = false } = {}) {
     + `${tutorialMarkup(tutorialDone)}</div>`;
 }
 ```
+
+`test/game/home.test.js` already counts buttons with `/class="home-choice"/g`
+and asserts one per variant. That regex needs the closing quote immediately
+after, so `class="home-choice home-choice-quiet"` deliberately does not match it
+and the existing test stays green. **Do not reorder those two class names** —
+writing `class="home-choice-quiet home-choice"` would not help either, but
+writing the tutorial button as a bare `class="home-choice"` would break that
+count and would be the wrong fix.
 
 - [ ] **Step 4: Style the quiet button**
 
@@ -2316,7 +2331,22 @@ function pressBoardButton(target) {
 
 - [ ] **Step 5: Tell the lesson about a committed gesture and a finished turn**
 
-At the end of `onGesture`, replace the final `paint();` with:
+`onGesture` has **two** exits that commit something, and both must report.
+The reposition branch returns early — and it is the very branch lesson four's
+"move him" step goes through, so missing it would strand that step forever.
+
+Its `if (repositioning) { ... paint(); return; }` block becomes:
+
+```js
+  if (repositioning) {
+    if (gesture.kind === 'drag' || gesture.kind === 'passdrag') reposition(playerId, point);
+    paint();
+    lessonSaw();
+    return;
+  }
+```
+
+and the final `paint();` at the end of the function becomes:
 
 ```js
   paint();

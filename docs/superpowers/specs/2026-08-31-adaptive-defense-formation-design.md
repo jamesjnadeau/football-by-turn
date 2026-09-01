@@ -228,11 +228,18 @@ The features:
 - **`toGo`** — `min(1, (toGoYard - losYard) / 10)`, again `schemeFeatures`'s own.
 
 One shared axis with two thresholds rather than two independent logits. Five
-parameters instead of eight, and it encodes the true thing: nickel and dime are
-two points on one line — how many bodies do I need in coverage — not two
-unrelated decisions. At the init biases of `-4` with every weight at 0, `z` is 0
-and both cuts fail, so an untrained genome is always stacked. This is
-`scheme:bias`'s own trick, for the same reason.
+parameters instead of eight, and nickel and dime read the same underlying
+fact — how many bodies is this look forcing me to add — through two cuts on
+it. But the two biases are not otherwise related: nothing orders
+`sub:dime:bias` against `sub:nickel:bias`, and dime is tested first, so
+training is free to land a dime cut looser than the nickel one. When it does,
+dime fires on every look that would have crossed the nickel cut too, and
+nickel becomes unreachable — the shipped genome is exactly this case. That is
+a real gap in what this scheme can express, not a constraint it enforces; see
+`learnedPersonnel`'s own comment in `formation.js` for the current state of
+it. At the init biases of `-4` with every weight at 0, `z` is 0 and both cuts
+fail, so an untrained genome is always stacked. This is `scheme:bias`'s own
+trick, for the same reason.
 
 ### The newcomers
 

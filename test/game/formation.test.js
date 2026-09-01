@@ -454,6 +454,21 @@ test('the empty backfield is a tell of its own, separate from width', () => {
   assert.equal(learnedPersonnel(s2, g), 'stacked');
 });
 
+test('a genome that learned a looser dime cut never plays nickel', () => {
+  // Not a hypothetical: the shipped genome is ordered this way. The cuts are
+  // independent numbers and dime is tested first, so a dime cut below the
+  // nickel one collapses the ladder to two packages. Pinned here so the
+  // behaviour is a decision on the record rather than a surprise.
+  const s = createGame({ seed: 1 });
+  placePlayer(s, 'o-wr1', fieldPos(-24, s.losYard - 1));
+  placePlayer(s, 'o-wr2', fieldPos(24, s.losYard - 1));
+  const g = {
+    ...makeGenome(DEFENSE_SPEC),
+    'sub:spread': 4, 'sub:nickel:bias': -3.5, 'sub:dime:bias': -2,
+  };
+  assert.equal(learnedPersonnel(s, g), 'dime');
+});
+
 test('at zero pull the learned look is the genome look, exactly', () => {
   // The other half of the compatibility guarantee: with no adapt weights, the
   // new path and the old one must not differ by so much as a rounding error.
@@ -640,10 +655,12 @@ test('applyLearnedLook works hot-seat, which is how the trainer runs', () => {
 });
 
 test('answerOffense puts a dragged-away defender back where the look wants him', () => {
-  // The bug this guards: app/main.js's realignDefense used to run the
-  // rule-based alignDefense after any offense change, stomping a learned
-  // defense's formation. Simulate that stomp by hand and confirm the answer
-  // puts him back.
+  // Not because learnedLook notices or corrects the drag -- it never sees the
+  // dragged position. applyLearnedLook's setPersonnel rebuilds every defense
+  // player from the roster before learnedLook runs at all, so whatever a
+  // stomp did is discarded regardless of what the look computes. What this
+  // pins down is that answerOffense is deterministic even from a stomped
+  // state: called again, it reproduces the exact spot it gave the first time.
   const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
   const g = makeGenome(DEFENSE_SPEC);
   answerOffense(s, g);

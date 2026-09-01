@@ -31,14 +31,29 @@ a different one (`python3 serve.py 8099`).
 The two learned levels — `Defense: computer (learned)` and
 `Offense: computer (learned)` — play trained genomes shipped in
 `lib/game/learned/defense-genome.js` and `offense-genome.js`. To retrain
-them against each other (competitive co-evolution, the normal way):
+them against each other (competitive co-evolution):
 
     npm run train:coevolve -- --generations 20 --pop 12 --plays 12 --seed 1
 
-To retrain just the defense against the scripted offense (the bootstrap the
-first genome came from):
+**This is not the path that trains the defense's adaptive weights.**
+Co-evolution's offense coach (`learnedOffenseCoach` in `tools/harness.js`)
+overwrites the whole pre-snap look with the offense genome's fixed spots, so
+the defense being scored sees the same formation every play — the one
+condition the varied-look dealing in `dealOffensiveLook` exists to remove.
+A defense trained through `train:coevolve` cannot learn its `adapt:*` weights
+from that; they score as noise. To retrain just the defense, with the varied
+looks, against the scripted offense (the bootstrap the first genome came
+from, and the path that actually exercises `adapt:*`):
 
     npm run train:defense -- --generations 30 --pop 16 --plays 24 --seed 1
+
+Because of this, `defense-genome.js` (trained with `train:defense`, against
+the scripted offense) and `offense-genome.js` (still trained the old way,
+against a co-evolved fixed-spot defense) are no longer a matched pair: their
+`meta.fitness` values are not on the same scale, and there is currently no
+shipped "learned offense vs. trained-adaptive learned defense" matchup.
+`defense-genome.js` is generated — retrain it with `train:defense` rather
+than hand-editing it.
 
 To train the defense against a ghost of **you** — the coach the game has
 actually been recording:

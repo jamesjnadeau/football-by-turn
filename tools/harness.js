@@ -25,6 +25,7 @@ import { applyLearnedLook } from '../lib/game/formation.js';
 import { autoplanOffense } from '../lib/game/offense.js';
 import { coachLearnedOffense } from '../lib/game/learned/offense-policy.js';
 import { FIRST_DOWN_YARDS } from '../lib/game/constants.js';
+import { baseVariantId } from '../lib/game/rosters.js';
 
 /** A play that has not died by now never will (both sides re-plan every
  *  turn); call it over and score the ball where it lies. */
@@ -47,8 +48,17 @@ export const MAX_TURNS_PER_PLAY = 24;
  * Every draw comes from the passed rand: two genomes at one seed must face the
  * same downs and the same looks, or common random numbers stops holding and
  * their fitnesses stop being comparable.
+ *
+ * The bands below (the 5-24 yard across range, the [-2, -1] on-the-line depth
+ * band, leaving the interior three alone) are geometry read straight off the
+ * seven-a-side roster and its minOnLine of 5 — they are not derived from
+ * `state` and so cannot adapt themselves to a different one. `scenario`
+ * accepts any variant, so the check below makes that assumption a refusal
+ * rather than a silent one: dealing an eleven-a-side offense through these
+ * bands would drag a receiver who is meant to stay off the line onto it.
  */
 function dealOffensiveLook(state, rand) {
+  if (baseVariantId(state.variantId) !== '7') return;
   const at = (id) => state.players.find((p) => p.id === id);
   const span = (lo, hi) => lo + rand() * (hi - lo);
   // Both receivers on one side a fair share of the time: a formation with a
@@ -223,6 +233,17 @@ export function evaluateDefense(values, { plays, seed, offenseCoach = scriptedOf
  * top of the down (the auto snap re-aims itself — it is locked on the QB,
  * and releasePass re-solves a locked throw at the whistle), then the
  * whole-down brain every turn.
+ *
+ * Unlike scenario's dealOffensiveLook, applyLearnedOffenseFormation OVERWRITES
+ * the whole look with the offense genome's fixed spots — so a play run
+ * through this coach shows the defense the same formation every time,
+ * regardless of what dealOffensiveLook drew. That is the one condition
+ * evaluateMatch (below), and therefore `npm run train:coevolve`, cannot
+ * avoid: a defense trained down this path sees one look, never the varied
+ * ones dealOffensiveLook exists to deal, and its `adapt:*` weights score as
+ * noise and drift toward it. `train:defense` (evaluateDefense with the
+ * scripted offense) is the path that actually exercises them — see the
+ * README's training section.
  */
 export function learnedOffenseCoach(values) {
   return (state) => {
@@ -233,8 +254,16 @@ export function learnedOffenseCoach(values) {
   };
 }
 
-/** Learned offense vs learned defense: one stats object, read positively by
- *  the offense's fitness and negatively by the defense's. */
+/**
+ * Learned offense vs learned defense: one stats object, read positively by
+ * the offense's fitness and negatively by the defense's.
+ *
+ * This is co-evolution's evaluator, and it inherits learnedOffenseCoach's
+ * fixed-look limitation directly: the defense being scored here never sees
+ * the varied looks dealOffensiveLook deals, so its `adapt:*` weights are not
+ * being trained through this path, whatever `npm run train:coevolve`'s
+ * fitness numbers might suggest.
+ */
 export function evaluateMatch(offValues, defValues, { plays, seed }) {
   return evaluateDefense(defValues, {
     plays, seed, offenseCoach: learnedOffenseCoach(offValues),

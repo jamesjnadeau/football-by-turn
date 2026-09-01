@@ -15,8 +15,9 @@ import {
   createGame, formationPlayers, aimSnap, ballPos, SNAPPER_ID,
 } from '../lib/game/state.js';
 import { runTurn } from '../lib/game/turn.js';
-import { yardsOfY, GOAL_YARD } from '../lib/game/view.js';
+import { yardsOfY, GOAL_YARD, fieldPos } from '../lib/game/view.js';
 import { mulberry32 } from '../lib/game/rng.js';
+import { SIDELINE_LEFT, SIDELINE_RIGHT, CENTRE_X } from '../lib/field/geometry.js';
 import { applyOrders, applyAiModes } from '../lib/game/ai.js';
 import { learnedOrders } from '../lib/game/learned/defense-policy.js';
 import { applyLearnedOffenseFormation } from '../lib/game/learned/formation.js';
@@ -28,6 +29,94 @@ import { FIRST_DOWN_YARDS } from '../lib/game/constants.js';
 /** A play that has not died by now never will (both sides re-plan every
  *  turn); call it over and score the ball where it lies. */
 export const MAX_TURNS_PER_PLAY = 24;
+
+/**
+ * Move the offense's skill players somewhere legal and different every play.
+ *
+ * Training used to show the defense one formation forever — scenario dealt the
+ * roster default, the scripted offense never moves anybody pre-snap, and the
+ * learned offense stands a fixed genome formation. A defense cannot learn to
+ * answer a look that never changes, so every adapt weight was scored as noise.
+ *
+ * Only the skill players move, and only inside the band that keeps the
+ * formation legal: the seven-a-side offense fields exactly minOnLine men on
+ * the line, so both receivers must STAY on it (down within ON_LINE_YARDS of
+ * the ball, and never across it), and the interior three are left alone
+ * because the snapper has to stand where the ball is spotted.
+ *
+ * Every draw comes from the passed rand: two genomes at one seed must face the
+ * same downs and the same looks, or common random numbers stops holding and
+ * their fitnesses stop being comparable.
+ */
+function dealOffensiveLook(state, rand) {
+  const at = (id) => state.players.find((p) => p.id === id);
+  const span = (lo, hi) => lo + rand() * (hi - lo);
+  // Both receivers on one side a fair share of the time: a formation with a
+  // strong side is the only thing that teaches a strength-shaded answer.
+  const strongSide = rand() < 0.35 ? (rand() < 0.5 ? -1 : 1) : 0;
+  // The inner edge is 5, not the interior guards' 2.5: a receiver drawn any
+  // closer could stand exactly beside a guard's depth (both are within a
+  // down of the line) with less than their combined radii between them, which
+  // spotFault would refuse before the separation nudge below ever saw it.
+  const wr = strongSide === 0
+    ? [span(-24, -5), span(5, 24)]
+    : [strongSide * span(5, 24), strongSide * span(5, 24)];
+  const moved = [];
+  ['o-wr1', 'o-wr2'].forEach((id, i) => {
+    const p = at(id);
+    if (!p) return;
+    p.pos = fieldPos(wr[i], state.losYard + span(-2, -1));
+    moved.push(p);
+  });
+  for (const id of ['o-qb', 'o-rb']) {
+    const p = at(id);
+    if (!p) continue;
+    p.pos = fieldPos(span(-8, 8), yardsOfY(p.pos.y));
+    moved.push(p);
+  }
+  // Two men dealt onto the same spot is a look the rulebook would refuse, and
+  // a refused look is not a down anybody can learn from. Only the across axis
+  // moves here -- depth is already whatever the bands above drew -- so a pair
+  // that is closer than they may stand gets slid apart along x by exactly the
+  // amount that restores legal separation at their fixed depths, rather than
+  // by a fraction of the straight-line gap (which left them still overlapping
+  // whenever they also differed in depth).
+  //
+  // Movers are fixed up in a set order (wr1, wr2, qb, rb) and each one only
+  // ever yields to a mover earlier in that order, never the other way --
+  // otherwise two receivers colliding near the same sideline can leapfrog
+  // each other outward pass after pass and pile up on the boundary instead of
+  // settling. A mover that must give ground always gives it AWAY from the
+  // centre, never back toward it: sliding toward the ball is how an off-band
+  // receiver used to end up standing on a guard. A hair of margin over the
+  // true minimum keeps floating-point rounding from landing exactly back on
+  // the boundary spotFault refuses.
+  const CLEAR_MARGIN = 1e-6;
+  const laterThan = new Map(moved.map((p, i) => [p.id, i]));
+  for (const p of moved) {
+    for (const q of state.players) {
+      if (q === p) continue;
+      // An earlier mover in the fixed order is settled ground for this one;
+      // a later mover has not been placed yet and will yield to `p` instead.
+      if (laterThan.has(q.id) && laterThan.get(q.id) > laterThan.get(p.id)) continue;
+      const dy = p.pos.y - q.pos.y;
+      const need = p.radius + q.radius + CLEAR_MARGIN;
+      if (Math.abs(dy) >= need) continue; // depth alone already clears them
+      const dx = p.pos.x - q.pos.x;
+      if (Math.hypot(dx, dy) >= need) continue;
+      const clearDx = Math.sqrt(need * need - dy * dy);
+      const candidates = [q.pos.x + clearDx, q.pos.x - clearDx];
+      const x = Math.abs(candidates[0] - CENTRE_X) >= Math.abs(candidates[1] - CENTRE_X)
+        ? candidates[0] : candidates[1];
+      p.pos = { x, y: p.pos.y };
+    }
+    // Hold him inbounds -- the nudge above only ever pushes further from a
+    // neighbour, and near a sideline that can push a body past it.
+    const lo = SIDELINE_LEFT + p.radius;
+    const hi = SIDELINE_RIGHT - p.radius;
+    p.pos = { x: Math.max(lo, Math.min(hi, p.pos.x)), y: p.pos.y };
+  }
+}
 
 /**
  * A fresh down somewhere a real drive could be: random down, random spot
@@ -45,6 +134,7 @@ export function scenario(rand, variant = '7') {
   state.players = formationPlayers(state.losYard, variant);
   state.ball = { carrierId: SNAPPER_ID, pos: null, vel: null };
   state.plannedPass = null;
+  dealOffensiveLook(state, rand);
   aimSnap(state);
   return state;
 }

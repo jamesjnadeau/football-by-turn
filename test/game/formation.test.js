@@ -476,6 +476,20 @@ test('at zero pull a trained genome is still the genome look, exactly', () => {
   assert.deepEqual(learnedLook(s, g), learnedDefenseSpots(s, g));
 });
 
+test('the shipped genome answers a receiver split wide', () => {
+  // The guard that training actually bought something: with the genome the
+  // game ships, moving a receiver has to move somebody. If a future retrain
+  // returns every adapt weight to zero, this is what says so out loud.
+  const s = createGame({ seed: 1 });
+  const before = new Map(learnedLook(s, DEFENSE_GENOME.values).map((sp) => [sp.id, sp.pos]));
+  placePlayer(s, 'o-wr1', fieldPos(-24, s.losYard - 1));
+  const after = new Map(learnedLook(s, DEFENSE_GENOME.values).map((sp) => [sp.id, sp.pos]));
+  const moved = [...before.keys()].filter(
+    (id) => Math.hypot(after.get(id).x - before.get(id).x, after.get(id).y - before.get(id).y) > 0.5,
+  );
+  assert.ok(moved.length > 0, 'nobody on defense moved when the receiver did');
+});
+
 test('a full-width pull stands the front and the corners where alignDefense does', () => {
   const s = createGame({ seed: 1 });
   placePlayer(s, 'o-wr1', fieldPos(-22, s.losYard - 1));

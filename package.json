@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node --test",
     "serve": "python3 serve.py",
+    "build:site": "node tools/build-site.js",
     "train:defense": "node tools/train-defense.js",
     "train:coevolve": "node tools/train-coevolve.js",
     "train:vs-ghost": "node tools/train-vs-ghost.js",

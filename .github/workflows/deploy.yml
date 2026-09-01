@@ -1,21 +1,9 @@
-name: Deploy to GitHub Pages
+name: Deploy
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
-# Allow the deployment to claim the Pages token.
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# One live deployment at a time; queue rather than cancel so a push never
-# leaves the site half-published.
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   test:
@@ -27,36 +15,21 @@ jobs:
           node-version: 22
       - run: npm test
 
-  build:
+  # A bad deploy here takes down single-player too, where the old Pages
+  # build would have left a broken server without touching a working site.
+  # This is the deliberate trade the multiplayer design doc makes: one
+  # origin, one deploy, no version-skew story between the page and the
+  # referee it now talks to.
+  deploy:
     needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      # The site is plain ES modules with relative imports, so there is no
-      # build step -- just gather what the browser actually loads.
-      - name: Assemble site
-        run: |
-          mkdir -p _site
-          cp index.html _site/
-          cp -r app lib _site/
-          touch _site/.nojekyll
-
-      # enablement turns Pages on via the API if it isn't already, so a fresh
-      # clone of this repo deploys without anyone visiting Settings first.
-      - uses: actions/configure-pages@v5
+      - uses: actions/setup-node@v4
         with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
+          node-version: 22
+      - run: npm run build:site
+      - uses: cloudflare/wrangler-action@v3
         with:
-          path: _site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy

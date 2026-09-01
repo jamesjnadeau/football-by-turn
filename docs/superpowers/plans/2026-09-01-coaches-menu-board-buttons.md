@@ -206,7 +206,7 @@ test('the anchor still refuses a name there is no button for', () => {
 - [ ] **Step 2: Run the tests and watch them pass**
 
 ```bash
-npm test 2>&1 | grep -A 3 "further column"
+npm test 2>&1 | grep -A 3 "share an x"
 ```
 
 Expected: PASS. These two pin the behaviour that must survive the edit —

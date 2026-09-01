@@ -188,9 +188,10 @@ tutorial's ring.
 - [ ] **Step 1: Write the failing test**
 
 ```js
-test('a plate in a further column is one pitch to the right, same row', () => {
-  // A stand-in second-column entry proves the geometry without waiting for the
-  // playbook plates: what matters is that col moves x and nothing else.
+test('plates in one column share an x and are told apart by their row', () => {
+  // Every entry is col 0 until Task 4, so this pins what must NOT change: the
+  // refactor threads col and cx through without moving a single plate. The
+  // two-column assertion lands in Task 4, with the plates that need it.
   const a = fieldButtonAnchor('run', 20);
   const b = fieldButtonAnchor('menu', 20);
   assert.equal(a.x, b.x, 'two plates in one column share an x');
@@ -978,8 +979,11 @@ saved first — save one from the board, then call it back.
 - Run a turn: while it animates, every plate should be greyed.
 - After the whistle (`phase` is no longer `planning`): 🧹 🤖 ⏩ 🎁 greyed,
   🔀 gone, the whole playbook column greyed.
-- Set Defense to `Offense: computer (learned)` so the computer coaches the
-  defense: 👥 greyed on the board and in the menu.
+- Personnel and the Defense mode: a new game starts with the computer coaching
+  the defense, so 👥 should be greyed from the first paint, on the board and in
+  the menu. Press 🤖 until the menu reads `Defense: you` (hot-seat) and confirm
+  👥 goes live; press on to `Offense: computer (learned)` and confirm it stays
+  live, since the computer is not on the defense in that mode either.
 - An empty playbook: 1️⃣–5️⃣ all greyed, 💾 live.
 
 - [ ] **Step 4: Check the keyboard**

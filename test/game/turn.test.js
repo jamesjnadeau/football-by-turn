@@ -277,10 +277,10 @@ test('a teammate downfield catches the throw', () => {
   // the ball down somewhere inside a six-yard circle instead of on his chest.
   setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4);
   const { events } = runTurn(s, mulberry32(1));
-  assert.deepEqual(
-    events.find((e) => e.type === 'pickup'),
-    { type: 'pickup', by: 'o-wr1', team: 'offense' },
-  );
+  const pickup = events.find((e) => e.type === 'pickup');
+  assert.equal(pickup.by, 'o-wr1');
+  assert.equal(pickup.team, 'offense');
+  assert.equal(typeof pickup.atYard, 'number');
   assert.equal(s.ball.carrierId, 'o-wr1');
   assert.equal(s.deadReason, null, 'a completion keeps the down alive');
 });

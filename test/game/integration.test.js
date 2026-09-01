@@ -138,7 +138,9 @@ test('integration: a defender in the loose ball\'s path recovers it — turnover
   const { events } = runTurn(s, rolls([0, 0, 0.5]));
   assert.ok(events.some((e) => e.type === 'fumble'));
   const pickup = events.find((e) => e.type === 'pickup');
-  assert.deepEqual(pickup, { type: 'pickup', by: 'd-cb1', team: 'defense' });
+  assert.equal(pickup.by, 'd-cb1');
+  assert.equal(pickup.team, 'defense');
+  assert.equal(typeof pickup.atYard, 'number');
   assert.equal(s.ball.carrierId, 'd-cb1');
   assert.equal(s.deadReason, 'recovered');
   assert.equal(s.phase, 'playOver');
@@ -150,7 +152,9 @@ test('integration: an offensive teammate can recover his own fumble — play sta
   const { events } = runTurn(s, rolls([0, 0, 0.5]));
   assert.ok(events.some((e) => e.type === 'fumble'));
   const pickup = events.find((e) => e.type === 'pickup');
-  assert.deepEqual(pickup, { type: 'pickup', by: 'o-rb', team: 'offense' });
+  assert.equal(pickup.by, 'o-rb');
+  assert.equal(pickup.team, 'offense');
+  assert.equal(typeof pickup.atYard, 'number');
   assert.equal(s.ball.carrierId, 'o-rb');
   assert.equal(s.deadReason, null, 'offense recovering keeps the down alive');
   assert.equal(s.phase, 'planning');

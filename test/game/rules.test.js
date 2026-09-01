@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { checkIncomplete, tackleProbability, checkTackles, checkPickup, checkDeadBall, nextDown } from '../../lib/game/rules.js';
 import { createGame, getPlayer, setMode, setPlan } from '../../lib/game/state.js';
-import { fieldPos, GOAL_YARD } from '../../lib/game/view.js';
+import { fieldPos, GOAL_YARD, yardsOfY } from '../../lib/game/view.js';
 import { SIDELINE_LEFT, SIDELINE_RIGHT } from '../../lib/field/geometry.js';
 import { NEARBY_RADIUS, PENALTY_YARDS } from '../../lib/game/constants.js';
 import { lobPoint } from '../../lib/game/lob.js';
@@ -145,9 +145,12 @@ test('a tucked runner survives the same fumble roll', () => {
 
 test('pickups: offense recovering keeps the play alive, defense recovering kills it', () => {
   const off = scenario(['o-rb', 'd-s']);
+  const rbYard = yardsOfY(getPlayer(off, 'o-rb').pos.y);
   off.ball = { carrierId: null, pos: getPlayer(off, 'o-rb').pos, vel: { x: 0, y: 0 } };
   const e1 = checkPickup(off);
-  assert.deepEqual(e1[0], { type: 'pickup', by: 'o-rb', team: 'offense' });
+  assert.deepEqual(e1[0], {
+    type: 'pickup', by: 'o-rb', team: 'offense', atYard: rbYard,
+  });
   assert.equal(off.ball.carrierId, 'o-rb');
   assert.equal(off.deadReason, null);
 
@@ -432,8 +435,11 @@ test('the same lob is caught as normal once it has come down', () => {
   const s = createGame({ seed: 1 });
   const lob = deepLob(s, 40); // landed
   getPlayer(s, 'o-wr1').pos = { ...s.ball.pos };
+  const catchYard = yardsOfY(s.ball.pos.y);
   const events = checkPickup(s);
-  assert.deepEqual(events, [{ type: 'pickup', by: 'o-wr1', team: 'offense' }]);
+  assert.deepEqual(events, [{
+    type: 'pickup', by: 'o-wr1', team: 'offense', atYard: catchYard,
+  }]);
   assert.equal(s.ball.carrierId, 'o-wr1');
   assert.equal(s.ball.lob, undefined, 'a caught ball is no longer a flight');
   assert.ok(lob);

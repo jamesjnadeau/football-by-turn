@@ -506,3 +506,22 @@ test('a learned defense comes to the new down already answering the formation', 
   assert.ok(Math.abs(held.x - answered.x) > 1,
     'the corner stood in the same place whether he answers the formation or not');
 });
+
+test('a new down answers with the genome actually being played, not the shipped one', () => {
+  // The state's override is how a genome trained in the coach's own browser
+  // reaches the engine (learned/active.js). nextDown's answer has to read it
+  // too, or a coach playing his own defense would face the shipped one's
+  // formation every time the down changed.
+  const spots = ['far', 'near'].map((_, i) => {
+    const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+    s.genomeOverrides = {
+      defense: { ...DEFENSE_GENOME.values, 'pos:d-s:down': i === 0 ? 11 : 5 },
+    };
+    s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+    getPlayer(s, 'o-qb').pos = fieldPos(0, 25);
+    s.deadReason = 'tackled';
+    nextDown(s);
+    return getPlayer(s, 'd-s').pos.y;
+  });
+  assert.notEqual(spots[0], spots[1], 'the override moved the safety, so it was read');
+});

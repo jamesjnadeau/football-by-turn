@@ -77,6 +77,36 @@ reads), simulating whole plays headlessly through the same engine the
 browser runs. It is fully deterministic for a seed and writes the champions
 back into the genome modules, which are committed like any other source.
 
+## Contributing a trained genome
+
+You don't need Node to train this game's AI — the deployed site trains it
+too. Play a few downs so the game has recorded your calls, then open the
+Coaches Menu and press **Train vs. my log**. A web worker evolves the genome
+opposing the side you were coaching against a ghost of your own play — about
+1,400 simulated downs, a few seconds — and the champion starts playing on your
+device immediately. Press it again and it keeps climbing from where it left
+off; **Use the shipped genome** puts it back.
+
+**Copy trained genome** hands the result over as a *genome bundle*: one JSON
+object, `{ kind: "football-by-turn-genome", version: 1, side, variant, values,
+meta }`. Save it as a file and send it in. It is data, never code — nothing in
+it runs.
+
+To judge a bundle somebody sent you:
+
+    npm run import:genome -- --bundle contributed.json
+
+It validates the file against this build's genome spec, then plays the
+contributed genome and the currently shipped one through the same gauntlet on
+the same seeded downs with the same dice — against the learned opponent (the
+primary matchup, the one the shipped genomes were co-evolved on) and against
+the opponent with no genome at all — and prints yards per play, touchdown
+rate, turnover rate and fitness for both. It rewrites
+`lib/game/learned/<side>-genome.js` only if the contribution wins the primary
+matchup; `--force` ships one that didn't, and `--plays` / `--seed` re-run the
+gauntlet somewhere else. Run `npm test`, play a drive, and commit the genome
+module like any other source file.
+
 ## Deploying
 
 Pushes to `main` publish the game to GitHub Pages via

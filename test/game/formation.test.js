@@ -669,3 +669,18 @@ test('answerOffense puts a dragged-away defender back where the look wants him',
   assert.equal(answerOffense(s, g), true);
   assert.deepEqual(getPlayer(s, 'd-s').pos, spot);
 });
+
+test('answerOffense puts a defender dragged off his learned spot back on it', () => {
+  // The bug this guards: realignDefense() used to always fall through to the
+  // rule-based alignDefense after any offense change, stomping a learned
+  // defense's formation the instant the human dragged a player, called a play
+  // or changed personnel. Simulate that stomp by hand, then confirm the
+  // learned answer puts him straight back.
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  const g = DEFENSE_GENOME.values;
+  answerOffense(s, g);
+  const spot = { ...getPlayer(s, 'd-s').pos };
+  getPlayer(s, 'd-s').pos = { x: spot.x + 30, y: spot.y + 5 };
+  assert.equal(answerOffense(s, g), true);
+  assert.deepEqual(getPlayer(s, 'd-s').pos, spot);
+});

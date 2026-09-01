@@ -4,7 +4,7 @@ import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
   coverMark, coverHaloMark, lineZoneMark, renderFieldButtons, lineToGainMark, passLockMark,
-  liveLobMark, fieldButtonAnchor,
+  liveLobMark, fieldButtonAnchor, cameraViewBox,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
@@ -22,11 +22,22 @@ import { lobPoint } from '../../lib/game/lob.js';
 
 test('the board shell has the field and every game layer', () => {
   const { viewBox, markup } = renderBoardShell(20, 30);
-  assert.match(viewBox, /^0 56\.25 270 170$/);
+  assert.match(viewBox, /^0 56\.25 280 170$/);
   for (const id of ['game-field', 'game-arrows', 'game-preview', 'game-players', 'game-overlay', 'game-menu', 'game-buttons', 'game-message']) {
     assert.ok(markup.includes(`id="${id}"`), id);
   }
   assert.ok(markup.includes(STYLE_GAME));
+});
+
+test('the game crops wider than the field, to make room for the button columns', () => {
+  const shell = Number(renderBoardShell(20, 30).viewBox.split(' ')[2]);
+  assert.equal(shell, 280, 'the shell leaves room for two columns of plates');
+  // animate() writes cameraViewBox on every frame; if the two disagree the
+  // board would jump a few units wider or narrower at the snap.
+  for (const cam of [20, 35, 80]) {
+    const live = Number(cameraViewBox(20, cam).split(' ')[2]);
+    assert.equal(live, shell, `cameraViewBox agrees at camera ${cam}`);
+  }
 });
 
 test('a driving blocker draws his friction aura at radius + CUT_BLOCK_DRIVE_REACH', () => {
@@ -683,7 +694,8 @@ test('the quick-press buttons sit on the board, above and below the menu plate',
   assert.ok(run.y >= menu.y + menu.h, 'and the run button below it');
   assert.ok(shuffle.y >= boardTop && run.y + run.h <= boardTop + boardHeight, 'both are on the board');
   assert.equal(shuffle.x, run.x, 'they share the label\'s column');
-  assert.ok(shuffle.x + shuffle.w <= 270, 'and stay inside the viewBox');
+  const frameWidth = Number(renderBoardShell(20, 30).viewBox.split(' ')[2]);
+  assert.ok(shuffle.x + shuffle.w <= frameWidth, 'and stay inside the viewBox');
 });
 
 test('the board furniture follows the camera, not the line of scrimmage', () => {

@@ -49,8 +49,8 @@ test('the side screen offers offense, defense, training, and the way back', () =
 
 test('the side buttons reuse the home-choice styling', () => {
   const html = sideMarkup(getVariant('11'));
-  // Three choices plus Back, all styled like the buttons on the first screen.
-  assert.equal((html.match(/class="home-choice"/g) || []).length, 4);
+  // Four choices plus Back, all styled like the buttons on the first screen.
+  assert.equal((html.match(/class="home-choice"/g) || []).length, 5);
 });
 
 test('side-screen text is escaped like every other home string', () => {
@@ -80,4 +80,13 @@ test('a coach who has been through it is told so, rather than nagged', () => {
 
 test('the tutorial is not a variant: it cannot be listed or started as one', () => {
   assert.ok(!homeMarkup().includes('data-variant="tutorial"'));
+});
+
+test('the side chooser offers multiplayer, a live drive against another coach', () => {
+  const ids = SIDES.map((s) => s.id);
+  assert.deepEqual(ids, ['offense', 'defense', 'training', 'multiplayer']);
+  const markup = sideMarkup({ id: '7', label: 'Seven-a-side' });
+  assert.match(markup, /data-side="multiplayer"/);
+  assert.match(markup, /Multiplayer/);
+  assert.match(markup, /Play a live drive against another coach\./);
 });

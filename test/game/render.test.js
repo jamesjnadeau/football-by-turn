@@ -40,6 +40,16 @@ test('a driving blocker draws his friction aura at radius + CUT_BLOCK_DRIVE_REAC
   assert.ok(Math.abs(Number(match[1]) - expected) < 1e-6);
 });
 
+test('an armed cut block draws the same ring, a turn before it drives', () => {
+  const s = createGame({ seed: 1 });
+  getPlayer(s, 'o-lg').mode = 'cutBlock';
+  const group = renderPlayers(s).match(/data-id="o-lg"[\s\S]*?<\/g>/)[0];
+  const match = group.match(/<circle cx="0" cy="0" r="([-\d.]+)" class="drive-aura"\/>/);
+  assert.ok(match, 'the ring is the indicator that the move is enabled, so it is on now');
+  const expected = getPlayer(s, 'o-lg').radius + CUT_BLOCK_DRIVE_REACH;
+  assert.ok(Math.abs(Number(match[1]) - expected) < 1e-6, 'and at the radius that will grab');
+});
+
 test('nobody else draws the drive aura', () => {
   const s = createGame({ seed: 1 });
   assert.ok(!renderPlayers(s).includes('class="drive-aura"'));

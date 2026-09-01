@@ -700,7 +700,7 @@ git add app/main.js app/input.js && git commit -m "feat: double tap sets the sta
   unchanged in signature; it now emits `class="drive-aura"` for a player whose
   `mode` is `'cutBlock'` as well as `'cutBlockDrive'`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `test/game/render.test.js`, insert this test immediately after the existing
 `'a driving blocker draws his friction aura at radius + CUT_BLOCK_DRIVE_REACH'`
@@ -721,7 +721,7 @@ test('an armed cut block draws the same ring, a turn before it drives', () => {
 Everything it needs (`createGame`, `getPlayer`, `renderPlayers`,
 `CUT_BLOCK_DRIVE_REACH`) is already imported by that file.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `node --test test/game/render.test.js`
 Expected: FAIL on `an armed cut block draws the same ring, a turn before it
@@ -729,7 +729,7 @@ drives` — `AssertionError: the ring is the indicator that the move is enabled,
 so it is on now` (the regex found nothing, because `playerMark` still only
 draws the ring for `cutBlockDrive`).
 
-- [ ] **Step 3: Widen the condition and say why**
+- [x] **Step 3: Widen the condition and say why**
 
 In `lib/game/render.js`, change the `playerMark` line:
 
@@ -771,7 +771,7 @@ And update the style comment above `.drive-aura` in `STYLE_GAME` to:
   // move's on/off indicator — see driveAura, below.
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `node --test test/game/render.test.js`
 Expected: PASS, including the existing `'nobody else draws the drive aura'`

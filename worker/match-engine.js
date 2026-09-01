@@ -31,6 +31,7 @@ export function createMatch({ matchId, variant, seed, tokens }) {
     lastCommitted: { offense: null, defense: null },
     committed: { offense: null, defense: null },
     deadlineAt: null,
+    flushDeadlineAt: null,
     disconnectedAt: { offense: null, defense: null },
     reason: null,
   };
@@ -96,8 +97,28 @@ export function applyMatchMessage(record, message, now) {
 
   if (message.type === 'alarm') {
     if (record.status !== 'active') return { record, messages: [] };
+    const bothIn = record.committed.offense !== null && record.committed.defense !== null;
+    if (bothIn) return { record, messages: [] }; // the turn already ran off the second commit
+    if (record.flushDeadlineAt === null) {
+      // A real Durable Object always re-arms its one alarm to the current
+      // deadline on every dispatch (Task 13), so an alarm callback should
+      // never actually run before that deadline. The pure engine still
+      // guards it -- a premature or duplicate call is a no-op rather than a
+      // spurious timeUp, the same defensiveness the "both already committed"
+      // branch above gives a stale call that arrives after the turn ran.
+      if (now < record.deadlineAt) return { record, messages: [] };
+      // First alarm at the ordinary deadline: give whoever is missing one
+      // last chance rather than replaying him outright (spec: "the DO
+      // therefore sends timeUp and waits about two seconds for a late
+      // commit").
+      const missing = ['offense', 'defense'].filter((side) => record.committed[side] === null);
+      const next = { ...record, flushDeadlineAt: now + FLUSH_GRACE_MS };
+      return { record: next, messages: missing.map((side) => ({ to: side, type: 'timeUp' })) };
+    }
+    if (now < record.flushDeadlineAt) return { record, messages: [] };
+    // Second alarm, after the grace window: replay whoever is still missing.
     const filled = fillFromLastCommitted(record);
-    const withFilled = { ...record, state: filled };
+    const withFilled = { ...record, state: filled, flushDeadlineAt: null };
     return runResolvedTurn(withFilled, now);
   }
 
@@ -172,6 +193,7 @@ function runResolvedTurn(record, now) {
   const deadlineAt = now + TURN_CLOCK_SECONDS * 1000;
   const next = {
     ...record, state, lastCommitted, committed: { offense: null, defense: null }, deadlineAt,
+    flushDeadlineAt: null,
     status: state.phase === 'gameOver' ? 'over' : record.status,
     reason: state.phase === 'gameOver' ? 'down' : record.reason,
   };

@@ -179,8 +179,11 @@ test('the alarm on a turn where nobody committed replays both last plays, skippi
   };
   ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play }, 1000));
   ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 1100));
-  // Turn 1 now: neither side commits. The alarm fires.
-  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
+  // Turn 1 now: neither side commits. The alarm fires -- first sending
+  // timeUp and arming the grace window (Task 9), then, once nobody used it,
+  // actually replaying and running the turn.
+  ({ record: m } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt));
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.flushDeadlineAt);
   const after = record.state.players.find((p) => p.id === 'o-rb').pos;
   // The illegal spot the play carried (across: 20, down: -4) would land him
   // roughly a whole field width away -- if the replay had reapplied it he
@@ -217,7 +220,10 @@ test('a coach who has never committed at all keeps whatever orders his men alrea
 test('one coach committed, the other did not: the alarm replays only the quiet one', () => {
   let m = started();
   ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
-  const { record } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
+  // First alarm sends timeUp and arms the grace window; the second, once the
+  // grace window has passed with nobody late, replays and runs the turn.
+  ({ record: m } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt));
+  const { record } = applyMatchMessage(m, { type: 'alarm' }, m.flushDeadlineAt);
   assert.equal(record.state.turnIndex, 1, 'the turn ran with the offense\'s fresh commit and the defense\'s replay');
 });
 
@@ -225,5 +231,52 @@ test('the alarm before both coaches have connected is a no-op', () => {
   const waiting = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
   const { record, messages } = applyMatchMessage(waiting, { type: 'alarm' }, 1000);
   assert.equal(record.status, 'waiting');
+  assert.deepEqual(messages, []);
+});
+
+test('the deadline with someone uncommitted sends timeUp and does not resolve the turn yet', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  // defense never commits.
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
+  assert.equal(record.state.turnIndex, 0, 'not resolved yet');
+  assert.deepEqual(messages, [{ to: 'defense', type: 'timeUp' }]);
+  assert.notEqual(record.flushDeadlineAt, null);
+});
+
+test('a commit during the grace window is accepted, and resolves the turn immediately -- the second alarm is then a no-op', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt)); // timeUp sent
+  const grace = m.flushDeadlineAt;
+  const late = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, grace - 500);
+  assert.equal(late.record.state.turnIndex, 1, 'both sides are now in -- the turn does not wait for the second alarm');
+  assert.ok(late.messages.some((mm) => mm.type === 'turn'), 'accepted during the grace window');
+  const { record, messages } = applyMatchMessage(late.record, { type: 'alarm' }, grace);
+  assert.equal(record.state.turnIndex, 1, 'the stale grace-window alarm lands on the already-resolved turn');
+  assert.deepEqual(messages, []);
+});
+
+test('the second alarm after nobody used the grace window falls through to the replay rule', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt));
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.flushDeadlineAt);
+  assert.equal(record.state.turnIndex, 1);
+  assert.ok(messages.some((mm) => mm.type === 'turn'));
+});
+
+test('both sides already committed: a premature alarm before the new deadline is a no-op -- no spurious timeUp', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 1050));
+  // The turn already resolved on the second commit, with a fresh 12-second
+  // deadline. A real Durable Object always re-arms its one alarm to that new
+  // deadline (Task 13), so an alarm callback for the OLD, now-superseded
+  // schedule should never actually fire before it -- this is the pure
+  // engine's own defense against that race, not something that can happen
+  // once MatchDO's re-arming is in place.
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, 1060);
+  assert.equal(record.state.turnIndex, 1);
   assert.deepEqual(messages, []);
 });

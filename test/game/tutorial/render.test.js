@@ -47,6 +47,30 @@ test('the card escapes what it is given, like every other plate on this board', 
   assert.ok(m.includes('&amp;'));
 });
 
+function plateBottom(m) {
+  const [, y, h] = /class="tut-plate"[^>]*\by="([-\d.]+)"[^>]*\bheight="([-\d.]+)"/.exec(m);
+  return Number(y) + Number(h);
+}
+
+function controlBottom(m) {
+  const [, y, h] = /class="tut-next"[^>]*\by="([-\d.]+)"[^>]*\bheight="([-\d.]+)"/.exec(m);
+  return Number(y) + Number(h);
+}
+
+test('the control sits fully inside the plate, footer or no footer', () => {
+  const withoutFooter = coachCardMark(CARD, 50, 50);
+  assert.ok(
+    controlBottom(withoutFooter) <= plateBottom(withoutFooter),
+    'no footer: the button does not hang out past the bottom of the card',
+  );
+
+  const withFooter = coachCardMark({ ...CARD, footer: 'Stuck? Skip lesson moves you on.' }, 50, 50);
+  assert.ok(
+    controlBottom(withFooter) <= plateBottom(withFooter),
+    'with a footer: the button does not hang out past the bottom of the card',
+  );
+});
+
 test('the ring is drawn round the anchor, and nothing is drawn for nothing', () => {
   const m = highlightMark({ x: 100, y: 200, r: 5 });
   assert.ok(m.includes('class="tut-ring"'));

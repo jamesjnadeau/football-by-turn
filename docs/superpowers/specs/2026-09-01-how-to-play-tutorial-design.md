@@ -59,12 +59,27 @@ into personnel packages or genome training in the middle of lesson one. The
 card's skip control is the escape valve; skipping the last scenario ends the
 tutorial and returns home.
 
-**6. Drill rosters are rosters.**
+**6. Drill rosters live in `rosters.js`, but in their own table.**
 `rosters.js` says of itself that it is the only file that knows the shape of a
-formation. The four drill formations go there rather than into a parallel
-registry, so `getRoster`, `minOnLine` and `teamSize` all answer correctly about
-them. They are absent from `VARIANTS`, so the home screen cannot list them and
-`isPlayable` cannot start one.
+formation, so the drill formations go there rather than into a parallel
+registry. They go into a separate `DRILL_ROSTERS` map that `getRoster` consults
+after `ROSTERS`, for a reason found while checking: four existing tests iterate
+`Object.values(ROSTERS)` and assert things that are true of real football and
+false of a drill — equal sides, exactly `minOnLine` men on the line, an offense
+whose x positions average to the middle of the field, a defense that
+`alignDefense` would leave where it stands. Dropping drills into `ROSTERS`
+would force all four to be weakened, and those tests guard the real game. A
+second table keeps them sharp and gets the drills a weaker test of their own.
+
+They are absent from `VARIANTS` either way, so the home screen cannot list them
+and `isPlayable` cannot start one.
+
+**7. A lesson's defense is never realigned.**
+`reposition()` in main.js calls `realignDefense()` after every move, which for a
+computer-coached defense slides its men to answer the new look. In scenario 4
+that would break the authored vertical stack the moment the coach drags his
+quarterback. A lesson's men stand where the script put them, so
+`realignDefense` returns early during one.
 
 ## The scenarios
 
@@ -233,6 +248,13 @@ bridge asks `isComplete`; if the step landed, the index advances and the card
 changes. After a turn it then asks `offScript`, in that order, so the final
 "watch it finish" step is reached before the play-over check that would
 otherwise call it a failure.
+
+Every step also carries a `demo`: the model answer, as data — `{verb: 'drag',
+id, to}`, `{verb: 'doubletap', id, mode}`, `{verb: 'pass', from, target}`,
+`{verb: 'run'}` and so on. Nothing in the running game reads it. It exists so
+the integration test below can perform each step's intended action without
+test-only knowledge of what the step meant, and it is what a future animated
+hint would draw.
 
 `offScript` is true when a flag has been thrown, or when the play is over while
 the current step still needs a live play. Every step carries `needsLivePlay`;

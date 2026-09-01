@@ -358,3 +358,17 @@ test('hydrateState refuses anything that is not the shape serializeState makes',
   assert.throws(() => hydrateState({}));
   assert.throws(() => hydrateState({ players: 'nope' }));
 });
+
+test('isControllable excludes the remote coach\'s team as well as the computer\'s', () => {
+  const s = createGame({ seed: 1 });
+  s.remoteTeam = 'defense';
+  assert.equal(isControllable(s, 'o-qb'), true);
+  assert.equal(isControllable(s, 'd-lb'), false);
+});
+
+test('a fresh game has no remote team, and isControllable is unaffected', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  assert.equal(s.remoteTeam, undefined);
+  assert.equal(isControllable(s, 'o-qb'), true);
+  assert.equal(isControllable(s, 'd-lb'), false);
+});

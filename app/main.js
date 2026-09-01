@@ -892,7 +892,14 @@ function recordPlanning() {
 function pressRun() {
   if (animating || state.phase !== 'planning') return;
   if (refused({ kind: 'run' })) return;
-  const missing = unplannedPlayers(state);
+  // Never during a lesson. The warning exists to catch a coach who forgot
+  // somebody, and a lesson is the one place he cannot have: it tells him which
+  // single man to order and refuses every other gesture, so the men without
+  // arrows are the ones it is deliberately not teaching yet. Asking him to
+  // press again to run anyway would be asking him to overrule an instruction
+  // the same screen just gave him — on the very first press, where the quarter-
+  // back has no arrow because the step teaching that comes next.
+  const missing = lesson ? [] : unplannedPlayers(state);
   if (missing.length > 0 && !pendingWarning) {
     // Spec: warn when not every player has a direction. Second press runs anyway.
     pendingWarning = true;

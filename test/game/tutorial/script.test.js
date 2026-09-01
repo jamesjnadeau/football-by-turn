@@ -35,6 +35,36 @@ test('every authored order names a man the scripted side actually fields', () =>
   }
 });
 
+test("every opening order is the coach's own man, told to do something real", () => {
+  for (const s of SCENARIOS) {
+    const roster = getRoster(s.variantId);
+    const mine = new Set(roster[s.coach].map((p) => p.id));
+    const theirs = new Set(roster[s.scripted].map((p) => p.id));
+    for (const o of s.openingOrders ?? []) {
+      assert.ok(mine.has(o.id), `${s.id}: ${o.id} is on the side the coach is given`);
+      if (o.cover) assert.ok(theirs.has(o.cover), `${s.id}: ${o.id} covers a real opponent`);
+      assert.ok(o.aim || o.cover, `${s.id}: ${o.id} was told something`);
+    }
+  }
+});
+
+test('nobody the coach is given comes to the line with nothing to do', () => {
+  // The reason openingOrders exists. A man with no plan and no cover trips
+  // turn.js's unplannedPlayers, and in a lesson the coach cannot answer that —
+  // the gate refuses every gesture but the one the step asked for. The one
+  // sanctioned exception is a man whose own step is about to give him orders.
+  const TAUGHT = { 'snap-and-run': ['o-qb'], 'block-and-throw': ['o-qb', 'o-rb'], 'playing-defense': ['d-lb'], 'where-they-stand': ['o-qb'] };
+  for (const s of SCENARIOS) {
+    const ordered = new Set((s.openingOrders ?? []).map((o) => o.id));
+    for (const p of getRoster(s.variantId)[s.coach]) {
+      // The snapper is covered by the automatic snap on turn 0 whatever else
+      // he is doing, but not on any turn after it — so he still needs an order.
+      assert.ok(ordered.has(p.id) || TAUGHT[s.id].includes(p.id),
+        `${s.id}: ${p.id} has neither an opening order nor a step that gives him one`);
+    }
+  }
+});
+
 test('every step is answerable: a real man, a real verb, and words to nudge with', () => {
   for (const s of SCENARIOS) {
     const roster = getRoster(s.variantId);

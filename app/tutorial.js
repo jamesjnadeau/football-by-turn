@@ -14,6 +14,7 @@ import {
   showsMenu as machineShowsMenu,
 } from '../lib/game/tutorial/machine.js';
 import { createGame } from '../lib/game/state.js';
+import { applyOrders } from '../lib/game/ai.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import { saveTutorialDone } from './tutorial-store.js';
 
@@ -49,6 +50,17 @@ export function createLesson() {
         aiLevel: 'scripted',
         scriptedOrders: s.orders,
       });
+      // The standing orders for the men this lesson is not teaching, written
+      // through the same applyOrders the scripted side goes through — there is
+      // one writer of {id, aim, cover} orders and this is it. They go on before
+      // the spots are captured only in the sense that they move nobody: a cover
+      // order is an aim, not a position.
+      //
+      // They survive the whole down without being re-applied. clearAiPlans
+      // wipes the computer's team at every whistle and nobody else's, and this
+      // side is the human's — so the centre keeps his block until the coach
+      // gives him something else to do.
+      applyOrders(state, s.openingOrders ?? []);
       startSpots = {};
       for (const p of state.players) startSpots[p.id] = { x: p.pos.x, y: p.pos.y };
       return { state, random: mulberry32(s.seed) };

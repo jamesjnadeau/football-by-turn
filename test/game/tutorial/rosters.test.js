@@ -36,7 +36,7 @@ test('the two-man drill stands four men on one vertical line at the fifty', () =
   assert.equal(s.players.length, 4);
   const at = (id) => s.players.find((p) => p.id === id).pos;
   assert.deepEqual(at('o-c'), fieldPos(0, 49));
-  assert.deepEqual(at('o-qb'), fieldPos(0, 46));
+  assert.deepEqual(at('o-qb'), fieldPos(0, 44));
   assert.deepEqual(at('d-nt'), fieldPos(0, 51));
   assert.deepEqual(at('d-lb'), fieldPos(0, 54));
 });

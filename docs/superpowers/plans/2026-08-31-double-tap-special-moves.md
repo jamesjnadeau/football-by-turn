@@ -139,7 +139,7 @@ spec document for this feature:
   `{ kind: 'passdrag', dir, throttle, travel }`. Exports `DRAG_MIN_UNITS` (4)
   and `DOUBLE_TAP_MS` (400). `LONGPRESS_MS` no longer exists.
 
-- [ ] **Step 1: Rewrite the classifier's tests**
+- [x] **Step 1: Rewrite the classifier's tests**
 
 Replace the whole of `test/game/gesture.test.js` with the file below. Three
 tests change (the long-press one becomes a hold-is-just-a-tap one, and the two
@@ -263,7 +263,7 @@ test('a drag reports the raw drag vector alongside direction and throttle', () =
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test test/game/gesture.test.js`
 
@@ -275,7 +275,7 @@ doubletap'` reporting `{ kind: 'click' }` where `{ kind: 'doubletap' }` was
 expected, and `'holding still is just a click'` reporting
 `{ kind: 'longpress' }`.
 
-- [ ] **Step 3: Rewrite the classifier**
+- [x] **Step 3: Rewrite the classifier**
 
 Replace the whole of `lib/game/gesture.js` with:
 
@@ -332,12 +332,12 @@ export function classifyGesture(log, prevClickAt = null) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `node --test test/game/gesture.test.js`
 Expected: PASS, all tests.
 
-- [ ] **Step 5: Confirm nothing else imported the dead constant**
+- [x] **Step 5: Confirm nothing else imported the dead constant**
 
 Run: `grep -rn "LONGPRESS_MS\|longpress" --include='*.js' . | grep -v node_modules`
 Expected: no output. (`app/main.js`'s `longpress` branch is renamed in Task 3;
@@ -349,7 +349,7 @@ Expected: PASS. `app/main.js` is not exercised by the suite, so the suite is
 green even though the app's stance branch is momentarily dead code — Task 3
 closes that in the same session.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/game/gesture.js test/game/gesture.test.js && git commit -m "feat: a double tap, not a long press, is the second verb on a player"

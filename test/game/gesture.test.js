@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyGesture, DRAG_MIN_UNITS, LONGPRESS_MS, DOUBLE_TAP_MS } from '../../lib/game/gesture.js';
+import { classifyGesture, DRAG_MIN_UNITS, DOUBLE_TAP_MS } from '../../lib/game/gesture.js';
 import { MAX_ARROW_UNITS } from '../../lib/game/constants.js';
 
 test('a quick tap with no movement is a click', () => {
@@ -8,9 +8,24 @@ test('a quick tap with no movement is a click', () => {
   assert.deepEqual(g, { kind: 'click' });
 });
 
-test('holding still past the threshold is a longpress', () => {
-  const g = classifyGesture([{ t: 0, x: 10, y: 10 }, { t: LONGPRESS_MS + 50, x: 11, y: 10 }]);
-  assert.deepEqual(g, { kind: 'longpress' });
+test('holding still is just a click — duration means nothing now', () => {
+  const g = classifyGesture([{ t: 0, x: 10, y: 10 }, { t: 2000, x: 11, y: 10 }]);
+  assert.deepEqual(g, { kind: 'click' });
+});
+
+test('a second tap in time on the same player is a doubletap', () => {
+  const tap = [{ t: 1100, x: 0, y: 0 }, { t: 1150, x: 0, y: 1 }];
+  assert.deepEqual(classifyGesture(tap, 1000), { kind: 'doubletap' }, 'tapped 100ms before');
+  assert.deepEqual(classifyGesture(tap), { kind: 'click' }, 'no tap at all: an ordinary tap');
+  assert.deepEqual(
+    classifyGesture(tap, 1100 - DOUBLE_TAP_MS - 1), { kind: 'click' },
+    'a stale tap does not make a double tap',
+  );
+});
+
+test('a long hold after a tap is still a doubletap, not a third thing', () => {
+  const hold = [{ t: 1100, x: 0, y: 0 }, { t: 3000, x: 0, y: 1 }];
+  assert.deepEqual(classifyGesture(hold, 1000), { kind: 'doubletap' });
 });
 
 test('moving past DRAG_MIN_UNITS is a drag with direction and throttle', () => {
@@ -35,7 +50,7 @@ test('a drag past full length clamps throttle to 1', () => {
 test('a slow drag is still a drag — movement wins over duration', () => {
   const g = classifyGesture([
     { t: 0, x: 0, y: 0 },
-    { t: LONGPRESS_MS * 2, x: 20, y: 0 },
+    { t: 1000, x: 20, y: 0 },
   ]);
   assert.equal(g.kind, 'drag');
 });
@@ -64,19 +79,24 @@ test('a throw drag carries the same direction and throttle as a run drag', () =>
   assert.equal(g.throttle, 1);
 });
 
-test('arming changes nothing about a tap or a long press', () => {
-  const tap = [{ t: 1100, x: 0, y: 0 }, { t: 1150, x: 0, y: 1 }];
-  assert.equal(classifyGesture(tap, 1000).kind, 'click');
-  const hold = [{ t: 1100, x: 0, y: 0 }, { t: 1100 + LONGPRESS_MS, x: 0, y: 1 }];
-  assert.equal(classifyGesture(hold, 1000).kind, 'longpress');
+test('a drag out and back to where it started is a doubletap, not a throw', () => {
+  const log = [
+    { t: 1100, x: 0, y: 0 },
+    { t: 1150, x: 0, y: 30 },
+    { t: 1200, x: 0, y: 0 },
+  ];
+  assert.deepEqual(
+    classifyGesture(log, 1000), { kind: 'doubletap' },
+    'displacement, not path length, is what makes a drag',
+  );
 });
 
-test('movement still beats duration, armed or not', () => {
-  const slow = [{ t: 1000, x: 0, y: 0 }, { t: 1000 + LONGPRESS_MS + 200, x: 0, y: DRAG_MIN_UNITS + 1 }];
+test('movement still beats repetition, armed or not', () => {
+  const slow = [{ t: 1000, x: 0, y: 0 }, { t: 2000, x: 0, y: DRAG_MIN_UNITS + 1 }];
   assert.equal(classifyGesture(slow).kind, 'drag', 'no tap: a slow drag is still a drag');
   assert.equal(
     classifyGesture(slow, 900).kind, 'passdrag',
-    'armed: a slow drag is a throw, never a long press',
+    'armed: a slow drag is a throw, never a stance',
   );
   assert.equal(
     classifyGesture(slow, 1000 - DOUBLE_TAP_MS - 1).kind, 'drag',

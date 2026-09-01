@@ -1,0 +1,19 @@
+name = "football-by-turn"
+main = "worker/index.js"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "_site"
+binding = "ASSETS"
+
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "LobbyDO"
+
+[[durable_objects.bindings]]
+name = "MATCH"
+class_name = "MatchDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LobbyDO", "MatchDO"]

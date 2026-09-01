@@ -94,6 +94,13 @@ export function applyMatchMessage(record, message, now) {
     return { record: withCommit, messages: [] };
   }
 
+  if (message.type === 'alarm') {
+    if (record.status !== 'active') return { record, messages: [] };
+    const filled = fillFromLastCommitted(record);
+    const withFilled = { ...record, state: filled };
+    return runResolvedTurn(withFilled, now);
+  }
+
   return { record, messages: [] };
 }
 
@@ -117,6 +124,35 @@ export function stripForSide(state, side) {
 
 function getTeamOf(state, id) {
   return state.players.find((p) => p.id === id)?.team ?? null;
+}
+
+/**
+ * Fill in whatever the deadline caught missing, from each side's last
+ * committed play -- or leave a side untouched if it has never committed at
+ * all (spec: "there is nothing to replay"). Two rules, both named in the
+ * spec and both already precedented by lib/game/ai.js's applyScriptedOrders:
+ * a replayed play's SPOTS are dropped (repositioning is a pre-snap act, and
+ * turn.js's canReposition already refuses a spot past turn 0 -- applyPlay's
+ * placeFormation call would simply skip them, but dropping them here means a
+ * replay never even LOOKS like it tried to reposition anyone), and a replayed
+ * STANCE is set only where it differs from the player's current mode, so a
+ * quiet coach does not collect a fresh charge bonus every turn he is replayed.
+ */
+function fillFromLastCommitted(record) {
+  let state = record.state;
+  for (const side of ['offense', 'defense']) {
+    if (record.committed[side] !== null) continue; // this turn's own commit wins
+    const last = record.lastCommitted[side];
+    if (!last) continue; // never committed: keep whatever orders he already has
+    state = cloneState(state);
+    const trimmedStances = {};
+    for (const [id, stance] of Object.entries(last.stances)) {
+      const current = state.players.find((p) => p.id === id);
+      if (current && current.mode !== stance.mode) trimmedStances[id] = stance;
+    }
+    applyPlay(state, { ...last, spots: {}, stances: trimmedStances }, side);
+  }
+  return state;
 }
 
 function runResolvedTurn(record, now) {

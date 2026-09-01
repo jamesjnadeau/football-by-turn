@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createMatch, applyMatchMessage, stripForSide } from '../../worker/match-engine.js';
+import { fieldPos } from '../../lib/game/view.js';
 
 const tokens = { offense: 'tok-o', defense: 'tok-d' };
 
@@ -168,4 +169,61 @@ test('stripForSide hides the other side\'s plans, cover and planned pass, keeps 
   // Their own stance/facing survive:
   const mine = stripForSide(record.state, 'offense').players.find((p) => p.id === 'o-c');
   assert.equal(mine.mode, record.state.players.find((p) => p.id === 'o-c').mode);
+});
+
+test('the alarm on a turn where nobody committed replays both last plays, skipping spots', () => {
+  let m = started();
+  const play = {
+    name: '', plans: { 'o-rb': { dir: { x: 1, y: 0 }, throttle: 1 } }, stances: {},
+    pass: null, spots: { 'o-rb': { across: 20, down: -4 } }, // a spot far off his actual line
+  };
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 1100));
+  // Turn 1 now: neither side commits. The alarm fires.
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
+  const after = record.state.players.find((p) => p.id === 'o-rb').pos;
+  // The illegal spot the play carried (across: 20, down: -4) would land him
+  // roughly a whole field width away -- if the replay had reapplied it he
+  // would be out there, not somewhere physics could have walked him to from
+  // his own turn-0 position in one ordinary turn.
+  assert.ok(Math.abs(after.x - fieldPos(20, m.state.losYard - 4).x) > 20,
+    'the spot from turn 0\'s play is not replayed on turn 1');
+  assert.ok(messages.some((mm) => mm.type === 'turn'), 'the turn still ran, from the replayed arrows');
+});
+
+test('the alarm does not re-arm a stance that is already set, only one that differs', () => {
+  let m = started();
+  const stancePlay = {
+    name: '', plans: {}, stances: { 'o-lg': { mode: 'cutBlock', facing: { x: 0, y: -1 } } },
+    pass: null, spots: {},
+  };
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: stancePlay }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 1100));
+  // turnIndex is now 1+ and o-lg's mode has already advanced past cutBlock
+  // (turn.js's advanceCutBlockPhases). A replay on turn 1 must not set
+  // 'cutBlock' again -- setMode's own legality (state.turnIndex === 0) would
+  // refuse it anyway, which this test also confirms does not throw.
+  assert.doesNotThrow(() => applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt));
+});
+
+test('a coach who has never committed at all keeps whatever orders his men already have', () => {
+  const m = started();
+  const before = m.state.players.filter((p) => p.team === 'defense').map((p) => p.plan);
+  const { record } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
+  const after = record.state.players.filter((p) => p.team === 'defense').map((p) => p.plan);
+  assert.deepEqual(after, before);
+});
+
+test('one coach committed, the other did not: the alarm replays only the quiet one', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  const { record } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
+  assert.equal(record.state.turnIndex, 1, 'the turn ran with the offense\'s fresh commit and the defense\'s replay');
+});
+
+test('the alarm before both coaches have connected is a no-op', () => {
+  const waiting = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  const { record, messages } = applyMatchMessage(waiting, { type: 'alarm' }, 1000);
+  assert.equal(record.status, 'waiting');
+  assert.deepEqual(messages, []);
 });

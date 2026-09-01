@@ -757,6 +757,16 @@ test('the button column clears the yard numbers and the edge of the frame', () =
   }
 });
 
+test('the autoplan plate is always on the board, and names the side it draws for', () => {
+  const mine = renderFieldButtons(createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' }));
+  assert.match(buttonGroup(mine, 'data-autoplan-button'), /aria-label="Autoplan offense"/);
+
+  // Coaching the defense used to hide this plate entirely — now it draws up
+  // the defense instead.
+  const theirs = renderFieldButtons(createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' }));
+  assert.match(buttonGroup(theirs, 'data-autoplan-button'), /aria-label="Autoplan defense"/);
+});
+
 test('the snap draws exactly like any other lock-on: a halo under the quarterback and an arrow to his edge', () => {
   const s = createGame({ seed: 1 });
   const c = getPlayer(s, 'o-c');

@@ -321,6 +321,22 @@ function refused(action) {
   return true;
 }
 
+/** Words for how the play just died, when there is something to name — a
+ *  penalty first, since that is the more specific fact and, on the lesson
+ *  that teaches a foul on purpose, the whole point of the replay. */
+const DEAD_REASON_WORDS = {
+  incomplete: 'Incomplete',
+  'out-of-bounds': 'Out of bounds',
+  recovered: 'Recovered by the defense',
+  tackled: 'Tackled',
+  touchdown: 'Touchdown',
+};
+
+function replayReason(s) {
+  if (s.penalty) return FOUL_WORDS[s.penalty.foul].replace(/^./, (c) => c.toUpperCase());
+  return DEAD_REASON_WORDS[s.deadReason] ?? null;
+}
+
 /**
  * Tell the lesson what just happened: re-deal the down if it went off script,
  * and end the tutorial if that was the last beat of the last lesson.
@@ -339,7 +355,13 @@ function lessonSaw() {
     // sees the line — only the silent reset. dealLesson says it AFTER the
     // rebuild instead, so the fresh down and the reason both land in one
     // paint.
-    dealLesson('Not quite — let us run that one again.');
+    //
+    // The reason is read off `state` before dealLesson rebuilds it out from
+    // under us — a coach who draws exactly the flag a lesson teaches (lesson
+    // 2's forward pass from past the line) has to see that flag named, not
+    // just "not quite".
+    const reason = replayReason(state);
+    dealLesson(reason ? `${reason}. Let us run that one again.` : 'Not quite — let us run that one again.');
     return;
   }
   if (seen.finished) {
@@ -350,19 +372,22 @@ function lessonSaw() {
 }
 
 /**
- * The tutorial is over. The lesson is dropped BEFORE the menu is left open in
- * front of the coach, because every button in there is about to mean what it
- * says — and `variantId` still naming a two-man drill would make New Game deal
- * one as if it were football. The board he leaves behind is the drill's last
- * down, which is what he is looking at anyway; the next startGame rebuilds it.
+ * The tutorial is over. The lesson is dropped BEFORE anything else happens —
+ * `variantId` still naming a two-man drill, or `state` still being the
+ * drill's own scripted state, would make everything behind the menu lie:
+ * Next Down would deal another drill down, recordPlanning()'s `if (lesson)
+ * return` guard would no longer fire and would feed a two-man-drill snapshot
+ * into the coaching log and the learned tendencies, and the AI/personnel
+ * controls would read a `'scripted'` aiLevel and a `'tutorial-2v2'` variant
+ * that mean nothing to them. So the board behind the menu is not left as the
+ * drill's last down — it is a real drive, dealt the same way startGame()
+ * deals one, so every button the coach is looking at means what it says.
  */
 function finishLesson() {
   lesson = null;
   variantId = DEFAULT_VARIANT;
   sideId = 'training';
-  say('');
-  rebuildBoard();
-  paint();
+  startNewGame();
 }
 
 /**
@@ -578,6 +603,14 @@ function onDragPreview(playerId, log, prevTapAt) {
   }
   const g = classifyGesture(log, prevTapAt);
   if (g.kind !== 'drag' && g.kind !== 'passdrag') return;
+  // A lesson that would refuse this gesture on release should not spend the
+  // whole drag promising it with a live arrow — the same check onGesture
+  // makes when the finger lifts, made here before a preview is drawn instead
+  // of after one has been shown and taken back.
+  if (lesson && lesson.allows({ kind: 'gesture', playerId, gestureKind: g.kind }) !== null) {
+    layer('game-preview').clear();
+    return;
+  }
   const p = getPlayer(state, playerId);
   if (repositioning) {
     // The same filled circle a destination gets, for the same reason: it is

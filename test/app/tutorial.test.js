@@ -49,7 +49,7 @@ test('a play that dies early is replayed, with the attempt counted', () => {
   const again = lesson.deal();
   assert.equal(lesson.attempt(), 2);
   assert.equal(again.state.phase, 'planning', 'a fresh down, from the top');
-  assert.match(lesson.card(again.state).footer, /skip/i, 'and the door is pointed at');
+  assert.match(lesson.card().footer, /skip/i, 'and the door is pointed at');
 });
 
 test('the clipboard stays off the board while there is still football to teach', () => {

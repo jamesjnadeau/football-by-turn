@@ -47,6 +47,23 @@ test('the card escapes what it is given, like every other plate on this board', 
   assert.ok(m.includes('&amp;'));
 });
 
+function plateWidth(m) {
+  return Number(/class="tut-plate"[^>]*\bwidth="([-\d.]+)"/.exec(m)[1]);
+}
+
+test('a long title widens the plate even when the body is short', () => {
+  const shortBody = { ...CARD, text: 'Go.' };
+  const shortTitle = coachCardMark({ ...shortBody, title: 'Go', progress: 'Step 1 of 6' }, 50, 50);
+  const longTitle = coachCardMark(
+    { ...shortBody, title: 'The snap, and running with it', progress: 'Step 5 of 6' },
+    50, 50,
+  );
+  assert.ok(
+    plateWidth(longTitle) > plateWidth(shortTitle),
+    'the title line is measured, not just the body, so a long title widens the plate that holds it',
+  );
+});
+
 function plateBottom(m) {
   const [, y, h] = /class="tut-plate"[^>]*\by="([-\d.]+)"[^>]*\bheight="([-\d.]+)"/.exec(m);
   return Number(y) + Number(h);

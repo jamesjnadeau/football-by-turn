@@ -31,7 +31,6 @@ export function createLesson() {
   const ctx = (repositioning, menuOpen) => ({ repositioning, menuOpen, startSpots });
 
   return {
-    scenario,
     attempt: () => attempts,
     buttons: () => scenario().buttons,
     highlight: () => stepAt(scenario(), stepIndex)?.highlight ?? null,

@@ -1039,8 +1039,8 @@ runBtn.addEventListener('click', () => {
 
 /**
  * Draw up what the learned brain would play on the coach's own side of the
- * ball: the menu's Autoplan button and the board's 🎁 both come here, same as
- * pressRun's own shortcut discipline.
+ * ball: the menu's Autoplan button and the board's own plate both come here,
+ * same as pressRun's own shortcut discipline.
  */
 function pressAutoplan() {
   if (animating || state.phase !== 'planning') return;

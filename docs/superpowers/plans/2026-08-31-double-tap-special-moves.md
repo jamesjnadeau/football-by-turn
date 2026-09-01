@@ -792,7 +792,7 @@ him again: `LG back to normal.` and the ring disappears. Set it again and press
 Run Turn — the ring stays on him through the lunge turn and through the drive
 turn that follows, then goes when he returns to normal.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/game/render.js test/game/render.test.js && git commit -m "feat: the cut block's friction ring is its on switch, not its aftermath"
@@ -813,7 +813,7 @@ git add lib/game/render.js test/game/render.test.js && git commit -m "feat: the 
 - Consumes: the behaviour shipped by Tasks 1–4.
 - Produces: nothing.
 
-- [ ] **Step 1: Rewrite the README's stance bullet**
+- [x] **Step 1: Rewrite the README's stance bullet**
 
 In `README.md`, replace the eleven lines from `- **Long-press a player** to
 toggle their stance,` through `  Long-press the same player again to go back to
@@ -840,7 +840,7 @@ normal.` with:
   Double-tap the same player again to go back to normal.
 ```
 
-- [ ] **Step 2: Add the cancel to the README's throw bullet**
+- [x] **Step 2: Add the cancel to the README's throw bullet**
 
 In `README.md`, change the opening of the throw bullet from:
 
@@ -860,7 +860,7 @@ to:
 Leave the rest of that bullet, and its two sub-bullets (lock-on and lob),
 exactly as they are.
 
-- [ ] **Step 3: Refresh the four stale code comments**
+- [x] **Step 3: Refresh the four stale code comments**
 
 In `lib/game/turn.js`, change `// moment the turn actually starts — not back
 when the coach long-pressed` to `// moment the turn actually starts — not back
@@ -877,7 +877,7 @@ In `test/game/state.test.js`, change `// this used to be exactly the bug where
 a long press on the centre before` to `// this used to be exactly the bug where
 a double tap on the centre before`.
 
-- [ ] **Step 4: Verify nothing is left**
+- [x] **Step 4: Verify nothing is left**
 
 Run: `grep -rni "long press\|long-press\|longpress" --include='*.js' --include='*.md' . | grep -v node_modules | grep -v '^./PLAN.md' | grep -v '^./docs/superpowers/plans/'`
 Expected: no output. (`PLAN.md` and the archived plans under
@@ -890,7 +890,7 @@ leave it.)
 Run: `npm test`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add README.md lib/game/turn.js lib/game/constants.js test/game/play.test.js test/game/state.test.js && git commit -m "docs: the long press is gone; the double tap is how a special move goes on"

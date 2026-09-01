@@ -137,7 +137,7 @@ test('applying restores a stance and the axis it locked', () => {
   const qb = getPlayer(fresh, 'o-qb');
   assert.equal(qb.mode, 'tucked');
   assert.deepEqual(qb.facing, { x: 0, y: -1 });
-  assert.equal(qb.charge, 1, 'the stance arms the next-turn burst, as a long press would');
+  assert.equal(qb.charge, 1, 'the stance arms the next-turn burst, as a double tap would');
 });
 
 test('a stance that is no longer legal is skipped, and the rest still loads', () => {

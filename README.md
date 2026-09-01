@@ -215,18 +215,28 @@ within range to make the hit.
   worth a little: slightly more force to hold ground in contact, and an arm's
   length of extra reach — against that man alone. Drag him anywhere else to call
   it off.
-- **Long-press a player** to toggle their stance, shown by a quarter-circle arc
-  around them facing their direction of travel:
-  - The **ball carrier** long-pressed **tucks** the ball in — a little slower,
+- **Double-tap a player** to toggle their special move. Most of them are shown
+  by a quarter-circle arc around them facing their direction of travel:
+  - The **ball carrier** double-tapped **tucks** the ball in — a little slower,
     but much better protected against fumbling.
-  - A **defender** long-pressed gets ready to **tackle**: they slow down a lot,
+  - A **defender** double-tapped gets ready to **tackle**: they slow down a lot,
     but gain extra reach and a better chance of bringing the runner down.
-  - Any other **offensive player** long-pressed drops into **defend position**:
+  - An **offensive lineman** double-tapped *before the snap* throws a **cut
+    block**: as the turn starts he lunges at the man across from him and shoves
+    him back half a yard, then spends the turn after driving — slow, but with a
+    grey ring of extra friction around him that nobody slides through, and a
+    speed boost for any teammate running past inside it. He gets that grey ring
+    from the moment you set it, so you can see the move is on before you run
+    the turn. Linemen only, first turn only.
+  - Any other **offensive player** double-tapped drops into **defend position**:
     movement is severely limited, but their reach goes up and they become much
     harder to shove out of the way — useful for holding a block.
 
-  Long-press the same player again to go back to normal.
-- **Tap the ball carrier, then drag** to throw. The dashed red arrow shows where
+  Double-tap the same player again to go back to normal.
+- **Tap the ball carrier, then press and drag** to throw — the second tap of a
+  double tap, held and pulled away instead of released. Drag back onto him and
+  let go and the throw is called off: any pass you had planned is torn up and
+  you get the double tap's tuck instead. The dashed red arrow shows where
   the ball is going and how hard — a short backward drag is a handoff to the man
   beside you, a long forward one is a bomb. The automatic snap is drawn in the
   same red, but running all the way to the quarterback rather than at a length

@@ -87,7 +87,7 @@ test('mode legality: tuck = non-lineman carrier only, prepared = defense only, h
   const s = createGame({ seed: 1 });
   // The centre holds the ball pre-snap (see the "ball starts tucked in a
   // lineman's hands" comment in state.js), but a lineman can never tuck --
-  // this used to be exactly the bug where a long press on the centre before
+  // this used to be exactly the bug where a double tap on the centre before
   // the snap tucked him instead of offering the cut block.
   assert.equal(setMode(s, 'o-c', 'tucked'), false);     // has the ball, but is a lineman
   assert.equal(setMode(s, 'o-qb', 'tucked'), false);    // no ball until it is snapped to him

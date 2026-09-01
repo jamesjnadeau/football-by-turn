@@ -6,7 +6,7 @@ import {
   receiverAt, lockOnPass, passLanding, backOnPasser,
 } from '../../lib/game/pass.js';
 import { createGame, getPlayer, setPass, setPlan } from '../../lib/game/state.js';
-import { fieldPos } from '../../lib/game/view.js';
+import { fieldPos, yardsOfY } from '../../lib/game/view.js';
 import { len } from '../../lib/game/vec.js';
 import {
   PASS_SPEED_MIN, PASS_SPEED_MAX, PASS_SPAWN_EPSILON, PASS_GRACE_SUBSTEPS,
@@ -75,7 +75,9 @@ test('releasing a throw puts the ball in the air, clear of the passer\'s own rea
   const off = Math.hypot(s.ball.pos.x - from.x, s.ball.pos.y - from.y);
   assert.ok(off > qb.radius + PICKUP_RADIUS_BONUS, 'outside his own scoop range');
   assert.ok(Math.abs(off - (qb.radius + PICKUP_RADIUS_BONUS + PASS_SPAWN_EPSILON)) < 1e-9);
-  assert.deepEqual(events, [{ type: 'pass', by: 'o-qb', forward: true, auto: false }]);
+  assert.deepEqual(events, [{
+    type: 'pass', by: 'o-qb', forward: true, auto: false, fromYard: yardsOfY(s.ball.pos.y),
+  }]);
   assert.equal(s.forwardPasses, 1);
   assert.equal(s.penalty, null);
 });

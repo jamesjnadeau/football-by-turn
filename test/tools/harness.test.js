@@ -67,7 +67,7 @@ test('evaluateMatch pits two learned genomes deterministically', () => {
 test('learnedOffenseCoach stands its formation and coaches the play', () => {
   const off = makeGenome(OFFENSE_SPEC);
   const s = scenario(mulberry32(8));
-  learnedOffenseCoach(off)(s);
+  learnedOffenseCoach(off, mulberry32(9))(s);
   assert.ok(s.aiPlay, 'a call was made at the snap');
 });
 

@@ -3,16 +3,35 @@ import assert from 'node:assert/strict';
 import {
   defenseFitness, trainDefense, TURNOVER_BONUS_YARDS, TOUCHDOWN_PENALTY_YARDS,
 } from '../../tools/train-defense.js';
+import { summarizePlays } from '../../lib/game/train/harness.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 
-test('defenseFitness prices yards against, turnovers for, touchdowns against', () => {
-  const base = { yardsPerPlay: 3, turnoverRate: 0, touchdownRate: 0 };
-  assert.ok(defenseFitness({ ...base, yardsPerPlay: 2 }) > defenseFitness(base));
-  assert.ok(defenseFitness({ ...base, turnoverRate: 0.5 }) > defenseFitness(base));
-  assert.ok(defenseFitness({ ...base, touchdownRate: 0.5 }) < defenseFitness(base));
+// The full per-play rule (touchdown-vs-not asymmetry, TFL doubling, the
+// seconds/passes/air-yards penalties) is exercised in
+// test/game/train/fitness.test.js, against lib/game/train/fitness.js
+// directly. This just proves the tools/train-defense.js shim still funnels
+// to the same place, with the constants it re-exports.
+const statsFor = (play) => summarizePlays([{
+  yards: 0, touchdown: false, turnover: false, turns: 0, passes: 0, airYards: 0, ...play,
+}]);
+
+test('the shim\'s defenseFitness prices yards against, turnovers for, touchdowns against', () => {
+  assert.ok(defenseFitness(statsFor({ yards: 2 })) > defenseFitness(statsFor({ yards: 3 })));
+  assert.ok(
+    defenseFitness(statsFor({ yards: 3, turnover: true }))
+      > defenseFitness(statsFor({ yards: 3 })),
+  );
+  assert.ok(
+    defenseFitness(statsFor({ yards: 3, touchdown: true }))
+      < defenseFitness(statsFor({ yards: 3 })),
+  );
   assert.equal(
-    defenseFitness({ yardsPerPlay: 4, turnoverRate: 0.25, touchdownRate: 0.1 }),
-    -4 + TURNOVER_BONUS_YARDS * 0.25 - TOUCHDOWN_PENALTY_YARDS * 0.1,
+    defenseFitness(statsFor({ yards: 3, turnover: true })) - defenseFitness(statsFor({ yards: 3 })),
+    TURNOVER_BONUS_YARDS,
+  );
+  assert.equal(
+    defenseFitness(statsFor({ yards: 12, touchdown: true })),
+    -TOUCHDOWN_PENALTY_YARDS - 12,
   );
 });
 

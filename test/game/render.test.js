@@ -4,7 +4,7 @@ import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
   coverMark, coverHaloMark, lineZoneMark, renderFieldButtons, lineToGainMark, passLockMark,
-  liveLobMark,
+  liveLobMark, fieldButtonAnchor,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
@@ -875,4 +875,66 @@ test('the lob\'s two marks are styled in the game stylesheet', () => {
   const { markup } = renderBoardShell(0);
   assert.ok(markup.includes('.pass-land{'), 'the landing circle has a style rule');
   assert.ok(markup.includes('.pass-halo{'), 'and so does the lock halo');
+});
+
+test('the column can be asked where each of its plates sits', () => {
+  const run = fieldButtonAnchor('run', 20);
+  const shuffle = fieldButtonAnchor('reposition', 20);
+  const gift = fieldButtonAnchor('autoplan', 20);
+  assert.equal(run.x, shuffle.x, 'one column');
+  assert.equal(run.x, gift.x);
+  assert.ok(shuffle.y < gift.y, 'shuffle above the gift');
+  assert.ok(gift.y < run.y, 'gift above fast-forward');
+  assert.ok(run.r > 0);
+  assert.equal(fieldButtonAnchor('nonesuch', 20), null);
+});
+
+test('the clipboard is the middle of the column, and still draws where it always did', () => {
+  const menuAnchor = fieldButtonAnchor('menu', 20);
+  assert.ok(fieldButtonAnchor('reposition', 20).y < menuAnchor.y);
+  assert.ok(menuAnchor.y < fieldButtonAnchor('run', 20).y);
+  assert.ok(menuButtonMark(20, 20).includes(`y="${num(menuAnchor.y - menuAnchor.r)}"`),
+    'the ring a lesson pins to it lands on the plate a paint draws');
+});
+
+test('naming the menu in allow does not conjure a second clipboard', () => {
+  const s = createGame({ seed: 1, ai: null });
+  const m = renderFieldButtons(s, {
+    repositioning: false, animating: false, cameraYard: 20, allow: ['run', 'menu'],
+  });
+  assert.ok(m.includes('data-run-button'));
+  assert.equal((m.match(/data-menu-button/g) ?? []).length, 0,
+    'menuButtonMark owns that plate, and only it draws one');
+});
+
+test('an anchor lands on the plate the same paint actually draws', () => {
+  const s = createGame({ seed: 1, ai: null });
+  const markup = renderFieldButtons(s, { repositioning: false, animating: false, cameraYard: 20 });
+  const anchor = fieldButtonAnchor('run', s.losYard, 20);
+  // fieldButtonMark centres the plate on cy, so its y attribute is cy - size/2.
+  assert.ok(markup.includes(`y="${num(anchor.y - anchor.r)}"`),
+    'the ring and the plate are worked out from one number, not two');
+});
+
+test('a lesson fields only the buttons it names', () => {
+  const s = createGame({ seed: 1, ai: null });
+  const opts = { repositioning: false, animating: false, cameraYard: 20 };
+  const all = renderFieldButtons(s, opts);
+  assert.ok(all.includes('data-run-button'));
+  assert.ok(all.includes('data-autoplan-button'));
+
+  const only = renderFieldButtons(s, { ...opts, allow: ['run'] });
+  assert.ok(only.includes('data-run-button'));
+  assert.ok(!only.includes('data-autoplan-button'), 'no gift button in a lesson');
+  assert.ok(!only.includes('data-reposition-button'));
+});
+
+test('the board can be built without a Coaches Menu, and always has a lesson layer', () => {
+  const withMenu = renderBoardShell(20, 30, 20);
+  assert.ok(withMenu.markup.includes('data-menu-button'));
+  assert.ok(withMenu.markup.includes('id="game-tutorial"'));
+
+  const without = renderBoardShell(20, 30, 20, { menu: false });
+  assert.ok(!without.markup.includes('data-menu-button'), 'no way into the menu during a lesson');
+  assert.ok(without.markup.includes('id="game-tutorial"'));
 });

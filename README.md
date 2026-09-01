@@ -333,11 +333,15 @@ within range to make the hit.
   orders to give — a defender in a play you saved while coaching both teams, a
   man whose saved spot will not fit on the down being played, say — is skipped,
   and the message says how many.
-- When a play ends, **Next Down** appears — click it to spot the ball,
-  re-form both teams at the new line of scrimmage, and rule on the down: reach
-  the line to gain and it's a fresh 1st and 10 from there; fall short and the
-  down counter simply advances. After a touchdown, or the offense losing the
-  ball any way — a turnover on downs included — the game is over.
+- When a play ends — tackled, out of bounds, an incompletion, a touchdown, a
+  fumble the defense fell on — the game moves on by itself after a few
+  seconds' pause to read the board: the ball is spotted, both teams re-form at
+  the new line of scrimmage, and the down is ruled on. Reach the line to gain
+  and it's a fresh 1st and 10 from there; fall short and the down counter
+  simply advances. **Next Down** is there for anyone who doesn't want to wait
+  out the pause, and pressing it (or **New Game**) cancels the one that was
+  coming. After a touchdown, or the offense losing the ball any way — a
+  turnover on downs included — the game is over.
 - **New Game** resets everything and starts a fresh drive, 1st and 10 from the
   offense's own 20.
 - **Back to Home** leaves the drive and returns to the home screen. It abandons

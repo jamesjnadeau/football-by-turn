@@ -795,13 +795,15 @@ function pressRun() {
       say(`FLAG: ${FOUL_WORDS[state.penalty.foul]}.`
         + ` ${PENALTY_YARDS} yards from the previous spot, loss of down.`);
     }
-    // A tackle or a touchdown moves the game on by itself after a beat; every
-    // other way a play can die (out of bounds, incomplete, a fumble the
-    // defense fell on) still waits for the button. A touchdown restarts the
-    // game because scoring is how this one is won — unless a flag is being
-    // enforced, which wipes the score and makes it an ordinary next down.
-    if (state.phase === 'playOver'
-      && (state.deadReason === 'tackled' || state.deadReason === 'touchdown')) {
+    // However the play died — a tackle, a touchdown, an incompletion, a step
+    // out of bounds, a fumble the defense fell on — the game moves on by
+    // itself after a beat. The whistle has already settled everything there
+    // is to settle, so the beat is for reading the board, not for asking the
+    // coach to confirm that the play is over. Next Down is still there for a
+    // coach who doesn't want to wait. A touchdown restarts the game because
+    // scoring is how this one is won — unless a flag is being enforced, which
+    // wipes the score and makes it an ordinary next down.
+    if (state.phase === 'playOver') {
       scheduleAutoAdvance(
         state.deadReason === 'touchdown' && !state.penalty ? startNewGame : goToNextDown,
       );

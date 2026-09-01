@@ -10,10 +10,11 @@ import { classifyGesture } from '../lib/game/gesture.js';
 export function attachInput(board, { hitTest, onGesture, onDragPreview }) {
   let log = null;
   let playerId = null;
-  // When each player was last tapped. A tap arms the NEXT drag on that same
-  // player as a throw (the spec's double-tap-then-drag); anything else disarms
-  // him, so a tap from ten seconds ago can never turn a run into a throw.
-  // classifyGesture owns the timing rule; this map only remembers the tap.
+  // When each player was last tapped. A tap arms the NEXT gesture on that same
+  // player: released in place it is a double tap (his special move), dragged
+  // away it is a throw. Anything else disarms him, so a tap from ten seconds
+  // ago can never turn a run into a throw. classifyGesture owns the timing
+  // rule; this map only remembers the tap.
   const lastTapAt = new Map();
 
   board.on('pointerdown', (e) => {

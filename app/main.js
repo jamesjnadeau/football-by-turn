@@ -1,7 +1,7 @@
 import { SVG } from './vendor/svg.esm.js';
 import {
   createGame, setPlan, setMode, getPlayer, clearAllPlans, isControllable, setPass, ballPos,
-  aimSnap,
+  aimSnap, clearPass,
 } from '../lib/game/state.js';
 import {
   canReposition, placePlayer, spotFault, alignDefense, lineCount, setPersonnel, answerOffense,
@@ -20,7 +20,7 @@ import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '..
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
-import { receiverAt, lockOnPass, passLanding } from '../lib/game/pass.js';
+import { receiverAt, lockOnPass, passLanding, backOnPasser } from '../lib/game/pass.js';
 import { lobLanded } from '../lib/game/lob.js';
 import {
   TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
@@ -272,7 +272,7 @@ function hitTest(p) {
   let bestD = Infinity;
   for (const pl of state.players) {
     // The computer's players take no orders. Gating here covers all three ways
-    // in — drag, drag preview, and long-press — because every one of them
+    // in — drag, drag preview, and double tap — because every one of them
     // starts from a hit test that returns a player id.
     if (!isControllable(state, pl.id)) continue;
     const d = Math.hypot(pl.pos.x - p.x, pl.pos.y - p.y);
@@ -384,10 +384,27 @@ function onGesture(playerId, gesture, point) {
     paint();
     return;
   }
-  if (gesture.kind === 'passdrag') {
-    // Tap-then-drag is a throw only from the man with the ball. From anyone
-    // else it is an ordinary run arrow — which is what the drag preview showed
-    // him, so committing anything less would break that promise.
+  // A throw drag dropped back on the man throwing it is not a throw at all: it
+  // is the double tap that started it, with the pass called off. Decided here
+  // rather than in classifyGesture because it is a fact about how big the
+  // player is, not about the pointer — the classifier only ever sees
+  // coordinates. Everything downstream then reads one verb, so the cancel
+  // needs no branch of its own.
+  const cancelled = gesture.kind === 'passdrag' && backOnPasser(p, point);
+  if (cancelled && state.plannedPass && state.plannedPass.from === playerId) {
+    // "Cancel the pass" means the throw already on the board too, not only the
+    // one this drag was drawing — which is what makes the gesture reversible.
+    // Re-aiming the snap afterwards is what clearAllPlans does for the same
+    // reason: taking back the coach's throw must leave a down that can still
+    // start, not a centre standing on the ball.
+    clearPass(state);
+    aimSnap(state);
+  }
+  const kind = cancelled ? 'doubletap' : gesture.kind;
+  if (kind === 'passdrag') {
+    // Double-tap-then-drag is a throw only from the man with the ball. From
+    // anyone else it is an ordinary run arrow — which is what the drag preview
+    // showed him, so committing anything less would break that promise.
     //
     // Dropping it on one of your own inside the lock zone aims the throw at
     // HIM: direction and power both come from where he is standing, and the
@@ -406,7 +423,7 @@ function onGesture(playerId, gesture, point) {
       say(`${p.role} doesn't have the ball — running instead.`);
     }
     pendingWarning = false;
-  } else if (gesture.kind === 'drag') {
+  } else if (kind === 'drag') {
     const opp = opponentAt(state, point, p.team);
     if (opp && setCover(state, playerId, opp)) {
       say(`${p.role} will cover ${getPlayer(state, opp).role}.`);
@@ -416,12 +433,12 @@ function onGesture(playerId, gesture, point) {
       say('');
     }
     pendingWarning = false;
-  } else if (gesture.kind === 'longpress') {
+  } else if (kind === 'doubletap') {
     const target =
       p.mode !== 'normal' ? 'normal'
       // An offensive lineman can never tuck (setMode refuses it outright), so
       // this has to be checked before the carrier-tucked branch below —
-      // otherwise a long press on the centre pre-snap (he's the placeholder
+      // otherwise a double tap on the centre pre-snap (he's the placeholder
       // ball carrier before the snap) would offer 'tucked' and setMode would
       // silently refuse it. On the snap itself he gets the cut block instead;
       // any other turn he falls through to holding like any other lineman.
@@ -432,9 +449,9 @@ function onGesture(playerId, gesture, point) {
     if (!setMode(state, playerId, target)) say(`${p.role} can't do that.`);
     else say(target === 'normal' ? `${p.role} back to normal.` : `${p.role}: ${target === 'cutBlock' ? 'cut block' : target}.`);
   }
-  // gesture.kind === 'click': a tap on a player does nothing. Moving him is a
-  // drag, and only in reposition mode — a tap is how you arm a throw, and it
-  // cannot also be how you move somebody.
+  // kind === 'click': a single tap on a player does nothing on its own. Moving
+  // him is a drag, and only in reposition mode — one tap is how you arm the
+  // second, and it cannot also be how you move somebody.
   paint();
 }
 
@@ -458,13 +475,21 @@ function onDragPreview(playerId, log, prevTapAt) {
     return;
   }
   // A throw only previews as a throw from the man actually holding the ball;
-  // from anyone else a tap-then-drag is an ordinary run. Both marks come from
-  // render.js, so the arrow being dragged and the arrow committed are the same
-  // picture either way.
+  // from anyone else a double-tap-drag is an ordinary run. Both marks come
+  // from render.js, so the arrow being dragged and the arrow committed are the
+  // same picture either way.
+  const tip = log[log.length - 1];
+  if (g.kind === 'passdrag' && backOnPasser(p, tip)) {
+    // Back on the man himself: releasing here throws nothing, so nothing is
+    // drawn. The arrow vanishing out from under the finger is the promise that
+    // the pass is off.
+    layer('game-preview').clear();
+    return;
+  }
   const throwing = g.kind === 'passdrag' && state.ball.carrierId === playerId;
   const mark = throwing
-    ? throwMark(p, g, log[log.length - 1])
-    : runOrCoverMark(p, g.travel, log[log.length - 1]);
+    ? throwMark(p, g, tip)
+    : runOrCoverMark(p, g.travel, tip);
   layer('game-preview').clear().svg(mark);
 }
 

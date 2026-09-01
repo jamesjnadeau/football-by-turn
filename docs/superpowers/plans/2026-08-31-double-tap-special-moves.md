@@ -469,7 +469,7 @@ and no test in `test/` does. Every decision this task makes that *could* be
 tested in isolation was pushed into Tasks 1 and 2 for exactly that reason.
 Step 6 is a hand-run browser script; do not skip it.
 
-- [ ] **Step 1: Extend the imports**
+- [x] **Step 1: Extend the imports**
 
 In `app/main.js`, add `clearPass` to the existing `state.js` import list, so it
 reads:
@@ -487,7 +487,7 @@ and add `backOnPasser` to the existing `pass.js` import:
 import { receiverAt, lockOnPass, passLanding, backOnPasser } from '../lib/game/pass.js';
 ```
 
-- [ ] **Step 2: Rewrite `onGesture`'s verb dispatch**
+- [x] **Step 2: Rewrite `onGesture`'s verb dispatch**
 
 In `app/main.js`, replace everything from `if (gesture.kind === 'passdrag') {`
 through the end of `onGesture` with the block below. The `passdrag` and `drag`
@@ -574,7 +574,7 @@ deliberate: setting a formation has no stances and no throws to cancel, so a
 drag out and back is a move onto the spot he is already standing on — a
 harmless no-op either way, and not worth a second code path.
 
-- [ ] **Step 3: Clear the preview while the drag is home**
+- [x] **Step 3: Clear the preview while the drag is home**
 
 In `app/main.js`, replace the tail of `onDragPreview` — everything from the
 `// A throw only previews as a throw...` comment to the end of the function —
@@ -601,7 +601,7 @@ with:
 }
 ```
 
-- [ ] **Step 4: Refresh the two stale comments in this file**
+- [x] **Step 4: Refresh the two stale comments in this file**
 
 In `app/main.js`'s `hitTest`, change:
 
@@ -633,7 +633,7 @@ No code changes in `app/input.js` — a `doubletap` already falls into the
 existing `else lastTapAt.delete(playerId)`, which is right: it means a third
 tap starts a fresh pair rather than firing the stance again.
 
-- [ ] **Step 5: Run the suite**
+- [x] **Step 5: Run the suite**
 
 Run: `npm test`
 Expected: PASS (unchanged — nothing in `test/` loads `app/main.js`).
@@ -679,7 +679,7 @@ one must hold before you commit.
 11. **Enter reposition mode and double-tap-drag a player** — he moves to the
     drop spot as before. No stance is set.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add app/main.js app/input.js && git commit -m "feat: double tap sets the stance, and dragging home takes the throw back"

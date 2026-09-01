@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  stepAt, allows, advance, offScript, cardFor, showsMenu,
+  stepAt, allows, advance, offScript, cardFor, showsMenu, MAX_LESSON_TURNS,
 } from '../../../lib/game/tutorial/machine.js';
 
 // A scenario of this test's own, so the assertions describe the machine rather
@@ -136,4 +136,34 @@ test('the sign-off card says the outro and offers the way on', () => {
   assert.equal(c.highlight, null);
   assert.equal(c.control, 'Next lesson');
   assert.equal(cardFor(SCENARIO, 3, { isLastScenario: true }).control, 'Finish');
+});
+
+test('a down that will not end is off script, even though nothing has gone wrong yet', () => {
+  const live = { phase: 'planning', penalty: null, turnIndex: MAX_LESSON_TURNS };
+  assert.equal(offScript(SCENARIO, 2, live), false, 'at the cap it is still a live play');
+  assert.equal(
+    offScript(SCENARIO, 2, { ...live, turnIndex: MAX_LESSON_TURNS + 1 }), true,
+    'past it, the lesson re-deals rather than waiting for a whistle that is not coming');
+});
+
+test('the turn cap catches the closing beat too, which no other check can', () => {
+  // The closing beat carries needsLivePlay:false, so the playOver check can
+  // never fire on it. Before the cap, a fumble nobody recovered stalled here
+  // forever: done waits for a whistle, offScript waits for the same whistle.
+  assert.equal(stepAt(SCENARIO, 2).needsLivePlay, false, 'the step this test is about');
+  assert.equal(
+    offScript(SCENARIO, 2, { phase: 'planning', penalty: null, turnIndex: MAX_LESSON_TURNS + 1 }),
+    true);
+});
+
+test('the cap leaves every authored beat room to land', () => {
+  // The integration test's own runout backstop uses 30 turns; the cap must sit
+  // above anything a lesson legitimately asks for, or a slow scenario would
+  // re-deal itself forever.
+  assert.ok(MAX_LESSON_TURNS >= 30, 'above the longest run a lesson can ask for');
+});
+
+test('the sign-off card is never off script, however long the down ran', () => {
+  assert.equal(
+    offScript(SCENARIO, 3, { phase: 'planning', penalty: null, turnIndex: 999 }), false);
 });

@@ -901,6 +901,20 @@ test('the column can be asked where each of its plates sits', () => {
   assert.equal(fieldButtonAnchor('nonesuch', 20), null);
 });
 
+test('plates in one column share an x and are told apart by their row', () => {
+  // Every entry is col 0 until Task 4, so this pins what must NOT change: the
+  // refactor threads col and cx through without moving a single plate. The
+  // two-column assertion lands in Task 4, with the plates that need it.
+  const a = fieldButtonAnchor('run', 20);
+  const b = fieldButtonAnchor('menu', 20);
+  assert.equal(a.x, b.x, 'two plates in one column share an x');
+  assert.notEqual(a.y, b.y, 'and are told apart by their row');
+});
+
+test('the anchor still refuses a name there is no button for', () => {
+  assert.equal(fieldButtonAnchor('nonesuch', 20), null);
+});
+
 test('the clipboard is the middle of the column, and still draws where it always did', () => {
   const menuAnchor = fieldButtonAnchor('menu', 20);
   assert.ok(fieldButtonAnchor('reposition', 20).y < menuAnchor.y);

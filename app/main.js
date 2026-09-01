@@ -205,6 +205,7 @@ function aimCamera(cam) {
   layer('game-buttons').clear().svg(
     renderFieldButtons(state, {
       repositioning, animating, cameraYard: cam, allow: lesson ? lesson.buttons() : null,
+      book: myBook(),
     }),
   );
   layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cam));
@@ -275,7 +276,7 @@ function paint() {
   runBtn.disabled = animating || state.phase !== 'planning';
   autoplanBtn.textContent = `Autoplan ${coachedSide(state)}`;
   autoplanBtn.disabled = animating || state.phase !== 'planning';
-  clearBtn.disabled = animating;
+  clearBtn.disabled = animating || state.phase !== 'planning';
   nextBtn.disabled = animating;
   newBtn.disabled = animating;
   homeBtn.disabled = animating;
@@ -825,7 +826,23 @@ function pressBoardButton(target) {
   else if (target.closest('[data-reposition-button]')) toggleReposition();
   else if (target.closest('[data-run-button]')) pressRun();
   else if (target.closest('[data-autoplan-button]')) pressAutoplan();
-  else return false;
+  else if (target.closest('[data-clear-button]')) pressClear();
+  else if (target.closest('[data-ai-button]')) pressAi();
+  else if (target.closest('[data-personnel-button]')) pressPersonnel();
+  else if (target.closest('[data-save-button]')) savePlay();
+  else return callPlayFromBoard(target);
+  return true;
+}
+
+/**
+ * The five load plates share one attribute and are told apart by its value, so
+ * one line reads the slot straight off the plate that was pressed rather than
+ * five branches saying the same thing.
+ */
+function callPlayFromBoard(target) {
+  const el = target.closest('[data-play-button]');
+  if (!el) return false;
+  callPlay(Number(el.getAttribute('data-play-button')));
   return true;
 }
 
@@ -1026,16 +1043,19 @@ autoplanBtn.addEventListener('click', () => {
   pressAutoplan();
 });
 
-clearBtn.addEventListener('click', () => {
-  closeMenu();
+/**
+ * Clear, Defense and Personnel, from the menu or from their plates on the
+ * board. One function each so the two surfaces cannot drift: whichever is
+ * pressed, the same rule runs and the same thing is said.
+ */
+function pressClear() {
   if (animating || state.phase !== 'planning') return;
   clearAllPlans(state);
   pendingWarning = false;
   paint();
-});
+}
 
-aiBtn.addEventListener('click', () => {
-  closeMenu();
+function pressAi() {
   if (animating || state.phase !== 'planning') return;
   const next = nextAiMode(state);
   state.aiTeam = next.ai;
@@ -1047,11 +1067,14 @@ aiBtn.addEventListener('click', () => {
   pendingWarning = false;
   say(next.note);
   paint();
-});
+}
 
-personnelBtn.addEventListener('click', () => {
-  closeMenu();
-  if (animating || !canReposition(state)) return;
+function pressPersonnel() {
+  // The aiTeam check is new here. paint() has always greyed the menu button on
+  // it — the computer picks its own package, and the two would fight on every
+  // press — but the handler never carried it, which was safe only while a
+  // disabled button was the sole way in. A plate on the board is a second way.
+  if (animating || !canReposition(state) || state.aiTeam === 'defense') return;
   const order = PERSONNEL_PACKAGES;
   const next = order[(order.indexOf(personnelId(state.variantId)) + 1) % order.length];
   if (!setPersonnel(state, next)) return;
@@ -1063,7 +1086,11 @@ personnelBtn.addEventListener('click', () => {
   pendingWarning = false;
   say(`Personnel: ${next}.`);
   paint();
-});
+}
+
+clearBtn.addEventListener('click', () => { closeMenu(); pressClear(); });
+aiBtn.addEventListener('click', () => { closeMenu(); pressAi(); });
+personnelBtn.addEventListener('click', () => { closeMenu(); pressPersonnel(); });
 
 /**
  * A formation is what you come to the line with, so the mode switches itself

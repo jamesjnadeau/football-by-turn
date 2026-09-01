@@ -2498,11 +2498,7 @@ function finishLesson() {
  * the coach is looking at when the card disappears is the real menu.
  */
 function pressMenu() {
-  if (lesson && lesson.allows({ kind: 'menu' }) !== null) {
-    say(lesson.allows({ kind: 'menu' }));
-    paint();
-    return;
-  }
+  if (refused({ kind: 'menu' })) return;
   openMenu();
   lessonSaw();
 }

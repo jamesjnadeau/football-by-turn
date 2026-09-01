@@ -175,8 +175,8 @@ because the computer does not decide until you press **Run Turn**. The
 Either computer breaks a defender down into the tackling stance once he is
 within range to make the hit.
 
-- **Three buttons run down the right-hand margin of the field**, clear of the
-  yard numbers. The middle one opens the menu; the two either side are
+- **Four buttons run down the right-hand margin of the field**, clear of the
+  yard numbers. The middle one opens the menu; the three either side are
   shortcuts to buttons already in it, not extra features — each calls exactly
   what its twin in the menu calls, so the two can never say different things.
   - 📋 **Coaches Menu**, in the middle, where the vertical `COACHES MENU`
@@ -187,11 +187,21 @@ within range to make the hit.
     pressed-in while the mode is on, and is only there while you are setting
     up: it disappears at the snap, which is also your cue that the play has
     started.
-  - ⏩ **below** it is **Run Turn** — the same warning if someone has no
+  - 🎁 **below** it is **Autoplan** — one press draws up a whole play for the
+    side you are coaching, using the same trained brain the computer plays:
+    the learned offense's run/pass call, option read, routes and throws when
+    the offense is yours, and the learned defense's man/zone call, coverage
+    matchups and rush when you have taken the defense. It plans from wherever
+    your men are actually standing — where they line up is still your call —
+    and everything it draws is an ordinary order you can redraw, so it is a
+    starting point and not a decision. Press it again on a later turn and it
+    reads the board again. If you have trained a genome in this browser
+    (**Train against your ghost**), that is the brain it draws with.
+  - ⏩ **below that** is **Run Turn** — the same warning if someone has no
     direction set, and the same second press to run anyway. It greys out rather
     than vanishing when there is no turn to run, so it never moves.
 
-  All three are ordinary buttons to a keyboard: tab to one and press Enter or
+  All four are ordinary buttons to a keyboard: tab to one and press Enter or
   Space. The clipboard is the first tab stop on the page, which matters because
   everything the menu holds is out of the tab order until it is open.
 - Nearly all the controls live in the **Coaches Menu**. The play's status — the

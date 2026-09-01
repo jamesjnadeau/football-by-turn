@@ -333,8 +333,8 @@ nothing else here is sensitive to it.
 
 Most of this tests the way the rest of the repository does, as pure functions
 under `node --test`: the lobby markup, the new home-screen entry, the state
-serialize/hydrate round trip, `applyPlay` scoped to a team, the extracted
-placement rules, and the stale-play replay rule — including that it skips
+serialize/hydrate round trip, `applyPlay` scoped to a team, and
+the stale-play replay rule — including that it skips
 spots and that it does not re-commit an unchanged stance.
 
 The server is tested through `worker/match-engine.js`, which is a plain

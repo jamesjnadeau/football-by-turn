@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spotText, downDistanceText, humanSide, gameOverMessage, kickoffMessage } from '../../lib/game/hud.js';
+import {
+  spotText, downDistanceText, humanSide, coachedSide, gameOverMessage, kickoffMessage,
+} from '../../lib/game/hud.js';
 import { createGame } from '../../lib/game/state.js';
 
 test('spotText names the side of the field', () => {
@@ -26,6 +28,12 @@ test('humanSide is the team the computer is not', () => {
   assert.equal(humanSide(createGame({ seed: 1, ai: 'defense' })), 'offense');
   assert.equal(humanSide(createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' })), 'defense');
   assert.equal(humanSide(createGame({ seed: 1 })), null);
+});
+
+test('coachedSide is the side the coach controls, and hot-seat is the offense', () => {
+  assert.equal(coachedSide(createGame({ seed: 1, ai: 'defense' })), 'offense');
+  assert.equal(coachedSide(createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' })), 'defense');
+  assert.equal(coachedSide(createGame({ seed: 1 })), 'offense'); // hot-seat
 });
 
 test('the final call knows whose side you were on', () => {

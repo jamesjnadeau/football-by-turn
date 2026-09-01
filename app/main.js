@@ -16,7 +16,7 @@ import {
   menuButtonMark, liveLobMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
-import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '../lib/game/hud.js';
+import { downDistanceText, gameOverMessage, kickoffMessage, humanSide, coachedSide } from '../lib/game/hud.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
@@ -50,7 +50,7 @@ import { serializeBundle } from '../lib/game/train/bundle.js';
 import {
   loadGenomeBundles, saveGenomeBundle, clearGenomeBundles, overrideValues,
 } from './genome-store.js';
-import { autoplanOffense } from '../lib/game/offense.js';
+import { autoplanLearned } from '../lib/game/autoplan.js';
 import { maybeApplyLearnedFormations } from '../lib/game/learned/formation.js';
 import { activeGenome } from '../lib/game/learned/active.js';
 
@@ -234,7 +234,8 @@ function paint() {
   copyGenomeBtn.disabled = animating || trainedSide === null;
   discardGenomeBtn.disabled = animating || trainedSide === null;
   runBtn.disabled = animating || state.phase !== 'planning';
-  autoplanBtn.disabled = animating || state.phase !== 'planning' || state.aiTeam === 'offense';
+  autoplanBtn.textContent = `Autoplan ${coachedSide(state)}`;
+  autoplanBtn.disabled = animating || state.phase !== 'planning';
   clearBtn.disabled = animating;
   nextBtn.disabled = animating;
   newBtn.disabled = animating;
@@ -672,7 +673,7 @@ function pressBoardButton(target) {
   if (target.closest('[data-menu-button]')) openMenu();
   else if (target.closest('[data-reposition-button]')) toggleReposition();
   else if (target.closest('[data-run-button]')) pressRun();
-  else if (target.closest('[data-autoplan-button]')) pressAutoplanOffense();
+  else if (target.closest('[data-autoplan-button]')) pressAutoplan();
   else return false;
   return true;
 }
@@ -835,14 +836,14 @@ runBtn.addEventListener('click', () => {
 });
 
 /**
- * Draw up the QB run option for the human's own offense: the menu's Autoplan
- * offense button and the board's quick-press icon both come here, same as
+ * Draw up what the learned brain would play on the coach's own side of the
+ * ball: the menu's Autoplan button and the board's 🎁 both come here, same as
  * pressRun's own shortcut discipline.
  */
-function pressAutoplanOffense() {
+function pressAutoplan() {
   if (animating || state.phase !== 'planning') return;
-  const note = autoplanOffense(state);
-  if (note === null) return; // declined silently -- the computer is coaching this team
+  const note = autoplanLearned(state);
+  if (note === null) return; // declined silently -- there was nothing to plan
   pendingWarning = false;
   say(note);
   paint();
@@ -850,7 +851,7 @@ function pressAutoplanOffense() {
 
 autoplanBtn.addEventListener('click', () => {
   closeMenu();
-  pressAutoplanOffense();
+  pressAutoplan();
 });
 
 clearBtn.addEventListener('click', () => {

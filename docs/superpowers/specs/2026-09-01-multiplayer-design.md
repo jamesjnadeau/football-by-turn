@@ -250,13 +250,16 @@ When it is present:
   owns those transitions.
 - *The HUD gains a countdown* and a note on whether the opponent has committed.
 
-**Placement rules move into `lib/`.** A committed play carries spots, so a
-modified client could line a receiver up in the end zone. The referee has to
-enforce the same placement rules the board enforces during repositioning, and
-those rules currently live in `app/main.js`. They are extracted so the board
-and the referee ask one function. Illegal formations that are merely
-*penalized* rather than impossible need nothing: `formationFoul` already runs
-inside `runTurn`, and it will run on the server.
+**Placement rules need no extraction.** A committed play carries spots, so a
+modified client could try to line a receiver up in the end zone, and the
+referee has to enforce the same rules the board enforces during repositioning.
+It already can: `spotFault`, `placePlayer` and `placeFormation` live in
+`lib/game/formation.js` and are pure — `app/main.js` is only a caller, and
+`applyPlay` already routes a loaded play's spots through `placeFormation`,
+which refuses the illegal ones and reports them as `skipped`. The referee gets
+this for free by calling the same function. Illegal formations that are merely
+*penalized* rather than impossible need nothing either: `formationFoul`
+already runs inside `runTurn`, and it will run on the server.
 
 **The playbook needs no work.** Loading a saved play is a local gesture that
 fills a coach's own board before he commits, and the books are already

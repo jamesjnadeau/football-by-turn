@@ -302,3 +302,27 @@ test('defensePlayers picks up a nickel or dime package exactly like formationPla
   assert.deepEqual(players.map((p) => p.id).sort(),
     ['d-cb1', 'd-cb2', 'd-dt1', 'd-lb', 'd-lb2', 'd-nt', 'd-s']);
 });
+
+test('a game can be dealt from a named yard line, with the chains set from there', () => {
+  const s = createGame({ seed: 1, losYard: 50 });
+  assert.equal(s.losYard, 50);
+  assert.equal(s.toGoYard, 60, 'ten to go from the fifty');
+  assert.deepEqual(getPlayer(s, 'o-qb').pos, fieldPos(0, 46), 'four yards behind the line');
+  assert.deepEqual(getPlayer(s, 'd-lb').pos, fieldPos(0, 54), 'four yards the other way');
+});
+
+test('the drive start is still what a game dealt with no yard line gets', () => {
+  const s = createGame({ seed: 1 });
+  assert.equal(s.losYard, 20);
+  assert.equal(s.toGoYard, 30);
+});
+
+test('goal to go falls out of a line of scrimmage inside the ten', () => {
+  assert.equal(createGame({ seed: 1, losYard: 95 }).toGoYard, 100);
+});
+
+test('scripted orders ride on the state as plain data, defaulting to none', () => {
+  const orders = [[{ id: 'd-nt', cover: 'o-qb' }]];
+  assert.deepEqual(createGame({ seed: 1, scriptedOrders: orders }).scriptedOrders, orders);
+  assert.equal(createGame({ seed: 1 }).scriptedOrders, null);
+});

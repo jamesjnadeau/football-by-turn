@@ -65,6 +65,18 @@ async function start(variantId, side) {
   game.startGame({ variant: variantId, side, onExit: showHome });
 }
 
+// The multiplayer module, imported the same lazily-once way main.js is —
+// nothing about a lobby socket exists until a coach actually picks
+// Multiplayer off the side chooser.
+let multiplayerModule = null;
+
+async function startMultiplayer(variantId) {
+  show(home, false);
+  show(board, true);
+  multiplayerModule ??= await import('./multiplayer.js');
+  multiplayerModule.startMultiplayer({ variant: variantId, onExit: showHome });
+}
+
 // One listener on the section for both screens: the buttons are written in
 // as markup, so matching on the way up means there is nothing to re-bind
 // when the screen swaps from the game list to the side chooser and back.
@@ -79,7 +91,11 @@ home.addEventListener('click', (e) => {
   }
   const sideBtn = e.target.closest?.('[data-side]');
   if (sideBtn && pickedVariant) {
-    start(pickedVariant, sideBtn.dataset.side);
+    if (sideBtn.dataset.side === 'multiplayer') {
+      startMultiplayer(pickedVariant);
+    } else {
+      start(pickedVariant, sideBtn.dataset.side);
+    }
     return;
   }
   const btn = e.target.closest?.('[data-variant]');

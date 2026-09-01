@@ -1033,9 +1033,17 @@ function startTraining() {
     applyGenomeOverrides();
     paint();
   });
-  trainer.addEventListener('error', () => {
+  trainer.addEventListener('error', (e) => {
     stopTraining();
-    say('Training could not start — this page has to be served over http (npm run serve), not opened as a file.');
+    // Two different failures arrive at this one handler. A worker that never
+    // LOADED fires it with nothing to say, and on a file:// page that is the
+    // only way it ever fires — which is why this used to be the only sentence
+    // here. A worker that loaded and then THREW brings the throw's own message
+    // along, and telling a coach whose page is already served over http to
+    // serve it over http sends him looking in the wrong place entirely.
+    say(e.message
+      ? `Training stopped — the trainer hit an error: ${e.message}`
+      : 'Training could not start — this page has to be served over http (npm run serve), not opened as a file.');
     paint();
   });
   trainer.postMessage(job);

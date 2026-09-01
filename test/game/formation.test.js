@@ -15,6 +15,7 @@ import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 import { learnedDefenseSpots } from '../../lib/game/learned/formation.js';
 import { DEFENSE_GENOME } from '../../lib/game/learned/defense-genome.js';
 import { mulberry32 } from '../../lib/game/rng.js';
+import { runTurn } from '../../lib/game/turn.js';
 
 test('a spot behind the line, inbounds and clear of everyone, has no fault', () => {
   const s = createGame({ seed: 1 });
@@ -346,6 +347,29 @@ test('setPersonnel swaps the defense without disturbing the offense', () => {
   const ids = s.players.filter((p) => p.team === 'defense').map((p) => p.id).sort();
   assert.deepEqual(ids, ['d-cb1', 'd-cb2', 'd-dt1', 'd-lb', 'd-lb2', 'd-nt', 'd-s']);
   assert.equal(s.players.length, 14, 'still seven a side, both teams');
+});
+
+test('setPersonnel drops a cover order on a defender it substitutes off', () => {
+  const s = createGame({ seed: 1, variant: '7' });
+  // A guard taken up on the right tackle — an ordinary blocking order, and
+  // d-dt2 is exactly the man nickel takes off the field.
+  assert.ok(setCover(s, 'o-lg', 'd-dt2'));
+  assert.ok(setPersonnel(s, 'nickel'));
+  assert.equal(s.players.some((p) => p.id === 'd-dt2'), false);
+  assert.equal(getPlayer(s, 'o-lg').cover, null,
+    'the man he was covering is off the field, so the order is gone');
+  assert.equal(getPlayer(s, 'o-lg').plan, null,
+    'and so is the arrow that order had aimed for him');
+  // The order the swap voided must not be able to blow the turn up: coverAim
+  // would go looking for a player who is no longer on the field.
+  assert.doesNotThrow(() => runTurn(s, mulberry32(1)));
+});
+
+test('setPersonnel keeps a cover order on a defender who stayed', () => {
+  const s = createGame({ seed: 1, variant: '7' });
+  assert.ok(setCover(s, 'o-lg', 'd-nt'));
+  assert.ok(setPersonnel(s, 'nickel'));
+  assert.equal(getPlayer(s, 'o-lg').cover, 'd-nt');
 });
 
 test('setPersonnel is refused once the play is under way', () => {

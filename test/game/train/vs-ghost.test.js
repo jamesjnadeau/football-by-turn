@@ -9,6 +9,9 @@ import {
 } from '../../../lib/game/state.js';
 import { makeGenome } from '../../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../../lib/game/learned/defense-spec.js';
+import { DEFENSE_GENOME } from '../../../lib/game/learned/defense-genome.js';
+import { setCover } from '../../../lib/game/cover.js';
+import { evaluateVsGhost } from '../../../lib/game/train/vs-ghost.js';
 
 /** One recorded planning phase, with an arrow on every man of one side. */
 function recorded({ down, losYard, turnIndex, team }) {
@@ -106,4 +109,27 @@ test('the seed genome is where the walk starts', () => {
   });
   // sigma 0 mutates nothing, so a population of one is the seed itself.
   assert.deepEqual(seen, [2.5]);
+});
+
+test('a ghost who blocks a lineman survives the defense substituting him off', () => {
+  // The failure this guards: a coach who puts his right guard on the right
+  // tackle — an ordinary blocking order, and the commonest one in a real
+  // recorded log — has that order replayed onto the board by the ghost, and
+  // then the candidate defense subs to nickel, which is the package that
+  // takes d-dt2 off the field. The order is left pointed at a man who is no
+  // longer playing, and the turn dies on him.
+  const snaps = Array.from({ length: MIN_GHOST_SNAPSHOTS + 4 }, (_, i) => {
+    const s = createGame({ seed: 1 + i, variant: '7' });
+    setCover(s, 'o-rg', 'd-dt2');
+    s.down = 1 + (i % 4);
+    s.turnIndex = i % 3;
+    return captureSnapshot(s, 'offense');
+  });
+  // The shipped genome never leaves stacked, so the bias is forced: what is
+  // under test is a candidate that DOES sub, which is what evolve's own walk
+  // reaches within a generation or two of any seed.
+  const values = { ...DEFENSE_GENOME.values, 'sub:nickel:bias': 5 };
+  assert.doesNotThrow(() => evaluateVsGhost(values, {
+    log: snaps, side: 'defense', plays: 4, seed: 7,
+  }));
 });

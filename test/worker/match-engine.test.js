@@ -351,3 +351,34 @@ test('an oversized commit message is dropped', () => {
   const { record } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: huge }, 1000);
   assert.equal(record.committed.offense, null);
 });
+
+test('a whole drive, start to a dead ball, through nothing but messages', () => {
+  let m = createMatch({ matchId: 'm1', variant: '7', seed: 99, tokens });
+  let t = 0;
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, t));
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'defense', token: 'tok-d' }, t));
+  assert.equal(m.status, 'active');
+
+  // A truly empty play forever never ends: with aiTeam null (a real match has
+  // no computer on either side, unlike single-player) nobody ever moves, so
+  // nothing ever collides and nextDown never fires -- this is exactly as
+  // true of an idle hot-seat single-player game, not a match-engine bug.
+  // The offense instead runs the quarterback toward the sideline every turn,
+  // which reliably ends each play (out of bounds) and burns downs; the
+  // defense still commits nothing, exercising the same commit/commit path
+  // the empty-play version would have.
+  const offensePlay = {
+    name: '', plans: { 'o-qb': { dir: { x: 1, y: 0 }, throttle: 1 } }, stances: {}, pass: null, spots: {},
+  };
+  let turns = 0;
+  while (m.status === 'active' && turns < 60) {
+    const turnIndex = m.state.turnIndex;
+    t += 500;
+    ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex, play: offensePlay }, t));
+    ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex, play: emptyPlay }, t));
+    turns += 1;
+  }
+  assert.ok(turns < 60, 'the drive ended on its own -- a tackle, an incompletion, or downs, within 60 turns');
+  assert.equal(m.status, 'over');
+  assert.equal(m.reason, 'down');
+});

@@ -76,6 +76,47 @@ export function applyMatchMessage(record, message, now) {
     return { record: next, messages: [{ to: waitingSide, type: 'matchOver', reason: 'no-opponent' }] };
   }
 
+  if (message.type === 'disconnect') {
+    if (record.status !== 'active') return { record, messages: [] };
+    const disconnectedAt = { ...record.disconnectedAt, [message.side]: now };
+    const next = { ...record, status: 'paused', disconnectedAt };
+    const survivor = OTHER[message.side];
+    return { record: next, messages: [{ to: survivor, type: 'opponentGone', resumeBy: now + DROP_GRACE_MS }] };
+  }
+
+  if (message.type === 'reconnect') {
+    if (record.status !== 'paused' || record.disconnectedAt[message.side] === null) {
+      return { record, messages: [] };
+    }
+    if (record.tokens[message.side] !== message.token) {
+      return { record, messages: [{ to: message.side, type: 'refused' }] };
+    }
+    const disconnectedAt = { ...record.disconnectedAt, [message.side]: null };
+    // The paused deadline is pushed out by exactly how long the pause lasted,
+    // so the returning coach gets the full time he had left, not whatever
+    // was left when the disconnect happened.
+    const pausedFor = now - record.disconnectedAt[message.side];
+    const next = { ...record, status: 'active', disconnectedAt, deadlineAt: record.deadlineAt + pausedFor };
+    const survivor = OTHER[message.side];
+    return {
+      record: next,
+      messages: [
+        { to: survivor, type: 'opponentBack' },
+        { to: message.side, type: 'turn', frames: [], events: [], down: record.state.down,
+          deadlineAt: next.deadlineAt, state: stripForSide(record.state, message.side) },
+      ],
+    };
+  }
+
+  if (message.type === 'dropTimeout') {
+    if (record.status !== 'paused' || record.disconnectedAt[message.side] === null) {
+      return { record, messages: [] };
+    }
+    const next = { ...record, status: 'over', reason: 'opponent-left' };
+    const survivor = OTHER[message.side];
+    return { record: next, messages: [{ to: survivor, type: 'matchOver', reason: 'opponent-left' }] };
+  }
+
   if (record.status !== 'active') return { record, messages: [] };
 
   if (message.type === 'commit') {

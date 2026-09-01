@@ -280,3 +280,58 @@ test('both sides already committed: a premature alarm before the new deadline is
   assert.equal(record.state.turnIndex, 1);
   assert.deepEqual(messages, []);
 });
+
+test('a disconnect pauses the clock and tells the survivor', () => {
+  const m = started();
+  const { record, messages } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000);
+  assert.equal(record.status, 'paused');
+  assert.deepEqual(messages, [{ to: 'offense', type: 'opponentGone', resumeBy: 1000 + 20_000 }]);
+  assert.equal(record.disconnectedAt.defense, 1000);
+});
+
+test('a reconnect with the right token resumes the clock and tells the survivor', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000));
+  const { record, messages } = applyMatchMessage(m, { type: 'reconnect', side: 'defense', token: 'tok-d' }, 5000);
+  assert.equal(record.status, 'active');
+  assert.equal(record.disconnectedAt.defense, null);
+  const toOffense = messages.find((mm) => mm.to === 'offense');
+  const toDefense = messages.find((mm) => mm.to === 'defense');
+  assert.equal(toOffense.type, 'opponentBack');
+  assert.equal(toDefense.type, 'turn', 'the returning client gets the current snapshot through the ordinary path');
+  assert.deepEqual(toDefense.frames, []);
+});
+
+test('a reconnect with the wrong token is refused and the match stays paused', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000));
+  const { record, messages } = applyMatchMessage(m, { type: 'reconnect', side: 'defense', token: 'wrong' }, 5000);
+  assert.equal(record.status, 'paused');
+  assert.deepEqual(messages, [{ to: 'defense', type: 'refused' }]);
+});
+
+test('dropTimeout with nobody back ends the match and tells the survivor', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000));
+  const { record, messages } = applyMatchMessage(m, { type: 'dropTimeout', side: 'defense' }, 21_001);
+  assert.equal(record.status, 'over');
+  assert.equal(record.reason, 'opponent-left');
+  assert.deepEqual(messages, [{ to: 'offense', type: 'matchOver', reason: 'opponent-left' }]);
+});
+
+test('dropTimeout is a no-op if the dropped coach already reconnected', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'reconnect', side: 'defense', token: 'tok-d' }, 5000));
+  const { record, messages } = applyMatchMessage(m, { type: 'dropTimeout', side: 'defense' }, 21_001);
+  assert.equal(record.status, 'active');
+  assert.deepEqual(messages, []);
+});
+
+test('the clock does not run while paused: alarm is a no-op', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000));
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
+  assert.equal(record.status, 'paused');
+  assert.deepEqual(messages, []);
+});

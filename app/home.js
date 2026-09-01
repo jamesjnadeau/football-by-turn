@@ -9,6 +9,7 @@
  */
 import { homeMarkup, sideMarkup } from '../lib/game/home.js';
 import { isPlayable, getVariant } from '../lib/game/variants.js';
+import { loadTutorialDone } from './tutorial-store.js';
 
 const home = document.getElementById('home');
 const board = document.getElementById('board');
@@ -25,7 +26,7 @@ let pickedVariant = null;
 
 function showChoices() {
   pickedVariant = null;
-  home.innerHTML = homeMarkup();
+  home.innerHTML = homeMarkup(undefined, { tutorialDone: loadTutorialDone() });
 }
 
 /**
@@ -47,6 +48,13 @@ function showHome() {
   showChoices();
 }
 
+async function startTutorial() {
+  show(home, false);
+  show(board, true);
+  game ??= await import('./main.js');
+  game.startTutorial({ onExit: showHome });
+}
+
 async function start(variantId, side) {
   // The unplayable button is disabled in the markup; this is that same rule
   // said again, because a disabled button is a picture and this is the gate.
@@ -61,6 +69,10 @@ async function start(variantId, side) {
 // as markup, so matching on the way up means there is nothing to re-bind
 // when the screen swaps from the game list to the side chooser and back.
 home.addEventListener('click', (e) => {
+  if (e.target.closest?.('[data-tutorial]')) {
+    startTutorial();
+    return;
+  }
   if (e.target.closest?.('[data-home-back]')) {
     showChoices();
     return;

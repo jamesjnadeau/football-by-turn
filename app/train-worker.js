@@ -24,6 +24,13 @@ self.addEventListener('message', (e) => {
     log, side, generations, popSize, plays, sigma, seed, seedGenome,
     snapshots, exportedAt,
   } = e.data;
+  // No ghostShare here on purpose: the blend defaults to half, and a genome
+  // trained in the browser is trained against a ghost of ONE coach, which is
+  // exactly where overfitting bites. Measured on a real log: a defense trained
+  // on the ghost alone held that coach to -4 yards a play and then gave up 36
+  // a play, and a touchdown on two plays in three, to an offense it had never
+  // seen. Judging it against a real offense as well cost almost nothing
+  // against the coach and fixed the rest.
   const { best, score } = trainVsGhost({
     log,
     side,

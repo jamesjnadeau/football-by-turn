@@ -150,6 +150,20 @@ test('the boost is only worth having while the order stands', () => {
   assert.equal(effectiveMass(c), plain);
 });
 
+test('updateCoverPlans drops a cover order naming nobody on the field, rather than throwing', () => {
+  // getPlayer throws on an unknown id on purpose (state.js); this is the
+  // defence-in-depth layer that keeps a dangling order — one left behind by a
+  // player list change updateCoverPlans did not cause — from crashing the
+  // turn it is discovered on. setPersonnel closes the cause; this closes the
+  // consequence.
+  const s = createGame({ seed: 1 });
+  const c = getPlayer(s, 'o-c');
+  c.cover = 'd-ghost';
+  c.plan = { dir: { x: 0, y: 1 }, throttle: 1, target: null };
+  assert.doesNotThrow(() => updateCoverPlans(s));
+  assert.equal(c.cover, null, 'the stale order is cleared');
+});
+
 test('grab reach is granted between the coverer and his man, and nobody else', () => {
   const s = createGame({ seed: 1 });
   setCover(s, 'o-c', 'd-nt');

@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MIN_GHOST_SNAPSHOTS, BROWSER_TRAINING_RUN, ghostReadiness, trainVsGhost,
+  MIN_GHOST_SNAPSHOTS, BROWSER_TRAINING_RUN, GENERAL_SEED_OFFSET,
+  ghostReadiness, trainVsGhost, evaluateVsGhost, evaluateVsGeneralOffense,
+  blendedDefenseFitness,
 } from '../../../lib/game/train/vs-ghost.js';
 import { captureSnapshot } from '../../../lib/game/coach-log.js';
 import {
@@ -11,7 +13,7 @@ import { makeGenome } from '../../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../../lib/game/learned/defense-spec.js';
 import { DEFENSE_GENOME } from '../../../lib/game/learned/defense-genome.js';
 import { setCover } from '../../../lib/game/cover.js';
-import { evaluateVsGhost } from '../../../lib/game/train/vs-ghost.js';
+import { defenseFitness } from '../../../lib/game/train/fitness.js';
 
 /** One recorded planning phase, with an arrow on every man of one side. */
 function recorded({ down, losYard, turnIndex, team }) {
@@ -132,4 +134,59 @@ test('a ghost who blocks a lineman survives the defense substituting him off', (
   assert.doesNotThrow(() => evaluateVsGhost(values, {
     log: snaps, side: 'defense', plays: 4, seed: 7,
   }));
+});
+
+// The blended defense objective: a candidate's fitness against the ghost and
+// against the learned offense, weighted by ghostShare. The scripted-offense
+// path (evaluateVsGhost/offenseFitness for `side: 'offense'`) is untouched by
+// any of this — only the defense side blends.
+test('ghostShare 1 reproduces the pure-ghost fitness exactly', () => {
+  const values = makeGenome(DEFENSE_SPEC);
+  const ghostLog = log('offense', 20);
+  const plays = 3;
+  const seed = 7;
+  const blended = blendedDefenseFitness(values, {
+    log: ghostLog, plays, seed, ghostShare: 1,
+  });
+  const pureGhost = defenseFitness(evaluateVsGhost(values, {
+    log: ghostLog, side: 'defense', plays, seed,
+  }));
+  assert.equal(blended.score, pureGhost);
+  assert.equal(blended.ghostScore, pureGhost);
+});
+
+test('ghostShare 0 reproduces the pure-general fitness exactly', () => {
+  const values = makeGenome(DEFENSE_SPEC);
+  const ghostLog = log('offense', 20);
+  const plays = 3;
+  const seed = 7;
+  const blended = blendedDefenseFitness(values, {
+    log: ghostLog, plays, seed, ghostShare: 0,
+  });
+  const pureGeneral = defenseFitness(evaluateVsGeneralOffense(values, {
+    plays, seed: seed + GENERAL_SEED_OFFSET,
+  }));
+  assert.equal(blended.score, pureGeneral);
+  assert.equal(blended.generalScore, pureGeneral);
+});
+
+test('ghostShare 0.5 lands exactly midway between the two', () => {
+  const values = makeGenome(DEFENSE_SPEC);
+  const ghostLog = log('offense', 20);
+  const plays = 3;
+  const seed = 9;
+  const blended = blendedDefenseFitness(values, {
+    log: ghostLog, plays, seed, ghostShare: 0.5,
+  });
+  assert.equal(blended.score, (blended.ghostScore + blended.generalScore) / 2);
+});
+
+test('the blended evaluation is deterministic: same genome, same seed, same score', () => {
+  const values = makeGenome(DEFENSE_SPEC);
+  const opts = {
+    log: log('offense', 20), plays: 3, seed: 13, ghostShare: 0.5,
+  };
+  const a = blendedDefenseFitness(values, opts);
+  const b = blendedDefenseFitness(values, opts);
+  assert.deepEqual(a, b);
 });

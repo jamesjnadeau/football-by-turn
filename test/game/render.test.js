@@ -4,7 +4,7 @@ import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage,
   coverMark, coverHaloMark, lineZoneMark, renderFieldButtons, lineToGainMark, passLockMark,
-  liveLobMark, fieldButtonAnchor, cameraViewBox,
+  liveLobMark, fieldButtonAnchor, cameraViewBox, FIELD_BUTTON_ICONS, fieldButtonNames,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
@@ -19,6 +19,7 @@ import { num, UNITS_PER_YARD_X } from '../../lib/field/geometry.js';
 import { fieldPos, gameView, GOAL_YARD } from '../../lib/game/view.js';
 import { passLanding } from '../../lib/game/pass.js';
 import { lobPoint } from '../../lib/game/lob.js';
+import { PLAY_SLOTS } from '../../lib/game/playbook.js';
 
 test('the board shell has the field and every game layer', () => {
   const { viewBox, markup } = renderBoardShell(20, 30);
@@ -676,11 +677,14 @@ test('the shuffle button shows which way it is set', () => {
   assert.ok(on.includes('fbtn-on'), 'the plate fills in');
 });
 
-test('all six quick-press buttons are reachable by keyboard, like the menu rect', () => {
+test('all twelve quick-press buttons are reachable by keyboard, like the menu rect', () => {
+  // Six became twelve the moment the playbook took the second column: the
+  // default call (no allow, no book) fields every plate this function draws,
+  // the same way it always has, and a greyed plate keeps its tab stop.
   const markup = renderFieldButtons(createGame({ seed: 1 }));
-  assert.equal(markup.match(/tabindex="0"/g).length, 6);
-  assert.equal(markup.match(/role="button"/g).length, 6);
-  assert.equal(markup.match(/aria-label="/g).length, 6);
+  assert.equal(markup.match(/tabindex="0"/g).length, 12);
+  assert.equal(markup.match(/role="button"/g).length, 12);
+  assert.equal(markup.match(/aria-label="/g).length, 12);
 });
 
 test('the first column carries the three controls that used to be menu-only', () => {
@@ -823,6 +827,81 @@ test('the autoplan plate is always on the board, and names the side it draws for
   // the defense instead.
   const theirs = renderFieldButtons(createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' }));
   assert.match(buttonGroup(theirs, 'data-autoplan-button'), /aria-label="Autoplan defense"/);
+});
+
+test('the playbook is a second column, one pitch right and row-aligned', () => {
+  const pitch = fieldButtonAnchor('run', 20).y - fieldButtonAnchor('autoplan', 20).y;
+  assert.equal(fieldButtonAnchor('save', 20).x, fieldButtonAnchor('menu', 20).x + pitch,
+    'one pitch to the right of the first column');
+  // play3 holds slot 0, the row the menu plate holds.
+  assert.equal(fieldButtonAnchor('play3', 20).y, fieldButtonAnchor('menu', 20).y,
+    'and its rows line up with the first column');
+});
+
+test('the board offers a plate per playbook slot', () => {
+  const markup = renderFieldButtons(createGame({ seed: 1 }), { book: [] });
+  assert.ok(markup.includes('data-save-button'), 'save is offered');
+  for (let i = 0; i < PLAY_SLOTS; i++) {
+    assert.ok(markup.includes(`data-play-button="${i}"`), `slot ${i} is offered`);
+  }
+  assert.ok(!markup.includes(`data-play-button="${PLAY_SLOTS}"`), 'and no more than five');
+});
+
+test('an empty slot is greyed and a filled one is live', () => {
+  const s = createGame({ seed: 1 });
+  const book = [{ name: 'Fly sweep' }];
+  const markup = renderFieldButtons(s, { book });
+  assert.ok(!buttonGroup(markup, 'data-play-button="0"').includes('fbtn-off'), 'a saved play can be called');
+  assert.ok(buttonGroup(markup, 'data-play-button="1"').includes('fbtn-off'), 'an empty slot cannot');
+  assert.match(buttonGroup(markup, 'data-play-button="0"'), /aria-label="[^"]*Fly sweep/,
+    'and the label names the play, since the plate cannot');
+});
+
+test('the whole playbook is dead once the down is under way', () => {
+  const s = createGame({ seed: 1 });
+  const drawing = renderFieldButtons(s, { book: [{ name: 'Fly sweep' }], animating: true });
+  assert.ok(buttonGroup(drawing, 'data-save-button').includes('fbtn-off'));
+  assert.ok(buttonGroup(drawing, 'data-play-button="0"').includes('fbtn-off'));
+});
+
+test('a lesson fields no playbook plates unless it names them', () => {
+  const markup = renderFieldButtons(createGame({ seed: 1 }), { allow: ['run', 'menu'], book: [] });
+  assert.ok(!markup.includes('data-save-button'));
+  assert.ok(!markup.includes('data-play-button'));
+});
+
+test('no two plates overlap, and every one is inside the crop', () => {
+  const s = createGame({ seed: 1 });
+  const frame = Number(renderBoardShell(20, 30).viewBox.split(' ')[2]);
+  const markup = menuButtonMark(20) + renderFieldButtons(s, { book: [] });
+  const boxes = markup.split('<g ').slice(1).map((g) => rectBox(`<g ${g}`));
+  assert.equal(boxes.length, fieldButtonNames().length, 'one plate per table entry');
+  for (const b of boxes) {
+    assert.ok(b.x >= 0 && b.x + b.w <= frame, 'inside the crop');
+  }
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i];
+      const c = boxes[j];
+      const apart = a.x + a.w <= c.x || c.x + c.w <= a.x
+        || a.y + a.h <= c.y || c.y + c.h <= a.y;
+      assert.ok(apart, `plates ${i} and ${j} do not overlap`);
+    }
+  }
+});
+
+test('every plate the table names is drawn, and no plate wears an off-table icon', () => {
+  const s = createGame({ seed: 1 });
+  const drawn = menuButtonMark(20) + renderFieldButtons(s, { book: [] });
+  for (const name of fieldButtonNames()) {
+    assert.ok(drawn.includes(FIELD_BUTTON_ICONS[name]), `${name}'s icon is on the board`);
+  }
+  // Every icon in the markup came from the table — the check that keeps the
+  // board and the menu from ever wearing different marks.
+  const icons = Object.values(FIELD_BUTTON_ICONS);
+  for (const m of drawn.matchAll(/class="fbtn-icon"[^>]*>([^<]+)</g)) {
+    assert.ok(icons.includes(m[1]), `${m[1]} is written down in the table`);
+  }
 });
 
 test('the snap draws exactly like any other lock-on: a halo under the quarterback and an arrow to his edge', () => {

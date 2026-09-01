@@ -13,7 +13,7 @@ import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
   planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
   lineZoneMark, renderFieldButtons, passLandingMark, passLockMark, cameraViewBox,
-  menuButtonMark, liveLobMark,
+  menuButtonMark, liveLobMark, fieldButtonAnchor,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { downDistanceText, gameOverMessage, kickoffMessage, humanSide, coachedSide } from '../lib/game/hud.js';
@@ -53,6 +53,8 @@ import {
 import { autoplanLearned } from '../lib/game/autoplan.js';
 import { maybeApplyLearnedFormations } from '../lib/game/learned/formation.js';
 import { activeGenome } from '../lib/game/learned/active.js';
+import { createLesson } from './tutorial.js';
+import { coachCardMark, highlightMark } from '../lib/game/tutorial/render.js';
 
 // SVG(el) adopts the existing <svg id="board"> node rather than creating a
 // nested one — every read/write below goes through this wrapper.
@@ -138,6 +140,11 @@ function myBook() {
 // switched off by anything that ends the huddle: the snap, the next down, a
 // new game.
 let repositioning = false;
+// The lesson being taught, or null in an ordinary drive. Everything the
+// tutorial changes about the game is asked of this one object, so a normal
+// game is exactly the game it always was: `lesson` is null and every check
+// below falls straight through.
+let lesson = null;
 
 function layer(id) {
   return board.findOne(`#${id}`);
@@ -159,7 +166,12 @@ function cameraYard(ballYard = null) {
 
 function rebuildBoard() {
   const cam = cameraYard();
-  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard, cam);
+  // aimCamera repaints this plate on every frame, so the shell only has to
+  // agree with it — but it has to agree, or the clipboard flashes on for one
+  // paint at the start of every lesson.
+  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard, cam, {
+    menu: !lesson || lesson.showsMenu(),
+  });
   board.attr('viewBox', viewBox);
   board.clear();
   board.svg(markup); // parses the markup string from render.js and inserts it as real SVG nodes
@@ -185,11 +197,38 @@ function rebuildBoard() {
  */
 function aimCamera(cam) {
   board.attr('viewBox', cameraViewBox(state.losYard, cam));
-  layer('game-menu').clear().svg(menuButtonMark(state.losYard, cam));
+  // The clipboard is hidden for the whole tutorial except its last beat, which
+  // teaches it — and leaving through it is how the tutorial ends.
+  layer('game-menu').clear().svg(
+    !lesson || lesson.showsMenu() ? menuButtonMark(state.losYard, cam) : '',
+  );
   layer('game-buttons').clear().svg(
-    renderFieldButtons(state, { repositioning, animating, cameraYard: cam }),
+    renderFieldButtons(state, {
+      repositioning, animating, cameraYard: cam, allow: lesson ? lesson.buttons() : null,
+    }),
   );
   layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cam));
+  layer('game-tutorial').clear().svg(lessonMark(cam));
+}
+
+/**
+ * The lesson's card and the ring round whatever it wants pressed. Repainted
+ * with the camera rather than once at the snap, for the same reason the button
+ * column is: a play that scrolls downfield would otherwise slide the card off
+ * the bottom of the window and snap it back at the whistle.
+ */
+function lessonMark(cam) {
+  if (!lesson) return '';
+  const card = lesson.card();
+  return coachCardMark(card, state.losYard, cam) + highlightMark(anchorFor(card.highlight, cam));
+}
+
+/** Where the ring goes: a plate in the button column, or a man on the field. */
+function anchorFor(highlight, cam) {
+  if (!highlight) return null;
+  if (highlight.kind === 'button') return fieldButtonAnchor(highlight.name, state.losYard, cam);
+  const p = state.players.find((pl) => pl.id === highlight.id);
+  return p ? { x: p.pos.x, y: p.pos.y, r: p.radius } : null;
 }
 
 function paint() {
@@ -266,6 +305,70 @@ function drawMessage() {
 function say(text) {
   messageText = text;
   drawMessage();
+}
+
+/**
+ * Whether the lesson permits this, and the nudge if it does not. A refusal is
+ * said and the action dropped BEFORE anything is applied — a half-committed
+ * order taken back afterwards would be a worse lie than the refusal.
+ */
+function refused(action) {
+  if (!lesson) return false;
+  const nudge = lesson.allows(action);
+  if (nudge === null) return false;
+  say(nudge);
+  paint();
+  return true;
+}
+
+/**
+ * Tell the lesson what just happened: re-deal the down if it went off script,
+ * and end the tutorial if that was the last beat of the last lesson.
+ *
+ * `menu.open` is read off the dialog rather than tracked in a flag of our own —
+ * the menu being open IS what the closing step waits for, and <dialog> already
+ * knows.
+ */
+function lessonSaw() {
+  if (!lesson) return;
+  const seen = lesson.saw(state, { repositioning, menuOpen: menu.open });
+  if (seen.replay) {
+    say('Not quite — let us run that one again.');
+    dealLesson();
+    return;
+  }
+  if (seen.finished) {
+    finishLesson();
+    return;
+  }
+  paint();
+}
+
+/**
+ * The tutorial is over. The lesson is dropped BEFORE the menu is left open in
+ * front of the coach, because every button in there is about to mean what it
+ * says — and `variantId` still naming a two-man drill would make New Game deal
+ * one as if it were football. The board he leaves behind is the drill's last
+ * down, which is what he is looking at anyway; the next startGame rebuilds it.
+ */
+function finishLesson() {
+  lesson = null;
+  variantId = DEFAULT_VARIANT;
+  sideId = 'training';
+  say('');
+  rebuildBoard();
+  paint();
+}
+
+/**
+ * A press on the clipboard. In a lesson this is the closing step: the menu goes
+ * up, and lessonSaw sees it open and ends the tutorial — in that order, so what
+ * the coach is looking at when the card disappears is the real menu.
+ */
+function pressMenu() {
+  if (refused({ kind: 'menu' })) return;
+  openMenu();
+  lessonSaw();
 }
 
 function hitTest(p) {
@@ -349,6 +452,9 @@ function formationNote() {
  * and the rule-based alignDefense below is what every other brain still gets.
  */
 function realignDefense() {
+  // A lesson's men stand where the script stood them. Answering the coach's
+  // new look would break the vertical line the fourth lesson is built on.
+  if (lesson) return;
   if (state.aiTeam !== 'defense') return;
   if (answerOffense(state, activeGenome(state, 'defense'))) return;
   for (const { id, pos } of alignDefense(state)) getPlayer(state, id).pos = pos;
@@ -376,6 +482,7 @@ function onGesture(playerId, gesture, point) {
   if (animating) return; // mid-animation pointer input is not for this turn
   layer('game-preview').clear();
   if (state.phase !== 'planning') return;
+  if (refused({ kind: 'gesture', playerId, gestureKind: gesture.kind })) return;
   const p = getPlayer(state, playerId);
   if (repositioning) {
     // Every verb but the drag is off in this mode: no arrows, no cover orders,
@@ -383,6 +490,7 @@ function onGesture(playerId, gesture, point) {
     // a throw. You are setting a formation, which is one thing.
     if (gesture.kind === 'drag' || gesture.kind === 'passdrag') reposition(playerId, point);
     paint();
+    lessonSaw();
     return;
   }
   // A throw drag dropped back on the man throwing it is not a throw at all: it
@@ -454,6 +562,7 @@ function onGesture(playerId, gesture, point) {
   // him is a drag, and only in reposition mode — one tap is how you arm the
   // second, and it cannot also be how you move somebody.
   paint();
+  lessonSaw();
 }
 
 function onDragPreview(playerId, log, prevTapAt) {
@@ -670,7 +779,11 @@ function closeMenu() {
  */
 function pressBoardButton(target) {
   if (!target.closest) return false;
-  if (target.closest('[data-menu-button]')) openMenu();
+  if (target.closest('[data-tutorial-next]')) nextLesson();
+  // Openable in an ordinary drive, and on the one lesson step that asks for it
+  // — where opening it is what ends the tutorial. Everywhere else in a lesson
+  // there is no plate to press anyway; this is the second lock on that door.
+  else if (target.closest('[data-menu-button]')) pressMenu();
   else if (target.closest('[data-reposition-button]')) toggleReposition();
   else if (target.closest('[data-run-button]')) pressRun();
   else if (target.closest('[data-autoplan-button]')) pressAutoplan();
@@ -717,6 +830,9 @@ savePlayBtn.addEventListener('click', savePlay);
  * learned defense knows what to do with (design decision 3).
  */
 function recordPlanning() {
+  // A lesson is not a down this coach called: it is a script, and teaching the
+  // ghost to play it would poison the log with somebody else's football.
+  if (lesson) return;
   const team = humanSide(state);
   if (!team) return;
   const snap = captureSnapshot(state, team);
@@ -737,6 +853,7 @@ function recordPlanning() {
  */
 function pressRun() {
   if (animating || state.phase !== 'planning') return;
+  if (refused({ kind: 'run' })) return;
   const missing = unplannedPlayers(state);
   if (missing.length > 0 && !pendingWarning) {
     // Spec: warn when not every player has a direction. Second press runs anyway.
@@ -800,12 +917,16 @@ function pressRun() {
     // defense fell on) still waits for the button. A touchdown restarts the
     // game because scoring is how this one is won — unless a flag is being
     // enforced, which wipes the score and makes it an ordinary next down.
-    if (state.phase === 'playOver'
+    if (!lesson && state.phase === 'playOver'
       && (state.deadReason === 'tackled' || state.deadReason === 'touchdown')) {
       scheduleAutoAdvance(
         state.deadReason === 'touchdown' && !state.penalty ? startNewGame : goToNextDown,
       );
     }
+    // The lesson judges the down AFTER everything the whistle had to say, so
+    // its card is the last word on the board rather than something the
+    // referee's plate overwrites a moment later.
+    lessonSaw();
   };
   if (frames.length > 0) {
     // Lock the controls now, not at the next paint() — paint() does not run
@@ -910,12 +1031,14 @@ function stopRepositioning() {
  */
 function toggleReposition() {
   if (animating || !canReposition(state)) return;
+  if (refused({ kind: 'reposition' })) return;
   repositioning = !repositioning;
   layer('game-preview').clear();
   say(repositioning
     ? `Drag your players to move them. ${formationNote()}`
     : 'Back to drawing arrows.');
   paint();
+  lessonSaw();
 }
 
 repositionBtn.addEventListener('click', () => {
@@ -1170,6 +1293,7 @@ newBtn.addEventListener('click', () => {
 function goHome() {
   cancelAutoAdvance();
   stopRepositioning();
+  lesson = null;
   exitToHome();
 }
 
@@ -1203,7 +1327,50 @@ let inputAttached = false;
 // knows about the game, and the game knows nothing about home.
 let exitToHome = () => {};
 
+/** Deal the lesson's current scenario onto the board. */
+function dealLesson() {
+  cancelAutoAdvance();
+  stopRepositioning();
+  const dealt = lesson.deal();
+  state = dealt.state;
+  random = dealt.random;
+  pendingWarning = false;
+  messageText = '';
+  rebuildBoard();
+  paint();
+}
+
+/** The coach card's one control: on to the next lesson, or out of the tutorial. */
+function nextLesson() {
+  if (!lesson || animating) return;
+  if (lesson.next().finished) {
+    // The escape hatch, not the taught path: a coach who skips his way out of
+    // the last lesson never sees the clipboard, so he is sent home directly.
+    finishLesson();
+    goHome();
+    return;
+  }
+  dealLesson();
+}
+
+/**
+ * Start the tutorial. app/home.js calls this when a coach presses How to play,
+ * and it is the twin of startGame: same module, same listeners, a different
+ * kind of down. The input plumbing is attached once here too, because a coach
+ * may reach the tutorial before he has ever started a game.
+ */
+export function startTutorial({ onExit = () => {} } = {}) {
+  exitToHome = onExit;
+  if (!inputAttached) {
+    attachInput(board, { hitTest, onGesture, onDragPreview });
+    inputAttached = true;
+  }
+  lesson = createLesson();
+  dealLesson();
+}
+
 export function startGame({ variant = DEFAULT_VARIANT, side = 'training', onExit = () => {} } = {}) {
+  lesson = null;
   exitToHome = onExit;
   variantId = variant;
   sideId = side;

@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import {
   createGame, setPlan, clearAllPlans, setMode, getPlayer, ballPos, carrier,
   isControllable, setPass, clearPass, aimSnap, defaultSpots, defensePlayers, SNAP_TARGET_ID,
+  serializeState, hydrateState,
 } from '../../lib/game/state.js';
 import { teamSize } from '../../lib/game/rosters.js';
 import { fieldPos } from '../../lib/game/view.js';
+import { runTurn } from '../../lib/game/turn.js';
+import { mulberry32 } from '../../lib/game/rng.js';
 
 test('a new game: 1st down at yard 20, planning, a full team a side, the centre has the ball', () => {
   const s = createGame({ seed: 7 });
@@ -325,4 +328,33 @@ test('scripted orders ride on the state as plain data, defaulting to none', () =
   const orders = [[{ id: 'd-nt', cover: 'o-qb' }]];
   assert.deepEqual(createGame({ seed: 1, scriptedOrders: orders }).scriptedOrders, orders);
   assert.equal(createGame({ seed: 1 }).scriptedOrders, null);
+});
+
+test('a state round-trips through serialize/hydrate byte for byte', () => {
+  const s = createGame({ seed: 42 });
+  setPlan(s, 'o-rb', { x: 0, y: 1 }, 0.7);
+  setMode(s, 'd-lb', 'prepared');
+  const random = mulberry32(s.seed);
+  runTurn(s, random);
+  runTurn(s, random);
+
+  const data = serializeState(s);
+  const hydrated = hydrateState(data);
+  assert.deepEqual(hydrated, s);
+});
+
+test('serializeState and hydrateState never hand back a shared reference', () => {
+  const s = createGame({ seed: 1 });
+  const data = serializeState(s);
+  const hydrated = hydrateState(data);
+  hydrated.players[0].pos.x = 999;
+  assert.notEqual(s.players[0].pos.x, 999);
+  data.players[0].pos.x = -999;
+  assert.notEqual(hydrated.players[0].pos.x, -999);
+});
+
+test('hydrateState refuses anything that is not the shape serializeState makes', () => {
+  assert.throws(() => hydrateState(null));
+  assert.throws(() => hydrateState({}));
+  assert.throws(() => hydrateState({ players: 'nope' }));
 });

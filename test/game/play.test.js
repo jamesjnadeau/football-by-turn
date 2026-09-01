@@ -8,6 +8,49 @@ import {
 } from '../../lib/game/play.js';
 import { fieldPos } from '../../lib/game/view.js';
 
+test('applyPlay writes only the named team, even in a hot-seat game with no aiTeam', () => {
+  const s = createGame({ seed: 1 }); // aiTeam null: both sides are "the human's" today
+  const play = {
+    name: 'x',
+    plans: { 'd-lb': { dir: { x: 0, y: -1 }, throttle: 1 } },
+    stances: {},
+    pass: null,
+    spots: {},
+  };
+  const result = applyPlay(s, play, 'defense');
+  assert.deepEqual(getPlayer(s, 'd-lb').plan, {
+    dir: { x: 0, y: -1 }, throttle: 1, target: null, short: false,
+  });
+  assert.deepEqual(result.applied, ['d-lb']);
+});
+
+test('applyPlay refuses to write the other team\'s players, and skips them', () => {
+  const s = createGame({ seed: 1 });
+  const play = {
+    name: 'x',
+    plans: { 'o-rb': { dir: { x: 0, y: 1 }, throttle: 1 } }, // an offense id, called for defense
+    stances: {},
+    pass: null,
+    spots: {},
+  };
+  const result = applyPlay(s, play, 'defense');
+  assert.equal(getPlayer(s, 'o-rb').plan, null);
+  assert.deepEqual(result.skipped, ['o-rb']);
+});
+
+test('applyPlay still defaults to the human\'s team when aiTeam is set, with no team argument', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const play = {
+    name: 'x',
+    plans: { 'o-rb': { dir: { x: 1, y: 0 }, throttle: 0.5 } },
+    stances: {},
+    pass: null,
+    spots: {},
+  };
+  applyPlay(s, play); // no team: single-player call sites pass none
+  assert.notEqual(getPlayer(s, 'o-rb').plan, null);
+});
+
 /**
  * The snap taken: the ball in the quarterback's hands and nothing pending.
  * A down now opens with the ball on the CENTRE and a lateral to the

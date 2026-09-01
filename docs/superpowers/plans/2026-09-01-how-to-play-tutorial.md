@@ -559,8 +559,8 @@ import { getRoster } from '../../../lib/game/rosters.js';
 import { createGame } from '../../../lib/game/state.js';
 
 const GESTURES = ['drag', 'passdrag', 'doubletap', 'click'];
-const VERBS = ['run', 'runout', 'reposition', 'drag', 'cover', 'doubletap', 'pass', 'move', 'none'];
-const BUTTONS = ['reposition', 'autoplan', 'run'];
+const VERBS = ['run', 'runout', 'reposition', 'menu', 'drag', 'cover', 'doubletap', 'pass', 'move', 'none'];
+const BUTTONS = ['reposition', 'autoplan', 'run', 'menu'];
 
 test('every lesson is played on the fifty, on a roster that exists', () => {
   assert.equal(TUTORIAL_LOS_YARD, 50);
@@ -610,7 +610,7 @@ test('every step is answerable: a real man, a real verb, and words to nudge with
         }
         for (const k of step.allow.kinds) assert.ok(GESTURES.includes(k), `${where}: kind ${k}`);
       } else {
-        assert.ok(['run', 'reposition', 'any'].includes(step.allow.action), `${where}: action`);
+        assert.ok(['run', 'reposition', 'menu', 'any'].includes(step.allow.action), `${where}: action`);
         if (step.allow.action !== 'any') assert.ok(step.nudge, `${where}: has a nudge`);
       }
 
@@ -625,6 +625,17 @@ test('every step is answerable: a real man, a real verb, and words to nudge with
     assert.equal(s.steps.at(-1).needsLivePlay, false,
       `${s.id}: the closing beat outlives the whistle`);
   }
+});
+
+test('the tutorial ends by teaching the way out, and only at the very end', () => {
+  const menuSteps = SCENARIOS.flatMap((s, i) =>
+    s.steps.map((step, j) => ({ s, i, step, j })).filter((x) => x.step.allow.action === 'menu'));
+  assert.equal(menuSteps.length, 1, 'exactly one lesson teaches the menu');
+  const only = menuSteps[0];
+  assert.equal(only.i, SCENARIOS.length - 1, 'and it is the last lesson');
+  assert.equal(only.j, only.s.steps.length - 1, 'and its last step');
+  assert.ok(only.s.buttons.includes('menu'), 'which therefore fields the clipboard');
+  assert.deepEqual(only.step.highlight, { kind: 'button', name: 'menu' }, 'with the ring on it');
 });
 
 test('a lesson deals the men its steps talk about', () => {
@@ -894,7 +905,10 @@ const WHERE_THEY_STAND = {
   seed: 4004,
   coach: 'offense',
   scripted: 'defense',
-  buttons: ['reposition', 'run'],
+  // 'menu' is not a quick-press plate — renderFieldButtons never draws it, and
+  // menuButtonMark does. It is named here so the clipboard counts as a control
+  // this lesson fields, which is what lets the last step put a ring on it.
+  buttons: ['reposition', 'run', 'menu'],
   orders: [
     [{ id: 'd-nt', aim: spot(0, -4) }, { id: 'd-lb', aim: spot(0, 1) }],
     [{ id: 'd-nt', cover: 'o-qb' }, { id: 'd-lb', aim: spot(0, 0) }],
@@ -949,7 +963,26 @@ const WHERE_THEY_STAND = {
       demo: [{ verb: 'drag', id: 'o-qb', to: spot(-8, -1) }, { verb: 'runout' }],
       done: (state) => playOver(state),
     },
+    {
+      id: 'the-menu',
+      text: 'You are ready to coach. One last thing: the clipboard opens the '
+        + 'Coaches Menu, and everything that is not on the board lives behind '
+        + 'it — your playbook, your personnel, the velocity lines, and the way '
+        + 'home. Press it, then press Back to Home.',
+      highlight: { kind: 'button', name: 'menu' },
+      allow: { action: 'menu' },
+      nudge: 'Press the clipboard on the right to open the Coaches Menu.',
+      needsLivePlay: false,
+      demo: [{ verb: 'menu' }],
+      // Read off the dialog itself rather than off a flag somebody has to
+      // remember to set: the menu being open IS the thing this step is waiting
+      // for, and <dialog>.open already knows.
+      done: (state, ctx) => ctx.menuOpen === true,
+    },
   ],
+  // Never shown: opening the menu advances past the last step of the last
+  // lesson, which is what ends the tutorial. It is written down anyway so that
+  // cardFor has something to say if a lesson is ever reordered.
   outro: 'You are ready to coach. Pick a game and go.',
 };
 
@@ -983,6 +1016,7 @@ git add lib/game/tutorial/script.js test/game/tutorial/script.test.js && git com
   - `advance(scenario, index, state, ctx)` → the new index (may jump more than one)
   - `offScript(scenario, index, state)` → boolean
   - `cardFor(scenario, index, opts)` → `{ title, progress, text, highlight, control, footer }`
+  - `showsMenu(scenario, index)` → boolean; whether the 📋 plate should be on the board right now
 
 An **action** is `{kind:'run'}`, `{kind:'reposition'}`, `{kind:'menu'}`, or `{kind:'gesture', playerId, gestureKind}`.
 
@@ -993,7 +1027,9 @@ Create `test/game/tutorial/machine.test.js`:
 ```js
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { stepAt, allows, advance, offScript, cardFor } from '../../../lib/game/tutorial/machine.js';
+import {
+  stepAt, allows, advance, offScript, cardFor, showsMenu,
+} from '../../../lib/game/tutorial/machine.js';
 
 // A scenario of this test's own, so the assertions describe the machine rather
 // than whatever the real script happens to say this week.
@@ -1018,6 +1054,34 @@ const SCENARIO = {
     },
   ],
 };
+
+test('the clipboard is on the board only for the step that asks for it', () => {
+  const withMenu = {
+    ...SCENARIO,
+    steps: [...SCENARIO.steps, {
+      id: 'four', text: 'Open the menu.', highlight: { kind: 'button', name: 'menu' },
+      allow: { action: 'menu' }, nudge: 'Press the clipboard.', needsLivePlay: false,
+      demo: [], done: (s, ctx) => ctx.menuOpen === true,
+    }],
+  };
+  assert.equal(showsMenu(withMenu, 0), false);
+  assert.equal(showsMenu(withMenu, 3), true);
+  assert.equal(showsMenu(withMenu, 4), false, 'past the last step there is no lesson left');
+});
+
+test('a menu press is refused everywhere except the step that teaches it', () => {
+  assert.equal(allows(SCENARIO, 0, { kind: 'menu' }), 'Press run.');
+  const menuStep = {
+    ...SCENARIO,
+    steps: [{
+      id: 'only', text: 'Open it.', highlight: { kind: 'button', name: 'menu' },
+      allow: { action: 'menu' }, nudge: 'Press the clipboard.', needsLivePlay: false,
+      demo: [], done: (s, ctx) => ctx.menuOpen === true,
+    }],
+  };
+  assert.equal(allows(menuStep, 0, { kind: 'menu' }), null);
+  assert.equal(allows(menuStep, 0, { kind: 'run' }), 'Press the clipboard.');
+});
 
 test('a step allows exactly the action it asked for and refuses the rest', () => {
   assert.equal(allows(SCENARIO, 0, { kind: 'run' }), null);
@@ -1163,6 +1227,18 @@ export function advance(scenario, index, state, ctx) {
 }
 
 /**
+ * Whether the Coaches Menu should be on the board right now. True only for a
+ * step that asks to be pressed — which is the last step of the last lesson, and
+ * nothing else.
+ *
+ * Derived from the step rather than kept as a flag beside it so that the plate
+ * drawn and the press accepted cannot disagree: one condition decides both.
+ */
+export function showsMenu(scenario, index) {
+  return stepAt(scenario, index)?.allow.action === 'menu';
+}
+
+/**
  * Whether this down stopped being the one the script was written for. Asked
  * AFTER advancing, so the closing beat is reached before the whistle it is
  * meant to outlive gets called a failure.
@@ -1261,7 +1337,11 @@ function deal(scenario) {
   });
   const startSpots = {};
   for (const p of state.players) startSpots[p.id] = { x: p.pos.x, y: p.pos.y };
-  return { state, random: mulberry32(scenario.seed), ctx: { repositioning: false, startSpots } };
+  return {
+    state,
+    random: mulberry32(scenario.seed),
+    ctx: { repositioning: false, menuOpen: false, startSpots },
+  };
 }
 
 /**
@@ -1281,6 +1361,9 @@ function perform(run, verb) {
     return;
   }
   if (verb.verb === 'reposition') { ctx.repositioning = !ctx.repositioning; return; }
+  // In the browser this is <dialog>.open going true; here it is the same fact,
+  // written down by the only hands the test has.
+  if (verb.verb === 'menu') { ctx.menuOpen = true; return; }
   if (verb.verb === 'none') return;
   if (verb.verb === 'drag') {
     const p = getPlayer(state, verb.id);
@@ -1405,6 +1488,24 @@ test('the column can be asked where each of its plates sits', () => {
   assert.equal(fieldButtonAnchor('nonesuch', 20), null);
 });
 
+test('the clipboard is the middle of the column, and still draws where it always did', () => {
+  const menuAnchor = fieldButtonAnchor('menu', 20);
+  assert.ok(fieldButtonAnchor('reposition', 20).y < menuAnchor.y);
+  assert.ok(menuAnchor.y < fieldButtonAnchor('run', 20).y);
+  assert.ok(menuButtonMark(20, 20).includes(`y="${num(menuAnchor.y - menuAnchor.r)}"`),
+    'the ring a lesson pins to it lands on the plate a paint draws');
+});
+
+test('naming the menu in allow does not conjure a second clipboard', () => {
+  const s = createGame({ seed: 1, ai: null });
+  const m = renderFieldButtons(s, {
+    repositioning: false, animating: false, cameraYard: 20, allow: ['run', 'menu'],
+  });
+  assert.ok(m.includes('data-run-button'));
+  assert.equal((m.match(/data-menu-button/g) ?? []).length, 0,
+    'menuButtonMark owns that plate, and only it draws one');
+});
+
 test('an anchor lands on the plate the same paint actually draws', () => {
   const s = createGame({ seed: 1, ai: null });
   const markup = renderFieldButtons(s, { repositioning: false, animating: false, cameraYard: 20 });
@@ -1447,7 +1548,7 @@ Expected: FAIL — `fieldButtonAnchor` is not exported.
 
 - [ ] **Step 3: Give the column one table and one geometry**
 
-In `lib/game/render.js`, just above `renderFieldButtons`, add the table and the anchor, then rewrite `renderFieldButtons` to read both:
+In `lib/game/render.js`, add the table and the anchor **above `menuButtonMark`** — which now reads them too — then rewrite `renderFieldButtons` to use both:
 
 ```js
 /**
@@ -1460,6 +1561,11 @@ In `lib/game/render.js`, just above `renderFieldButtons`, add the table and the 
  * quietly start pointing at nothing.
  */
 const FIELD_BUTTONS = {
+  // The menu holds the middle, and is the one entry renderFieldButtons does not
+  // draw: menuButtonMark owns that plate. It is in the table so that both of
+  // them — and anything pinning a ring to one — read this column's geometry
+  // from a single place.
+  menu: { attr: 'data-menu-button', icon: '\u{1F4CB}', slot: 0 },
   reposition: { attr: 'data-reposition-button', icon: '\u{1F500}', slot: -1 },
   autoplan: { attr: 'data-autoplan-button', icon: '\u{1F381}', slot: 1 },
   run: { attr: 'data-run-button', icon: '\u{23E9}', slot: 2 },
@@ -1484,6 +1590,9 @@ export function renderFieldButtons(
   const cam = cameraYard ?? los;
   // `allow` is what a tutorial lesson uses to field only the controls it is
   // teaching. A normal drive passes nothing and gets the column it always had.
+  // The menu is deliberately not one of the three below: it is drawn by
+  // menuButtonMark, so naming 'menu' in `allow` says a lesson fields a
+  // clipboard without asking this function to draw a second one.
   const fielded = (name) => allow === null || allow.includes(name);
   const parts = [];
   if (fielded('reposition') && canReposition(state) && !animating) {
@@ -1517,6 +1626,24 @@ export function renderFieldButtons(
   return parts.join('');
 }
 ```
+
+Then replace the body of the existing `menuButtonMark`, so the plate it draws
+and the anchor a lesson rings are worked out from one number rather than two:
+
+```js
+export function menuButtonMark(losYard, cameraYard = losYard) {
+  return fieldButtonMark({
+    attr: FIELD_BUTTONS.menu.attr,
+    icon: FIELD_BUTTONS.menu.icon,
+    label: 'Open the Coaches Menu',
+    cy: fieldButtonAnchor('menu', losYard, cameraYard).y,
+  });
+}
+```
+
+`buttonColumnMidY` is still what `fieldButtonAnchor` calls for slot 0, so this
+draws the plate in exactly the place it has always been drawn — the existing
+`menuButtonMark` tests must stay green untouched.
 
 - [ ] **Step 4: Add the lesson layer and the optional menu**
 
@@ -1791,7 +1918,8 @@ git add lib/game/tutorial/render.js lib/game/render.js test/game/tutorial/render
 - Produces `createLesson()` from `app/tutorial.js`, returning an object with:
   - `deal()` → `{ state, random }` — a fresh game for the current scenario; also resets the step index and captures start spots
   - `allows(action)` → `null` or a nudge string
-  - `saw(state, { repositioning })` → `{ replay: boolean, nudge: null }` — advances the step, and reports whether the scenario must be re-dealt
+  - `saw(state, { repositioning, menuOpen })` → `{ replay: boolean, finished: boolean }` — advances the step, and reports whether the scenario must be re-dealt or the tutorial is over
+  - `showsMenu()` → boolean; whether the 📋 plate belongs on the board right now
   - `card(state)` → the card object, from `cardFor`
   - `highlight()` → `{kind, ...}` or `null`, the current step's
   - `buttons()` → the current scenario's `buttons` array
@@ -1857,6 +1985,32 @@ test('a play that dies early is replayed, with the attempt counted', () => {
   assert.equal(lesson.attempt(), 2);
   assert.equal(again.state.phase, 'planning', 'a fresh down, from the top');
   assert.match(lesson.card(again.state).footer, /skip/i, 'and the door is pointed at');
+});
+
+test('the clipboard stays off the board while there is still football to teach', () => {
+  const lesson = createLesson();
+  lesson.deal();
+  assert.equal(lesson.showsMenu(), false);
+});
+
+test('walking off the end of the last lesson is what finishes the tutorial', () => {
+  const lesson = createLesson();
+  for (let i = 1; i < SCENARIOS.length; i += 1) lesson.next(); // on to the last lesson
+  const { state } = lesson.deal();
+  const steps = SCENARIOS.at(-1).steps;
+  assert.equal(steps.at(-1).allow.action, 'menu', 'the last beat is the menu');
+
+  // Satisfy the football steps by fiat — Task 6 already holds that they are
+  // reachable; this test is about what happens at the end of them.
+  let guard = 0;
+  while (lesson.showsMenu() === false && guard < steps.length + 2) {
+    lesson.saw(state, { repositioning: guard % 2 === 0, menuOpen: false });
+    state.phase = 'playOver';
+    guard += 1;
+  }
+  assert.equal(lesson.showsMenu(), true, 'the clipboard is offered at the end');
+  assert.equal(lesson.saw(state, { menuOpen: false }).finished, false, 'not until it is pressed');
+  assert.equal(lesson.saw(state, { menuOpen: true }).finished, true);
 });
 
 test('the control walks the lessons, and the last one finishes the tutorial', () => {
@@ -1927,6 +2081,7 @@ Create `app/tutorial.js`:
 import { SCENARIOS, TUTORIAL_LOS_YARD } from '../lib/game/tutorial/script.js';
 import {
   allows as machineAllows, advance, offScript, cardFor, stepAt,
+  showsMenu as machineShowsMenu,
 } from '../lib/game/tutorial/machine.js';
 import { createGame } from '../lib/game/state.js';
 import { mulberry32 } from '../lib/game/rng.js';
@@ -1942,13 +2097,15 @@ export function createLesson() {
   let startSpots = {};
 
   const scenario = () => SCENARIOS[scenarioIndex];
-  const ctx = (repositioning) => ({ repositioning, startSpots });
+  const isLast = () => scenarioIndex === SCENARIOS.length - 1;
+  const ctx = (repositioning, menuOpen) => ({ repositioning, menuOpen, startSpots });
 
   return {
     scenario,
     attempt: () => attempts,
     buttons: () => scenario().buttons,
     highlight: () => stepAt(scenario(), stepIndex)?.highlight ?? null,
+    showsMenu: () => machineShowsMenu(scenario(), stepIndex),
 
     /** A fresh down for the lesson as it stands. The seed is the scenario's, so
      *  a replay deals the identical down and only the coaching differs. */
@@ -1978,25 +2135,31 @@ export function createLesson() {
      * order, so the closing beat is reached before the whistle it is meant to
      * outlive can be called a failure.
      */
-    saw(state, { repositioning = false } = {}) {
-      stepIndex = advance(scenario(), stepIndex, state, ctx(repositioning));
+    saw(state, { repositioning = false, menuOpen = false } = {}) {
+      stepIndex = advance(scenario(), stepIndex, state, ctx(repositioning, menuOpen));
       if (offScript(scenario(), stepIndex, state)) {
         attempts += 1;
-        return { replay: true };
+        return { replay: true, finished: false };
       }
-      return { replay: false };
+      // Walking past the last step of the last lesson IS the end of the
+      // tutorial. There is no sign-off card to press, because the press that
+      // got here was opening the menu — and the menu is the way out. Ending
+      // now rather than on the way home is what makes that menu the real one:
+      // a lesson still running would offer New Game against a two-man drill.
+      if (isLast() && stepIndex >= scenario().steps.length) {
+        saveTutorialDone();
+        return { replay: false, finished: true };
+      }
+      return { replay: false, finished: false };
     },
 
     card(state) {
-      return cardFor(scenario(), stepIndex, {
-        attempt: attempts,
-        isLastScenario: scenarioIndex === SCENARIOS.length - 1,
-      });
+      return cardFor(scenario(), stepIndex, { attempt: attempts, isLastScenario: isLast() });
     },
 
     /** The card's one control: on to the next lesson, or out of the tutorial. */
     next() {
-      if (scenarioIndex >= SCENARIOS.length - 1) {
+      if (isLast()) {
         saveTutorialDone();
         return { finished: true };
       }
@@ -2217,7 +2380,11 @@ during a lesson:
 ```js
 function aimCamera(cam) {
   board.attr('viewBox', cameraViewBox(state.losYard, cam));
-  layer('game-menu').clear().svg(lesson ? '' : menuButtonMark(state.losYard, cam));
+  // The clipboard is hidden for the whole tutorial except its last beat, which
+  // teaches it — and leaving through it is how the tutorial ends.
+  layer('game-menu').clear().svg(
+    !lesson || lesson.showsMenu() ? menuButtonMark(state.losYard, cam) : '',
+  );
   layer('game-buttons').clear().svg(
     renderFieldButtons(state, {
       repositioning, animating, cameraYard: cam, allow: lesson ? lesson.buttons() : null,
@@ -2255,8 +2422,12 @@ In `rebuildBoard`:
 ```js
 function rebuildBoard() {
   const cam = cameraYard();
-  const { viewBox, markup } =
-    renderBoardShell(state.losYard, state.toGoYard, cam, { menu: lesson === null });
+  // aimCamera repaints this plate on every frame, so the shell only has to
+  // agree with it — but it has to agree, or the clipboard flashes on for one
+  // paint at the start of every lesson.
+  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard, cam, {
+    menu: !lesson || lesson.showsMenu(),
+  });
   board.attr('viewBox', viewBox);
   board.clear();
   board.svg(markup);
@@ -2282,15 +2453,58 @@ function refused(action) {
   return true;
 }
 
-/** Tell the lesson what just happened, and re-deal the down if it went wrong. */
+/**
+ * Tell the lesson what just happened: re-deal the down if it went off script,
+ * and end the tutorial if that was the last beat of the last lesson.
+ *
+ * `menu.open` is read off the dialog rather than tracked in a flag of our own —
+ * the menu being open IS what the closing step waits for, and <dialog> already
+ * knows.
+ */
 function lessonSaw() {
   if (!lesson) return;
-  if (lesson.saw(state, { repositioning }).replay) {
+  const seen = lesson.saw(state, { repositioning, menuOpen: menu.open });
+  if (seen.replay) {
     say('Not quite — let us run that one again.');
     dealLesson();
     return;
   }
+  if (seen.finished) {
+    finishLesson();
+    return;
+  }
   paint();
+}
+
+/**
+ * The tutorial is over. The lesson is dropped BEFORE the menu is left open in
+ * front of the coach, because every button in there is about to mean what it
+ * says — and `variantId` still naming a two-man drill would make New Game deal
+ * one as if it were football. The board he leaves behind is the drill's last
+ * down, which is what he is looking at anyway; the next startGame rebuilds it.
+ */
+function finishLesson() {
+  lesson = null;
+  variantId = DEFAULT_VARIANT;
+  sideId = 'training';
+  say('');
+  rebuildBoard();
+  paint();
+}
+
+/**
+ * A press on the clipboard. In a lesson this is the closing step: the menu goes
+ * up, and lessonSaw sees it open and ends the tutorial — in that order, so what
+ * the coach is looking at when the card disappears is the real menu.
+ */
+function pressMenu() {
+  if (lesson && lesson.allows({ kind: 'menu' }) !== null) {
+    say(lesson.allows({ kind: 'menu' }));
+    paint();
+    return;
+  }
+  openMenu();
+  lessonSaw();
 }
 ```
 
@@ -2320,7 +2534,10 @@ In `pressBoardButton`, make the menu unreachable and route the card's control:
 function pressBoardButton(target) {
   if (!target.closest) return false;
   if (target.closest('[data-tutorial-next]')) nextLesson();
-  else if (target.closest('[data-menu-button]')) { if (!lesson) openMenu(); }
+  // Openable in an ordinary drive, and on the one lesson step that asks for it
+  // — where opening it is what ends the tutorial. Everywhere else in a lesson
+  // there is no plate to press anyway; this is the second lock on that door.
+  else if (target.closest('[data-menu-button]')) pressMenu();
   else if (target.closest('[data-reposition-button]')) toggleReposition();
   else if (target.closest('[data-run-button]')) pressRun();
   else if (target.closest('[data-autoplan-button]')) pressAutoplanOffense();
@@ -2390,17 +2607,18 @@ In `realignDefense`, as its first line:
 ```
 
 In `scheduleAutoAdvance`'s caller inside `finish` — the block that calls
-`scheduleAutoAdvance(...)` on a tackle or touchdown — wrap the condition so a
-lesson never advances the down or restarts the game underneath itself:
+`scheduleAutoAdvance(...)` on every dead ball — wrap the condition so a lesson
+never advances the down or restarts the game underneath itself:
 
 ```js
-    if (!lesson && state.phase === 'playOver'
-      && (state.deadReason === 'tackled' || state.deadReason === 'touchdown')) {
+    if (!lesson && state.phase === 'playOver') {
 ```
 
 - [ ] **Step 7: Deal the lessons, and leave when they are done**
 
 Beside `startGame`, add:
+
+`DEFAULT_VARIANT` is already imported from `rosters.js` at the top of this file.
 
 ```js
 /** Deal the lesson's current scenario onto the board. */
@@ -2420,7 +2638,9 @@ function dealLesson() {
 function nextLesson() {
   if (!lesson || animating) return;
   if (lesson.next().finished) {
-    lesson = null;
+    // The escape hatch, not the taught path: a coach who skips his way out of
+    // the last lesson never sees the clipboard, so he is sent home directly.
+    finishLesson();
     goHome();
     return;
   }
@@ -2476,14 +2696,24 @@ Check each of these:
 4. Lesson one shows only the ⏩ button, with a pulsing gold ring on it.
 5. Dragging the centre on step one is refused with a nudge and draws no arrow.
 6. Tapping the quarterback once is silently accepted; two taps tuck him.
-7. Lesson four shows 🔀 and ⏩, and the ring moves to 🔀 on the first step.
+7. Lesson four shows 🔀 and ⏩ — and **no** 📋 — with the ring on 🔀 first.
 8. Dragging the quarterback in reposition mode does **not** slide the nose
    tackle and linebacker off their vertical line.
 9. Getting tackled early re-deals the same down and the card's footer names the
    skip.
-10. "Skip lesson" moves on; "Finish" on the last lesson returns to the home
-    screen, and the home screen's note now says you have been through them.
-11. Start an ordinary 7-player game afterwards: the 📋 plate is back, all three
+10. On the last beat of lesson four the 📋 plate appears with the ring on it,
+    and the card says to press it and then Back to Home. Pressing ⏩ or dragging
+    a man there is refused with the nudge.
+11. Pressing 📋 opens the real, complete Coaches Menu, the coach card is gone,
+    and `Back to Home` leaves. The home screen's note now says you have been
+    through them.
+12. Do it again and, instead of Back to Home, press `Close`: you are back on the
+    board with no card, the 📋 still there, and nothing stuck.
+13. Open the menu at the end and press `New Game`: you get a real seven-player
+    drive, not a two-man drill.
+14. "Skip lesson" mid-tutorial moves on; skipping out of lesson four returns to
+    the home screen without ever showing the clipboard.
+15. Start an ordinary 7-player game afterwards: the 📋 plate is back, all three
     board buttons are back, and no coach card is drawn.
 
 - [ ] **Step 10: Commit**
@@ -2498,10 +2728,12 @@ git add app/main.js && git commit -m "feat: the gate that turns a drive into a l
 
 **Spec coverage.** Every decision in the spec has a task: strict gating (5, 11),
 the SVG card and ring (7, 8, 11), fixed seeds and replay (4, 6, 9), authored
-opponents (3, 4), the suppressed menu (7, 11), drill rosters in their own table
-(2), and no realignment during a lesson (11 step 6). The three exits chosen
-during brainstorming — finish to home, an always-available skip, a remembered
-completion — are Tasks 9, 5 and 10. The two added lessons — throttle and the
+opponents (3, 4), the menu — suppressed throughout and then taught as
+the way out (4, 5, 7, 9, 11) — drill rosters in their own table (2), and no
+realignment during a lesson (11 step 6). The three exits chosen during
+brainstorming — finish to home, an always-available skip, a remembered
+completion — are Tasks 9, 5 and 10, with the finish now running through the
+Coaches Menu rather than through a button on the card. The two added lessons — throttle and the
 defender's stance — are steps `run-the-qb` and `break-down` in Task 4.
 
 **Two things deliberately left out**, matching the spec's "Not doing": snapping

@@ -52,12 +52,25 @@ Each scenario names the opposing side's orders per turn as plain data. A
 No scenario depends on how a trained genome happens to be feeling, and
 retraining can never change what the tutorial demonstrates.
 
-**5. The Coaches Menu is gone during a lesson.**
-No 📋 plate, no dialog. The tutorial teaches the board's own quick-press
-buttons, which is what a coach reaches for anyway, and a beginner cannot wander
-into personnel packages or genome training in the middle of lesson one. The
-card's skip control is the escape valve; skipping the last scenario ends the
-tutorial and returns home.
+**5. The Coaches Menu is gone during a lesson — and is the last thing taught.**
+No 📋 plate and no dialog while a lesson is running. The tutorial teaches the
+board's own quick-press buttons, which is what a coach reaches for anyway, and a
+beginner cannot wander into personnel packages or genome training in the middle
+of lesson one. The card's skip control is the escape valve mid-lesson.
+
+The final beat of the last lesson is the exception, and it exists because
+without it a graduate leaves not knowing where the playbook, the personnel
+packages or the velocity lines live: the 📋 plate appears with the ring on it,
+and **the way out of the tutorial is through the menu**. Opening it is the last
+step, and opening it is what ends the tutorial — so what the coach lands in is
+the real menu, complete, with `Back to Home` working exactly as it does in any
+drive.
+
+That the tutorial ends on the press rather than on the way home is
+load-bearing, not incidental: a menu opened over a still-running lesson would
+offer `New Game`, which re-deals `variantId` — and `variantId` at that moment is
+a two-man drill. Ending the lesson first puts the roster back to the default and
+makes every button in that menu mean what it says.
 
 **6. Drill rosters live in `rosters.js`, but in their own table.**
 `rosters.js` says of itself that it is the only file that knows the shape of a
@@ -172,7 +185,11 @@ Coach: offense. Roster `tutorial-2v2`. Buttons: reposition and run.
 3. **Reposition off.** Press 🔀 again. *Required:* `repositioning === false`.
 4. **Coach it.** Anything goes: draw what he likes and run it to the whistle.
    *Required:* nothing; ⏩ until the play ends.
-5. **The sign-off.** "You're ready to coach." Back to the home screen.
+5. **The menu, and the way out.** "You're ready to coach." The clipboard
+   appears in the button column with the ring on it: everything not on the
+   board — the playbook, personnel, the velocity lines, and the way home —
+   lives behind it. *Required:* open the menu. That press ends the tutorial;
+   the coach leaves through `Back to Home` like any other drive.
 
 ## Architecture
 
@@ -238,6 +255,12 @@ A press or a gesture arrives in `main.js`, which builds an **action**:
     {kind: 'menu'}
     {kind: 'gesture', playerId, gestureKind}   // 'drag' | 'passdrag' | 'doubletap' | 'click'
 
+`{kind: 'menu'}` is refused on every step but the last one of the last lesson,
+which asks for exactly it. `showsMenu(scenario, index)` — true when the current
+step's `allow.action` is `'menu'` — is what decides whether the 📋 plate is
+drawn at all, so the plate and the press cannot disagree about whether the menu
+exists.
+
 `lesson.allows(action)` returns `null` to proceed or a nudge string. A nudge is
 said on the card and the action is dropped before anything is applied, so there
 is never a half-committed order to undo.
@@ -274,9 +297,15 @@ an authored order naming an id the scenario does not field degrades to no order
 rather than throwing mid-turn. The script test below is what stops one being
 written in the first place.
 
-Skipping the last scenario, finishing it, and pressing skip on the sign-off all
-land in the same place: the finished flag is stored and `onExit` returns to the
-home screen.
+Two things end the tutorial, and both store the finished flag: opening the menu
+on the last step, and pressing skip on any step of the last lesson. The first is
+the taught path and the second is the escape hatch; neither leaves a drill
+roster behind, because ending the lesson restores the default variant before the
+menu can offer `New Game`.
+
+A coach who opens the menu and presses `Close` rather than `Back to Home` is
+back on the board with the lesson already over and the 📋 plate still there —
+the ordinary way out of any drive. Nothing is stuck.
 
 ## Testing
 

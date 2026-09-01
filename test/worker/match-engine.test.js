@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createMatch, applyMatchMessage, stripForSide } from '../../worker/match-engine.js';
+import { createMatch, applyMatchMessage, stripForSide, MAX_COMMIT_BYTES } from '../../worker/match-engine.js';
 import { fieldPos } from '../../lib/game/view.js';
 
 const tokens = { offense: 'tok-o', defense: 'tok-d' };
@@ -334,4 +334,20 @@ test('the clock does not run while paused: alarm is a no-op', () => {
   const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
   assert.equal(record.status, 'paused');
   assert.deepEqual(messages, []);
+});
+
+test('a second connect on an already-connected side is refused, and the match is untouched', () => {
+  let m = started();
+  const before = m;
+  const { record, messages } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 5000);
+  assert.deepEqual(messages, [{ to: 'offense', type: 'refused' }]);
+  assert.deepEqual(record, before);
+});
+
+test('an oversized commit message is dropped', () => {
+  const m = started();
+  const huge = { name: '', plans: {}, stances: {}, pass: null,
+    spots: { 'o-rb': { across: 0, down: '0'.repeat(MAX_COMMIT_BYTES) } } };
+  const { record } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: huge }, 1000);
+  assert.equal(record.committed.offense, null);
 });

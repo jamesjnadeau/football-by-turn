@@ -20,6 +20,7 @@ export const TURN_CLOCK_SECONDS = 12; // spec: every turn after -- adjusting a p
 export const CONNECT_TIMEOUT_MS = 15_000; // spec: a match nobody completes within this dissolves
 export const FLUSH_GRACE_MS = 2_000;      // spec: how long timeUp waits for a last-second commit
 export const DROP_GRACE_MS = 20_000;      // spec: how long a dropped coach's seat is held
+export const MAX_COMMIT_BYTES = 16_384; // spec: "8-15KB of frames per turn" -- a generous multiple of a commit's own size
 
 export function createMatch({ matchId, variant, seed, tokens }) {
   return {
@@ -56,6 +57,9 @@ function startMatch(record, now) {
 
 export function applyMatchMessage(record, message, now) {
   if (message.type === 'connect') {
+    if (record.connected[message.side]) {
+      return { record, messages: [{ to: message.side, type: 'refused' }] };
+    }
     if (record.tokens[message.side] !== message.token) {
       return { record, messages: [{ to: message.side, type: 'refused' }] };
     }
@@ -121,6 +125,7 @@ export function applyMatchMessage(record, message, now) {
 
   if (message.type === 'commit') {
     if (message.turnIndex !== record.state.turnIndex) return { record, messages: [] };
+    if (JSON.stringify(message).length > MAX_COMMIT_BYTES) return { record, messages: [] };
     const play = sanitizePlay(message.play);
     if (!play) return { record, messages: [] };
     const state = cloneState(record.state);

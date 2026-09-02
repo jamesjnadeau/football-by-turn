@@ -5,6 +5,13 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Pages needs these to claim its deployment token. The Worker deploy needs
+# none of them -- it authenticates with an API token from repository secrets.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,12 +22,43 @@ jobs:
           node-version: 22
       - run: npm test
 
-  # A bad deploy here takes down single-player too, where the old Pages
-  # build would have left a broken server without touching a working site.
-  # This is the deliberate trade the multiplayer design doc makes: one
-  # origin, one deploy, no version-skew story between the page and the
-  # referee it now talks to.
-  deploy:
+  # The game is published twice, and the two publications are not the same
+  # game. The Worker is the whole thing: the page plus the lobby and the match
+  # objects it talks to. Pages is the single-player mirror -- the same files
+  # with nothing behind them, assembled with --no-multiplayer so its home
+  # screen never offers a lobby that has no server to answer it.
+  #
+  # They deploy in parallel and neither needs the other. That is the point of
+  # keeping Pages: a broken `wrangler deploy` costs multiplayer, not the game.
+  pages:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # One live Pages deployment at a time; queue rather than cancel so a push
+    # never leaves the site half-published.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run build:site -- --no-multiplayer
+      # enablement turns Pages on via the API if it isn't already, so a fresh
+      # clone of this repo deploys without anyone visiting Settings first.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  worker:
     needs: test
     runs-on: ubuntu-latest
     steps:

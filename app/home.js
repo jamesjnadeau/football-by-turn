@@ -7,9 +7,10 @@
  * The markup comes from lib/game/home.js as a string, the same way the board's
  * does. This file only writes it into the page and listens for the press.
  */
-import { homeMarkup, sideMarkup } from '../lib/game/home.js';
+import { homeMarkup, sideMarkup, sidesFor } from '../lib/game/home.js';
 import { isPlayable, getVariant } from '../lib/game/variants.js';
 import { loadTutorialDone } from './tutorial-store.js';
+import { MULTIPLAYER } from './build-config.js';
 
 const home = document.getElementById('home');
 const board = document.getElementById('board');
@@ -101,7 +102,8 @@ home.addEventListener('click', (e) => {
   const btn = e.target.closest?.('[data-variant]');
   if (btn && isPlayable(btn.dataset.variant)) {
     pickedVariant = btn.dataset.variant;
-    home.innerHTML = sideMarkup(getVariant(pickedVariant));
+    home.innerHTML = sideMarkup(getVariant(pickedVariant),
+      sidesFor({ multiplayer: MULTIPLAYER }));
   }
 });
 showHome();

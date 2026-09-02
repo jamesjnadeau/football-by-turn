@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { homeMarkup, COMING_SOON, SIDES, sideMarkup } from '../../lib/game/home.js';
+import { homeMarkup, COMING_SOON, SIDES, sideMarkup, sidesFor } from '../../lib/game/home.js';
 import { VARIANTS, getVariant } from '../../lib/game/variants.js';
 
 test('the screen names the game and offers one button per variant', () => {
@@ -89,4 +89,24 @@ test('the side chooser offers multiplayer, a live drive against another coach', 
   assert.match(markup, /data-side="multiplayer"/);
   assert.match(markup, /Multiplayer/);
   assert.match(markup, /Play a live drive against another coach\./);
+});
+
+test('sidesFor drops multiplayer when the build has no server behind it', () => {
+  // The GitHub Pages mirror is the whole reason this exists: it publishes the
+  // same files with no Worker underneath, so offering a lobby there would open
+  // a socket to an origin that cannot answer it.
+  const ids = sidesFor({ multiplayer: false }).map((s) => s.id);
+  assert.deepEqual(ids, ['offense', 'defense', 'training']);
+  assert.doesNotMatch(sideMarkup(getVariant('7'), sidesFor({ multiplayer: false })),
+    /data-side="multiplayer"/);
+});
+
+test('sidesFor is every side when the build has a Worker behind it', () => {
+  assert.deepEqual(sidesFor({ multiplayer: true }), SIDES);
+});
+
+test('sidesFor offers multiplayer when asked nothing at all', () => {
+  // The default is the full game: a plain `npm run serve` and `wrangler dev`
+  // both want the lobby, and only the Pages build asks for it to be dropped.
+  assert.deepEqual(sidesFor().map((s) => s.id).at(-1), 'multiplayer');
 });

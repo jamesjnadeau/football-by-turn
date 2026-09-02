@@ -11,7 +11,7 @@ import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
-  planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
+  planMark, coverMark, passArrowMark, passArrowTip, renderMessage, renderPlayClock, destinationMark,
   lineZoneMark, renderFieldButtons, passLandingMark, passLockMark, cameraViewBox,
   menuButtonMark, liveLobMark, fieldButtonAnchor, FIELD_BUTTON_ICONS,
 } from '../lib/game/render.js';
@@ -154,6 +154,10 @@ let net = null;
 // or null outside one. Read by paint()'s hud line and advanced by a
 // setInterval startClockDisplay arms.
 let netDeadlineAt = null;
+// Whether this coach has already ended his turn. The clock keeps counting
+// after he has -- how long his opponent has left is worth knowing -- but it
+// stops being his to spend, which is what the dimmed plate says.
+let netCommitted = false;
 let clockTimer = null;
 
 function layer(id) {
@@ -221,7 +225,8 @@ function aimCamera(cam) {
       book: myBook(), aiLabel: AI_MODES[aiModeIndex(state)].label,
     }),
   );
-  layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cam));
+  layer('game-message').clear()
+    .svg(renderMessage(messageText, state.losYard, cam) + playClockMark(cam));
   layer('game-tutorial').clear().svg(lessonMark(cam));
 }
 
@@ -270,9 +275,8 @@ function paint() {
   // coach reads them together, the same way he reads down-and-distance
   // itself. Outside a match netDeadlineAt is always null and this is
   // exactly the line it always was.
-  const clockText = net && netDeadlineAt !== null
-    ? ` — ${Math.max(0, Math.ceil((netDeadlineAt - Date.now()) / 1000))}s`
-    : '';
+  const seconds = clockSeconds();
+  const clockText = seconds === null ? '' : ` — ${seconds}s`;
   hud.textContent = `${downDistanceText(state)} — ${state.phase}${clockText}`;
   aiBtn.textContent = `${FIELD_BUTTON_ICONS.ai} ${AI_MODES[aiModeIndex(state)].label}`;
   aiBtn.disabled = animating || state.phase !== 'planning';
@@ -326,7 +330,9 @@ function paint() {
  * here afterwards.
  */
 function drawMessage() {
-  layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cameraYard()));
+  const cam = cameraYard();
+  layer('game-message').clear()
+    .svg(renderMessage(messageText, state.losYard, cam) + playClockMark(cam));
 }
 
 function say(text) {
@@ -1069,8 +1075,10 @@ function pressRun() {
     // mid-animation" rule (onGesture's `if (animating) return`) for the
     // stretch where this client has committed but the opponent has not.
     animating = true;
+    netCommitted = true;
     lockControlsForAnimation();
     net.commit(capturePlay(state, ''), state.turnIndex);
+    paint(); // the clock is his opponent's from this press, and says so
     return;
   }
 
@@ -1420,6 +1428,17 @@ function startNewGame() {
 }
 
 /** Advances the HUD's countdown once a second. Stopped when the match ends. */
+/** Seconds left on the play clock, or null when there is no clock running. */
+function clockSeconds() {
+  if (!net || netDeadlineAt === null) return null;
+  return Math.max(0, Math.ceil((netDeadlineAt - Date.now()) / 1000));
+}
+
+/** The plate itself, wherever the board is being drawn from. */
+function playClockMark(cam) {
+  return renderPlayClock(clockSeconds(), state.losYard, cam, { waiting: netCommitted });
+}
+
 function startClockDisplay(deadlineAt) {
   netDeadlineAt = deadlineAt;
   if (!clockTimer) clockTimer = setInterval(paint, 1000);
@@ -1441,6 +1460,7 @@ function stopClockDisplay() {
 function applyServerTurn({ frames, events, down, deadlineAt, state: serverState }) {
   void down; // carried on the message for app/multiplayer.js's own bookkeeping; state.down is already current
   state = serverState;
+  netCommitted = false; // a new turn is his to spend again
   layer('game-arrows').clear();
   const finish = () => finishTurn(events);
   if (frames.length > 0) {
@@ -1467,6 +1487,7 @@ function startMultiplayerGame() {
     sideId = side;
     random = mulberry32(seed); // unused for simulation (the server runs it), kept for anything that reads it defensively
     pendingWarning = false;
+    netCommitted = false;
     rebuildBoard();
     say('Drag your players, then press End Turn — your opponent is doing the same.');
     startClockDisplay(deadlineAt);

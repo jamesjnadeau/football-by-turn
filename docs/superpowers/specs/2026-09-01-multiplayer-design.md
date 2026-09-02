@@ -285,12 +285,28 @@ placement check above and a size and rate cap on messages.
 
 ## Hosting and deployment
 
-**GitHub Pages goes away.** The Worker is the site. One origin means the
-WebSocket is same-origin with no cross-origin story to get right, and one
-deploy means the page and the referee can never be a version apart — which
-matters more here than usual, because both import `lib/game/`, and a client
-running yesterday's physics against today's authoritative simulation is a
-class of desync worth designing out rather than debugging.
+**The Worker is the game; GitHub Pages stays as the single-player mirror.**
+The Worker serves the page and the lobby and the match objects from one
+origin, which is what makes the WebSocket same-origin with no cross-origin
+story to get right, and what stops the page and the referee ever being a
+version apart — they both import `lib/game/`, and a client running yesterday's
+physics against today's authoritative simulation is a class of desync worth
+designing out rather than debugging.
+
+Pages keeps publishing the same files with nothing behind them. This was
+originally specified the other way, with Pages deleted, on the grounds that
+two live copies where only one has a lobby is a support problem. The argument
+that won instead is availability: with both, a broken `wrangler deploy` costs
+multiplayer rather than the whole game, and single-player has no server to
+break.
+
+What the two publications must not share is the home screen. A Pages build
+that offered *Multiplayer* would open a socket to an origin with no Worker
+under it, so the builds differ by one flag: `app/build-config.js` exports
+`MULTIPLAYER`, `tools/build-site.js --no-multiplayer` overwrites that file in
+the assembled output — never in the source tree — and `sidesFor` drops the
+entry the flag denies. Pages is assembled with the flag off. Everything else
+about the two copies is byte-identical.
 
 **No domain is required.** `football-by-turn.<account>.workers.dev` serves
 static assets, terminates TLS and upgrades WebSockets exactly as a custom
@@ -312,12 +328,12 @@ dev` runs the real workerd locally with real Durable Objects and the assembled
 site, so a match is tested with two browser tabs at localhost, on the same
 code path as production.
 
-**CI.** The `test` job is untouched. The Pages build and deploy jobs become:
-assemble `_site`, then `wrangler deploy` with a `CLOUDFLARE_API_TOKEN` from
-repository secrets. The Pages permissions and concurrency group go with them.
-The consequence is worth stating plainly: from then on a bad Worker deploy
-takes down single-player too, where today a broken server would leave the site
-untouched.
+**CI.** The `test` job is untouched. Two deploy jobs hang off it and run in
+parallel: `pages`, which is the old build and deploy with `--no-multiplayer`
+added, keeping its own permissions and its `pages` concurrency group; and
+`worker`, which assembles `_site` and runs `wrangler deploy` with a
+`CLOUDFLARE_API_TOKEN` from repository secrets. Neither needs the other, and
+neither failing takes the other down.
 
 **Cost.** Static asset requests do not bill as Worker requests. A whole drive
 is on the order of forty turns of a handful of small messages each — call it

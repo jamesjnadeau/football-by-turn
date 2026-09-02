@@ -11,6 +11,7 @@
 import { lobbyMarkup } from '../lib/game/lobby.js';
 import { sideMarkup, SIDES } from '../lib/game/home.js';
 import { getVariant } from '../lib/game/variants.js';
+import { createNet } from './net.js';
 
 const home = document.getElementById('home');
 const board = document.getElementById('board');
@@ -58,30 +59,15 @@ function openMatchSocket(matchId, side, token, onMessage) {
   return ws;
 }
 
-function buildNet(ws, side) {
-  const handlers = {};
-  const on = (type) => (handler) => { handlers[type] = handler; };
-  ws.addEventListener('message', (ev) => {
-    const msg = JSON.parse(ev.data);
-    handlers[msg.type]?.(msg);
-  });
-  return {
-    side,
-    commit: (play, turnIndex) => ws.send(JSON.stringify({ type: 'commit', turnIndex, play })),
-    onStart: on('start'),
-    onTurn: on('turn'),
-    onTimeUp: on('timeUp'),
-    onOpponentGone: on('opponentGone'),
-    onOpponentBack: on('opponentBack'),
-    onMatchOver: on('matchOver'),
-  };
-}
-
 async function enterMatch(variant, matched, onExit) {
   show(home, false);
   show(board, true);
+  // The handle goes on the socket in the same breath the socket is opened,
+  // because MatchDO broadcasts `start` the moment the second coach connects
+  // -- which is inside the await below. createNet holds anything that lands
+  // before startGame has registered a handler for it.
   const ws = openMatchSocket(matched.matchId, matched.side, matched.token, () => {});
-  const net = buildNet(ws, matched.side);
+  const net = createNet(ws, matched.side);
   game ??= await import('./main.js');
   game.startGame({ variant: variant.id, side: matched.side, onExit, net });
 }

@@ -8,8 +8,14 @@
  * ('clock' | 'connectTimeout' | 'dropTimeout') to know which message the
  * alarm firing should turn into -- the pure record has no business knowing
  * about DO alarm semantics, so that tracking lives here, not on it.
+ *
+ * WHICH deadline is next, though, is the engine's to say: nextAlarm reads it
+ * off the record, and dispatch re-arms after every message. Arming only at
+ * the moments that seemed to need it is what left a started match with no
+ * alarm at all -- the huddle clock was set on the record and never given to
+ * one, so nothing was ever coming to end a turn nobody committed.
  */
-import { createMatch, applyMatchMessage } from './match-engine.js';
+import { createMatch, applyMatchMessage, nextAlarm, CONNECT_TIMEOUT_MS } from './match-engine.js';
 
 export class MatchDO {
   constructor(state, env) {
@@ -18,6 +24,7 @@ export class MatchDO {
     this.sockets = { offense: null, defense: null };
     this.record = null;
     this.armedFor = null;
+    this.armedAt = null;
   }
 
   async fetch(request) {
@@ -25,9 +32,9 @@ export class MatchDO {
     if (request.method === 'POST' && url.pathname === '/create') {
       const { matchId, variant, seed, tokens } = await request.json();
       this.record = createMatch({ matchId, variant, seed, tokens });
-      // 15 seconds for a match nobody joins -- spec's connect timeout.
-      await this.state.storage.setAlarm(Date.now() + 15_000);
-      this.armedFor = 'connectTimeout';
+      // The one deadline nextAlarm cannot name: a waiting match has none of
+      // its own, and this is the spec's timeout for one nobody completes.
+      await this.arm(Date.now() + CONNECT_TIMEOUT_MS, 'connectTimeout');
       return new Response('ok');
     }
 
@@ -68,20 +75,25 @@ export class MatchDO {
     const kind = this.armedFor;
     this.armedFor = null;
     if (kind === 'connectTimeout') {
-      this.dispatch(applyMatchMessage(this.record, { type: 'connectTimeout' }, Date.now()));
+      await this.dispatch(applyMatchMessage(this.record, { type: 'connectTimeout' }, Date.now()));
       return;
     }
     if (kind === 'dropTimeout') {
       const side = this.record.disconnectedAt.offense !== null ? 'offense' : 'defense';
-      this.dispatch(applyMatchMessage(this.record, { type: 'dropTimeout', side }, Date.now()));
+      await this.dispatch(applyMatchMessage(this.record, { type: 'dropTimeout', side }, Date.now()));
       return;
     }
-    this.dispatch(applyMatchMessage(this.record, { type: 'alarm' }, Date.now()));
-    if (this.record.status === 'active') {
-      const next = this.record.flushDeadlineAt ?? this.record.deadlineAt;
-      await this.state.storage.setAlarm(next);
-      this.armedFor = 'clock';
-    }
+    // dispatch re-arms from the record, so there is nothing to do here after
+    // it but let it.
+    await this.dispatch(applyMatchMessage(this.record, { type: 'alarm' }, Date.now()));
+  }
+
+  /** Arm the one alarm, remembering what it is for. */
+  async arm(at, kind) {
+    if (this.armedFor === kind && this.armedAt === at) return;
+    await this.state.storage.setAlarm(at);
+    this.armedFor = kind;
+    this.armedAt = at;
   }
 
   async dispatch({ record, messages }) {
@@ -89,14 +101,6 @@ export class MatchDO {
     for (const m of messages) {
       const ws = this.sockets[m.to];
       if (ws) ws.send(JSON.stringify(m));
-      if (m.type === 'opponentGone') {
-        await this.state.storage.setAlarm(Date.now() + 20_000);
-        this.armedFor = 'dropTimeout';
-      }
-      if (m.type === 'opponentBack') {
-        await this.state.storage.setAlarm(record.deadlineAt);
-        this.armedFor = 'clock';
-      }
     }
     if (record.status === 'over') {
       // Nothing left to referee. Deleting the alarm is enough to let the
@@ -104,6 +108,13 @@ export class MatchDO {
       // "destroy a Durable Object" call to make.
       await this.state.storage.deleteAlarm();
       this.armedFor = null;
+      this.armedAt = null;
+      return;
     }
+    // Every message, not just the ones that look like they move a deadline:
+    // the clock the huddle set, the flush window, the drop grace and the
+    // clock a returning coach resumes are all just "what the record says now".
+    const next = nextAlarm(record);
+    if (next) await this.arm(next.at, next.kind);
   }
 }

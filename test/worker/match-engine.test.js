@@ -1,9 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createMatch, applyMatchMessage, stripForSide, MAX_COMMIT_BYTES } from '../../worker/match-engine.js';
+import {
+  createMatch, applyMatchMessage, stripForSide, MAX_COMMIT_BYTES,
+  nextAlarm, FLUSH_GRACE_MS, DROP_GRACE_MS,
+} from '../../worker/match-engine.js';
 import { fieldPos } from '../../lib/game/view.js';
 
 const tokens = { offense: 'tok-o', defense: 'tok-d' };
+
+/** A match with both coaches seated and the first huddle's clock running. */
+function startedMatch() {
+  let m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'defense', token: 'tok-d' }, 2000));
+  return m;
+}
 
 test('a fresh match is waiting, with nobody connected and no state yet', () => {
   const m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
@@ -381,4 +392,27 @@ test('a whole drive, start to a dead ball, through nothing but messages', () => 
   assert.ok(turns < 60, 'the drive ended on its own -- a tackle, an incompletion, or downs, within 60 turns');
   assert.equal(m.status, 'over');
   assert.equal(m.reason, 'down');
+});
+
+test('nextAlarm names the deadline the shell has to arm', () => {
+  // The Durable Object's alarm is one-shot: whatever is armed now is the ONLY
+  // thing that will ever wake the match again. Which deadline that should be
+  // is a decision, so it lives here where it can be tested -- MatchDO having
+  // owned it is why a started match armed nothing at all and a coach who
+  // never pressed End Turn hung the drive forever.
+  const record = startedMatch();
+  assert.deepEqual(nextAlarm(record), { at: record.deadlineAt, kind: 'clock' });
+
+  // The flush window is a nearer deadline than the clock it replaces.
+  const flushing = { ...record, flushDeadlineAt: record.deadlineAt + FLUSH_GRACE_MS };
+  assert.deepEqual(nextAlarm(flushing),
+    { at: record.deadlineAt + FLUSH_GRACE_MS, kind: 'clock' });
+
+  const paused = { ...record, status: 'paused', disconnectedAt: { offense: 1000, defense: null } };
+  assert.deepEqual(nextAlarm(paused), { at: 1000 + DROP_GRACE_MS, kind: 'dropTimeout' });
+
+  assert.equal(nextAlarm({ ...record, status: 'over' }), null);
+  // A match nobody has joined is on the connect timeout the shell armed when
+  // it created the record; there is no deadline of its own to name yet.
+  assert.equal(nextAlarm(createMatch({ matchId: 'm', variant: '7', seed: 1, tokens: {} })), null);
 });

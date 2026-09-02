@@ -249,3 +249,30 @@ function runResolvedTurn(record, now) {
   }));
   return { record: next, messages };
 }
+
+/**
+ * Which deadline the shell should have armed, given where the match stands.
+ *
+ * A Durable Object's alarm is one-shot and there is only one of it, so
+ * whatever is armed now is the only thing that will ever wake this match
+ * again. That makes "which deadline is next" a decision rather than
+ * plumbing, and it belongs here, tested, beside the rules that set the
+ * deadlines in the first place. MatchDO having owned it is exactly how a
+ * started match came to arm nothing at all: the clock the huddle set was
+ * never given to an alarm, so a coach who never pressed End Turn hung the
+ * drive with no whistle coming.
+ *
+ * `null` means this record has no deadline of its own to name. A waiting
+ * match is on the connect timeout its shell armed when it created the
+ * record, and a finished one is waiting for nothing.
+ */
+export function nextAlarm(record) {
+  if (record.status === 'active') {
+    return { at: record.flushDeadlineAt ?? record.deadlineAt, kind: 'clock' };
+  }
+  if (record.status === 'paused') {
+    const side = record.disconnectedAt.offense !== null ? 'offense' : 'defense';
+    return { at: record.disconnectedAt[side] + DROP_GRACE_MS, kind: 'dropTimeout' };
+  }
+  return null;
+}

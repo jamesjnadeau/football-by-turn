@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { homeMarkup, COMING_SOON, SIDES, sideMarkup, sidesFor } from '../../lib/game/home.js';
+import { homeMarkup, COMING_SOON, SIDES, sideMarkup, sidesFor, homeAction } from '../../lib/game/home.js';
 import { VARIANTS, getVariant } from '../../lib/game/variants.js';
 
 test('the screen names the game and offers one button per variant', () => {
@@ -109,4 +109,23 @@ test('sidesFor offers multiplayer when asked nothing at all', () => {
   // The default is the full game: a plain `npm run serve` and `wrangler dev`
   // both want the lobby, and only the Pages build asks for it to be dropped.
   assert.deepEqual(sidesFor().map((s) => s.id).at(-1), 'multiplayer');
+});
+
+test('a press is read as the one thing it is', () => {
+  assert.deepEqual(homeAction({ tutorial: true }), { kind: 'tutorial' });
+  assert.deepEqual(homeAction({ back: true }), { kind: 'back' });
+  assert.deepEqual(homeAction({ side: 'defense' }), { kind: 'side', side: 'defense' });
+  assert.deepEqual(homeAction({ variant: '7' }), { kind: 'variant', variant: '7' });
+  assert.equal(homeAction({}), null);
+});
+
+test('a side press is nothing at all when the home screen no longer owns the section', () => {
+  // The multiplayer lobby draws its own side chooser into the same section,
+  // out of the same sideMarkup, so its buttons carry the same data-side. The
+  // home screen's listener is still attached to that section -- so without
+  // this, one press both entered the lobby AND started a single-player game
+  // against the computer, and whichever startGame landed last is the one the
+  // coach ended up looking at.
+  assert.equal(homeAction({ side: 'defense' }, { owns: false }), null);
+  assert.equal(homeAction({ variant: '7' }, { owns: false }), null);
 });

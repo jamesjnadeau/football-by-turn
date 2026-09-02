@@ -7,7 +7,7 @@
  * The markup comes from lib/game/home.js as a string, the same way the board's
  * does. This file only writes it into the page and listens for the press.
  */
-import { homeMarkup, sideMarkup, sidesFor } from '../lib/game/home.js';
+import { homeMarkup, sideMarkup, sidesFor, homeAction } from '../lib/game/home.js';
 import { isPlayable, getVariant } from '../lib/game/variants.js';
 import { loadTutorialDone } from './tutorial-store.js';
 import { MULTIPLAYER } from './build-config.js';
@@ -25,8 +25,14 @@ let game = null;
 // out of step with what a press means.
 let pickedVariant = null;
 
+// Whether the home screen is still the thing drawn in `home`. False from the
+// moment multiplayer takes the section over -- see startMultiplayer and
+// homeAction in lib/game/home.js for why a listener has to know this.
+let ownsSection = true;
+
 function showChoices() {
   pickedVariant = null;
+  ownsSection = true;
   home.innerHTML = homeMarkup(undefined, { tutorialDone: loadTutorialDone() });
 }
 
@@ -72,6 +78,12 @@ async function start(variantId, side) {
 let multiplayerModule = null;
 
 async function startMultiplayer(variantId) {
+  // Handing the section over, not just the screen. app/multiplayer.js draws
+  // its own side chooser here out of the same sideMarkup, so its buttons
+  // carry the same data-side this file's listener matches on; without giving
+  // up ownership, one press would enter the lobby AND start a single-player
+  // game. showChoices takes it back when a coach comes home.
+  ownsSection = false;
   show(home, false);
   show(board, true);
   multiplayerModule ??= await import('./multiplayer.js');
@@ -82,26 +94,23 @@ async function startMultiplayer(variantId) {
 // as markup, so matching on the way up means there is nothing to re-bind
 // when the screen swaps from the game list to the side chooser and back.
 home.addEventListener('click', (e) => {
-  if (e.target.closest?.('[data-tutorial]')) {
-    startTutorial();
-    return;
-  }
-  if (e.target.closest?.('[data-home-back]')) {
-    showChoices();
-    return;
-  }
   const sideBtn = e.target.closest?.('[data-side]');
-  if (sideBtn && pickedVariant) {
-    if (sideBtn.dataset.side === 'multiplayer') {
-      startMultiplayer(pickedVariant);
-    } else {
-      start(pickedVariant, sideBtn.dataset.side);
-    }
-    return;
-  }
-  const btn = e.target.closest?.('[data-variant]');
-  if (btn && isPlayable(btn.dataset.variant)) {
-    pickedVariant = btn.dataset.variant;
+  const variantBtn = e.target.closest?.('[data-variant]');
+  const action = homeAction({
+    tutorial: !!e.target.closest?.('[data-tutorial]'),
+    back: !!e.target.closest?.('[data-home-back]'),
+    // A side means nothing without the game it is a side of.
+    side: pickedVariant ? sideBtn?.dataset.side : undefined,
+    variant: variantBtn?.dataset.variant,
+  }, { owns: ownsSection });
+  if (action === null) return;
+  if (action.kind === 'tutorial') startTutorial();
+  else if (action.kind === 'back') showChoices();
+  else if (action.kind === 'side') {
+    if (action.side === 'multiplayer') startMultiplayer(pickedVariant);
+    else start(pickedVariant, action.side);
+  } else if (action.kind === 'variant' && isPlayable(action.variant)) {
+    pickedVariant = action.variant;
     home.innerHTML = sideMarkup(getVariant(pickedVariant),
       sidesFor({ multiplayer: MULTIPLAYER }));
   }

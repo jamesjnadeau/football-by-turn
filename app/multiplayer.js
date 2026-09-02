@@ -98,6 +98,14 @@ export function startMultiplayer({ variant: variantId, onExit = () => {} } = {})
   const variant = getVariant(variantId);
   showSidePicker(variant);
   home.addEventListener('click', function onSideClick(e) {
+    // sideMarkup writes a Back button into every chooser it builds, and
+    // app/home.js deliberately stops listening to this section the moment
+    // multiplayer takes it over -- so this screen's Back is ours to answer.
+    if (e.target.closest?.('[data-home-back]')) {
+      home.removeEventListener('click', onSideClick);
+      onExit();
+      return;
+    }
     const btn = e.target.closest?.('[data-side]');
     if (!btn) return;
     home.removeEventListener('click', onSideClick);

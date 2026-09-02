@@ -8,13 +8,6 @@ import { fieldPos } from '../../lib/game/view.js';
 
 const tokens = { offense: 'tok-o', defense: 'tok-d' };
 
-/** A match with both coaches seated and the first huddle's clock running. */
-function startedMatch() {
-  let m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
-  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 1000));
-  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'defense', token: 'tok-d' }, 2000));
-  return m;
-}
 
 test('a fresh match is waiting, with nobody connected and no state yet', () => {
   const m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
@@ -130,7 +123,13 @@ test('a commit is refused if it names the wrong turnIndex -- a stale message fro
     m, { type: 'commit', side: 'offense', turnIndex: 3, play: emptyPlay }, 1000,
   );
   assert.equal(record.committed.offense, null);
-  assert.deepEqual(messages, []);
+  // Refused OUT LOUD. This test used to assert silence, which was the bug:
+  // the client locks its board on commit and waits for the turn that commit
+  // belongs to, so a dropped commit cost a coach the turn he thought he had
+  // ended, with nothing on screen to say so.
+  assert.deepEqual(messages, [
+    { to: 'offense', type: 'commitRefused', reason: 'stale', turnIndex: 0 },
+  ]);
 });
 
 test('a commit that fails sanitizePlay is dropped, not applied', () => {
@@ -400,7 +399,7 @@ test('nextAlarm names the deadline the shell has to arm', () => {
   // is a decision, so it lives here where it can be tested -- MatchDO having
   // owned it is why a started match armed nothing at all and a coach who
   // never pressed End Turn hung the drive forever.
-  const record = startedMatch();
+  const record = started();
   assert.deepEqual(nextAlarm(record), { at: record.deadlineAt, kind: 'clock' });
 
   // The flush window is a nearer deadline than the clock it replaces.
@@ -415,4 +414,27 @@ test('nextAlarm names the deadline the shell has to arm', () => {
   // A match nobody has joined is on the connect timeout the shell armed when
   // it created the record; there is no deadline of its own to name yet.
   assert.equal(nextAlarm(createMatch({ matchId: 'm', variant: '7', seed: 1, tokens: {} })), null);
+});
+
+test('a commit the server cannot read is refused out loud too', () => {
+  const record = started();
+  for (const play of [null, { name: 5 }, { name: '', plans: 'nope', stances: {} }]) {
+    const { messages } = applyMatchMessage(
+      record, { type: 'commit', side: 'defense', turnIndex: 0, play }, 3000,
+    );
+    assert.deepEqual(messages, [
+      { to: 'defense', type: 'commitRefused', reason: 'malformed', turnIndex: 0 },
+    ]);
+  }
+});
+
+test('an oversized commit is refused out loud, not swallowed', () => {
+  const record = started();
+  const huge = { ...emptyPlay, name: 'x'.repeat(MAX_COMMIT_BYTES) };
+  const { messages } = applyMatchMessage(
+    record, { type: 'commit', side: 'offense', turnIndex: 0, play: huge }, 3000,
+  );
+  assert.deepEqual(messages, [
+    { to: 'offense', type: 'commitRefused', reason: 'too-big', turnIndex: 0 },
+  ]);
 });

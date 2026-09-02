@@ -38,8 +38,33 @@ export function createNet(socket, side) {
     onStart: on('start'),
     onTurn: on('turn'),
     onTimeUp: on('timeUp'),
+    onCommitRefused: on('commitRefused'),
     onOpponentGone: on('opponentGone'),
     onOpponentBack: on('opponentBack'),
     onMatchOver: on('matchOver'),
   };
+}
+
+/**
+ * Listen to `target` only for as long as `socket` is open, and hand back a
+ * way to stop sooner.
+ *
+ * The lobby's screens are all drawn into the same element, and their handlers
+ * send on the socket that opened them. A handler that outlives its socket is
+ * therefore two bugs at once: it answers clicks meant for whatever screen was
+ * drawn next, and it sends on a socket that is already closed. Tying the
+ * listener's life to the socket's makes both impossible to forget, because
+ * every way out of a lobby screen -- matched, Back, a dropped connection --
+ * closes the socket.
+ */
+export function bindWhileOpen(target, type, handler, socket) {
+  target.addEventListener(type, handler);
+  let bound = true;
+  const release = () => {
+    if (!bound) return;
+    bound = false;
+    target.removeEventListener(type, handler);
+  };
+  socket.addEventListener('close', release);
+  return release;
 }

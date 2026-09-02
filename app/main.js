@@ -1501,6 +1501,18 @@ function startMultiplayerGame() {
   });
   net.onTurn((msg) => applyServerTurn(msg));
   net.onTimeUp(() => say('Time is up — the server is waiting a moment longer for your opponent.'));
+  // The board was locked the moment End Turn was pressed. If the server will
+  // not take that commit, the lock has nothing left to wait for and has to
+  // come off here -- otherwise the coach sits unable to touch his own men
+  // until the next clock runs out on him.
+  net.onCommitRefused(({ reason }) => {
+    animating = false;
+    netCommitted = false;
+    paint();
+    say(reason === 'stale'
+      ? 'That turn had already run — this is the next one.'
+      : 'The server would not take that play. Draw it again.');
+  });
   net.onOpponentGone(({ resumeBy }) => say(`Your opponent dropped. Waiting up to ${Math.ceil((resumeBy - Date.now()) / 1000)}s…`));
   net.onOpponentBack(() => say('Your opponent is back.'));
   net.onMatchOver(({ reason }) => {

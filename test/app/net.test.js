@@ -1,15 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createNet } from '../../app/net.js';
+import { createNet, bindWhileOpen } from '../../app/net.js';
 
 /** A socket that only does what createNet is allowed to use of one. */
 function fakeSocket() {
   const listeners = [];
   return {
     sent: [],
-    addEventListener: (type, fn) => { if (type === 'message') listeners.push(fn); },
+    closers: [],
+    addEventListener: function (type, fn) {
+      if (type === 'message') listeners.push(fn);
+      if (type === 'close') this.closers.push(fn);
+    },
+    deliverClose() { for (const fn of this.closers) fn(); },
     send: function (data) { this.sent.push(JSON.parse(data)); },
     deliver(msg) { for (const fn of listeners) fn({ data: JSON.stringify(msg) }); },
+  };
+}
+
+/** An element that only does what bindWhileOpen is allowed to use of one. */
+function fakeTarget() {
+  const bound = new Map();
+  return {
+    addEventListener: (type, fn) => bound.set(type + fn.toString(), fn),
+    removeEventListener: (type, fn) => bound.delete(type + fn.toString()),
+    fire: (type) => { for (const [k, fn] of bound) if (k.startsWith(type)) fn({ type }); },
   };
 }
 
@@ -52,4 +67,40 @@ test('commit sends the play and the turn it answers', () => {
   const ws = fakeSocket();
   createNet(ws, 'offense').commit({ plans: {} }, 3);
   assert.deepEqual(ws.sent, [{ type: 'commit', turnIndex: 3, play: { plans: {} } }]);
+});
+
+test('a refused commit reaches its handler like any other message', () => {
+  const ws = fakeSocket();
+  const net = createNet(ws, 'offense');
+  const seen = [];
+  net.onCommitRefused((m) => seen.push(m.reason));
+  ws.deliver({ type: 'commitRefused', reason: 'stale', turnIndex: 2 });
+  assert.deepEqual(seen, ['stale']);
+});
+
+test('a screen\'s clicks stop being listened to when its socket closes', () => {
+  // The lobby draws its buttons into the same element every screen uses, and
+  // its handler sends on ITS socket. A handler that outlived that socket kept
+  // answering clicks meant for whatever was drawn next, and sent on a socket
+  // that was already closed.
+  const ws = fakeSocket();
+  const target = fakeTarget();
+  const seen = [];
+  bindWhileOpen(target, 'click', () => seen.push('press'), ws);
+  target.fire('click');
+  assert.deepEqual(seen, ['press']);
+  ws.deliverClose();
+  target.fire('click');
+  assert.deepEqual(seen, ['press'], 'the closed socket took its listener with it');
+});
+
+test('a bound listener can be let go before the socket closes', () => {
+  const ws = fakeSocket();
+  const target = fakeTarget();
+  const seen = [];
+  const release = bindWhileOpen(target, 'click', () => seen.push('press'), ws);
+  release();
+  target.fire('click');
+  assert.deepEqual(seen, []);
+  ws.deliverClose(); // and releasing twice is not an error
 });

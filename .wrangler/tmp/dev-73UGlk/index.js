@@ -2934,10 +2934,14 @@ function applyMatchMessage(record, message, now) {
   }
   if (record.status !== "active") return { record, messages: [] };
   if (message.type === "commit") {
-    if (message.turnIndex !== record.state.turnIndex) return { record, messages: [] };
-    if (JSON.stringify(message).length > MAX_COMMIT_BYTES) return { record, messages: [] };
+    const refuse = /* @__PURE__ */ __name((reason) => ({
+      record,
+      messages: [{ to: message.side, type: "commitRefused", reason, turnIndex: record.state.turnIndex }]
+    }), "refuse");
+    if (message.turnIndex !== record.state.turnIndex) return refuse("stale");
+    if (JSON.stringify(message).length > MAX_COMMIT_BYTES) return refuse("too-big");
     const play = sanitizePlay(message.play);
-    if (!play) return { record, messages: [] };
+    if (!play) return refuse("malformed");
     const state = cloneState(record.state);
     applyPlay(state, play, message.side);
     const committed = { ...record.committed, [message.side]: play };

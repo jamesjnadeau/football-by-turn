@@ -124,10 +124,20 @@ export function applyMatchMessage(record, message, now) {
   if (record.status !== 'active') return { record, messages: [] };
 
   if (message.type === 'commit') {
-    if (message.turnIndex !== record.state.turnIndex) return { record, messages: [] };
-    if (JSON.stringify(message).length > MAX_COMMIT_BYTES) return { record, messages: [] };
+    // A refused commit is answered, never swallowed. The client locks its
+    // board the moment it commits and waits for the turn that commit belongs
+    // to, so silence here is a coach who cannot touch his own board and has
+    // lost the turn he thought he had ended -- until the next clock rescues
+    // him. `turnIndex` comes back with the refusal because a stale commit's
+    // whole problem is that the two disagree about which turn this is.
+    const refuse = (reason) => ({
+      record,
+      messages: [{ to: message.side, type: 'commitRefused', reason, turnIndex: record.state.turnIndex }],
+    });
+    if (message.turnIndex !== record.state.turnIndex) return refuse('stale');
+    if (JSON.stringify(message).length > MAX_COMMIT_BYTES) return refuse('too-big');
     const play = sanitizePlay(message.play);
-    if (!play) return { record, messages: [] };
+    if (!play) return refuse('malformed');
     const state = cloneState(record.state);
     // placeFormation (inside applyPlay) is the same placement rule the board
     // enforces during repositioning -- a spot it refuses is simply skipped,

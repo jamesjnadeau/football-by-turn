@@ -11,7 +11,7 @@
 import { lobbyMarkup } from '../lib/game/lobby.js';
 import { sideMarkup, MULTIPLAYER_SIDES } from '../lib/game/home.js';
 import { getVariant } from '../lib/game/variants.js';
-import { createNet } from './net.js';
+import { createNet, bindWhileOpen } from './net.js';
 
 const home = document.getElementById('home');
 const board = document.getElementById('board');
@@ -40,15 +40,17 @@ function openLobbySocket(variant, side, onMatched) {
       onMatched(msg);
     }
   });
-  home.addEventListener('click', function onLobbyClick(e) {
+  // Bound to the socket's life, not to the one way out that remembered to
+  // clean up after itself: being matched closes this socket too, and so does
+  // the server going away. See bindWhileOpen.
+  bindWhileOpen(home, 'click', (e) => {
     if (e.target.closest?.('[data-lobby-switch]')) {
       ws.send(JSON.stringify({ type: 'switch' }));
     } else if (e.target.closest?.('[data-lobby-back]')) {
       ws.close();
-      home.removeEventListener('click', onLobbyClick);
       showSidePicker(variant);
     }
-  });
+  }, ws);
   return ws;
 }
 

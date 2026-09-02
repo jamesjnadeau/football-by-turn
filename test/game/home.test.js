@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { homeMarkup, COMING_SOON, SIDES, sideMarkup, sidesFor, homeAction } from '../../lib/game/home.js';
+import { homeMarkup, COMING_SOON, SIDES, sideMarkup, sidesFor, homeAction, MULTIPLAYER_SIDES } from '../../lib/game/home.js';
 import { VARIANTS, getVariant } from '../../lib/game/variants.js';
 
 test('the screen names the game and offers one button per variant', () => {
@@ -128,4 +128,13 @@ test('a side press is nothing at all when the home screen no longer owns the sec
   // coach ended up looking at.
   assert.equal(homeAction({ side: 'defense' }, { owns: false }), null);
   assert.equal(homeAction({ variant: '7' }, { owns: false }), null);
+});
+
+test('the multiplayer chooser talks about the other coach, not the computer', () => {
+  const ids = MULTIPLAYER_SIDES.map((s) => s.id);
+  assert.deepEqual(ids, ['offense', 'defense'], 'a match has two sides and no training mode');
+  for (const s of MULTIPLAYER_SIDES) {
+    assert.doesNotMatch(s.note, /computer/, `"${s.note}" is the single-player promise`);
+    assert.match(s.note, /coach/, 'the opponent is a person');
+  }
 });

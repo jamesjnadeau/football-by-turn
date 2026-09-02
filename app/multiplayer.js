@@ -9,7 +9,7 @@
  * module; this file only wires sockets to the DOM and to main.js's net seam.
  */
 import { lobbyMarkup } from '../lib/game/lobby.js';
-import { sideMarkup, SIDES } from '../lib/game/home.js';
+import { sideMarkup, MULTIPLAYER_SIDES } from '../lib/game/home.js';
 import { getVariant } from '../lib/game/variants.js';
 import { createNet } from './net.js';
 
@@ -75,9 +75,7 @@ async function enterMatch(variant, matched, onExit) {
 function showSidePicker(variant) {
   show(board, false);
   show(home, true);
-  home.innerHTML = sideMarkup(variant, [
-    ...SIDES.filter((s) => s.id === 'offense' || s.id === 'defense'),
-  ]);
+  home.innerHTML = sideMarkup(variant, MULTIPLAYER_SIDES);
 }
 
 export function startMultiplayer({ variant: variantId, onExit = () => {} } = {}) {

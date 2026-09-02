@@ -303,6 +303,7 @@ function paint() {
   // paint over the prefix and the icon would simply stop appearing, with no
   // test to catch it — the menu's own labels need a DOM, so none of them is
   // under `node --test` at all.
+  runBtn.textContent = net ? 'End Turn' : 'Run Turn';
   runBtn.disabled = animating || state.phase !== 'planning';
   autoplanBtn.textContent = `${FIELD_BUTTON_ICONS.autoplan} Autoplan ${coachedSide(state)}`;
   autoplanBtn.disabled = animating || state.phase !== 'planning';
@@ -1055,7 +1056,12 @@ function pressRun() {
   // press again to run anyway would be asking him to overrule an instruction
   // the same screen just gave him — on the very first press, where the quarter-
   // back has no arrow because the step teaching that comes next.
-  const missing = lesson ? [] : unplannedPlayers(state);
+  // Never during a lesson, and never in a match. A lesson refuses every
+  // gesture but the one it is teaching, so the men without arrows are the
+  // ones it is deliberately not teaching yet. A match has a clock: asking for
+  // a second press spends seconds a coach cannot get back, on a button that
+  // says End Turn rather than Run Turn, to warn him about a board he can see.
+  const missing = lesson || net ? [] : unplannedPlayers(state);
   if (missing.length > 0 && !pendingWarning) {
     // Spec: warn when not every player has a direction. Second press runs anyway.
     pendingWarning = true;

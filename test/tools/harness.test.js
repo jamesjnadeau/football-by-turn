@@ -11,6 +11,7 @@ import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 import { OFFENSE_SPEC } from '../../lib/game/learned/offense-spec.js';
 import { spotFault, formationFoul } from '../../lib/game/formation.js';
 import { loadGhostLog } from '../../tools/ghost.js';
+import { runTurn } from '../../lib/game/turn.js';
 
 test('scenario deals a plannable hot-seat down inside the field', () => {
   const rand = mulberry32(11);
@@ -176,4 +177,25 @@ test('an arm is chosen once per down, not once per turn', () => {
   const arm = s.dealtArm;
   for (let t = 1; t < 4; t++) { s.turnIndex = t; coach(s); }
   assert.equal(s.dealtArm, arm);
+});
+
+test('the candidate defense genome reaches the down\'s read, not just its orders', () => {
+  // advancePlay (turn.js) computes the snap read from
+  // activeGenome(state, 'defense'), which falls back to the SHIPPED genome
+  // unless the state carries an override. defenseCoach must put the
+  // candidate there itself, or a candidate's read:* weights never move
+  // fitness by a single yard no matter how they are trained.
+  const distinctive = { ...makeGenome(DEFENSE_SPEC), 'read:prior': 3 };
+  const s1 = scenario(mulberry32(21));
+  defenseCoach(distinctive)(s1);
+  runTurn(s1, mulberry32(22));
+  // With only read:prior set, the snap read is
+  // read:prior + read:spread*look.spread + read:backs*look.backs = 3 + 0 + 0.
+  assert.equal(s1.playRead.read.pass, 3, 'the candidate\'s read:prior did not reach the read');
+
+  const inert = makeGenome(DEFENSE_SPEC);
+  const s2 = scenario(mulberry32(21));
+  defenseCoach(inert)(s2);
+  runTurn(s2, mulberry32(22));
+  assert.equal(s2.playRead.read.pass, 0);
 });

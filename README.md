@@ -55,6 +55,20 @@ shipped "learned offense vs. trained-adaptive learned defense" matchup.
 `defense-genome.js` is generated — retrain it with `train:defense` rather
 than hand-editing it.
 
+`train:defense` no longer scores against the scripted run option alone. It
+deals one of three offenses per down: a recorded human run
+(`coaching-logs/default-offense.json`), a recorded human pass
+(`coaching-logs/default-offense2.json`), and a written play-action fake. The
+first two are real coaching, exported from the Coaches Menu and committed so
+that a genome trained this way can be rebuilt from a clean checkout; the third
+is written because no recorded down sells one play and throws another, and the
+defense's `read:inertia` — how long it stays wrong once it has been fooled —
+has nothing to learn without a fake.
+
+A log named `coaching-logs/default-*.json` is part of that corpus and is
+committed; every other export the Coaches Menu drops in that folder is
+ignored, and stays yours.
+
 To train the defense against a ghost of **you** — the coach the game has
 actually been recording:
 

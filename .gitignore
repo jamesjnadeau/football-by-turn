@@ -1,4 +1,6 @@
 .superpowers/
 .claude/worktrees/
-coaching-logs/
-!coaching-logs/default-offense.json
+# Ad-hoc coach-log exports are the coach's own scratch. A log named
+# default-*.json is a committed training corpus -- see docs/superpowers/specs.
+coaching-logs/*
+!coaching-logs/default-*.json

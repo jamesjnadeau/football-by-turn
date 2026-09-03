@@ -216,7 +216,8 @@ when he moved would be reading his own position, not the offense.
   downfield velocity alone does not.
 
 ```
-z_d(t) = read:man:inertia · z_d(t-1)
+z_d(t) = read:man:bias
+       + read:man:inertia · z_d(t-1)
        + read:man:downfield · downfield_d
        + read:man:lateral   · lateral_d
 
@@ -226,6 +227,14 @@ reads[d] = { pass: z_d, confidence: tanh(|z_d|), committed: |z_d| > read:man:com
 There are no cues at the snap: nothing has moved, and the cover assignments are
 not made until `learnedOrders` first runs. Every read starts at zero and first
 advances on turn 1.
+
+**`read:man:bias` is not decoration, it is what makes the read a classifier at
+all.** `lateral` is an absolute value and so is never negative, and `downfield`
+is positive on nearly every turn. Without an intercept the sign of `z_d` is fixed
+by the weights alone, so the model can answer only one class for every input it
+will ever see — and a read that always says "run" is what six training runs
+produced. The decision boundary has to be able to sit at a non-zero cue value;
+the bias is what puts it there.
 
 ### What he does about it
 
@@ -241,10 +250,11 @@ defense out of position.
 
 ## New genome keys
 
-Five, appended to `DEFENSE_SPEC` in `learned/defense-spec.js`.
+Six, appended to `DEFENSE_SPEC` in `learned/defense-spec.js`.
 
 | key | range | init | what it weighs |
 |---|---|---|---|
+| `read:man:bias` | -4...4 | 0 | where the decision boundary sits |
 | `read:man:downfield` | -4...4 | 0 | his man getting downfield |
 | `read:man:lateral` | -4...4 | 0 | his man working sideways |
 | `read:man:inertia` | 0...1 | 0 | how much of last turn's belief carries |

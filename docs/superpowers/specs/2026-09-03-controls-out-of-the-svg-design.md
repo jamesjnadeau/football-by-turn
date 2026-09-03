@@ -201,8 +201,11 @@ has had. The board becomes `height: calc(100% - var(--control-bar-height))` on
 narrow screens, so the bar takes its space from the field rather than covering
 it — see the risk below.
 
-**`lib/game/tutorial/render.js`** — `highlightMark` keeps drawing the SVG ring
-for players. Button rings are CSS.
+**Nothing under `lib/game/tutorial/`** is edited. `highlightMark` keeps drawing
+the SVG ring for players and needs no change to stop drawing one for buttons:
+it already returns the empty string for a null anchor, and `anchorFor` in
+`app/main.js` is what stops producing button anchors. The button ring is CSS on
+the button itself.
 
 ## Testing
 

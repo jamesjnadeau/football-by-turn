@@ -41,11 +41,24 @@ at its maximum. At those values the accumulator is identically zero, confidence
 is zero, `committed` is never true, and the defense plays **byte for byte** the
 defense it plays today.
 
-This is the codebase's own idiom, not a new one. `clampGenome` fills keys a
-genome file does not carry from their spec `init` and drops keys the spec does
-not name, so the shipped `defense-genome.js` stays valid the day this lands —
-exactly as it did for `adapt:*`. Training is a walk away from a known-good
-posture, not from noise.
+This is the codebase's own idiom, not a new one, and `adapt:*` did it first.
+Training is a walk away from a known-good posture, not from noise.
+
+**How the shipped genome stays valid is worth stating precisely, because the
+obvious answer is wrong.** `clampGenome` does fill missing keys from their spec
+`init` — but only two callers on the read path use it (`formation.js:224` and
+`learned/formation.js:54`), and neither is on the one that matters here:
+`turn.js` and `ai.js:118` both hand `activeGenome(...)` to the policy **raw**. A
+shipped genome missing a key its policy dereferences yields `undefined`, and
+`undefined + undefined * x` is `NaN` for the whole game.
+
+What actually holds the line is an invariant this repository already asserts as
+a test — `test/game/learned/active.test.js:16`, *"the shipped genome holds every
+key its spec names"*. So adding a key to `DEFENSE_SPEC` obliges you to add it to
+`lib/game/learned/defense-genome.js` at its spec init in the same change. That
+file's header forbids hand-editing in favour of retraining, and this is the
+narrow exception the invariant creates: a mechanical key addition at init values,
+with every trained float preserved, is not a hand-tuned genome.
 
 The cost is stated plainly in **Training** below: the retrain is part of this
 work, not a follow-up, because without it the feature is invisible.

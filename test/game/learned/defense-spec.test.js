@@ -31,7 +31,7 @@ test('the spec covers formation, zones, coverage weights and the scheme gate', (
     'sub:nickel:bias', 'sub:dime:bias']) {
     assert.ok(keys.has(k), k);
   }
-  assert.equal(DEFENSE_SPEC.length, 51);
+  assert.equal(DEFENSE_SPEC.length, 52);
 });
 
 test('every spec entry is well-formed and its init is inside its range', () => {
@@ -104,7 +104,7 @@ test('the sub-package newcomers start on their own roster spots', () => {
 
 test('the per-man read keys are inert at init', () => {
   const g = makeGenome(DEFENSE_SPEC);
-  for (const key of ['read:man:downfield', 'read:man:lateral', 'read:man:inertia', 'read:trigger']) {
+  for (const key of ['read:man:bias', 'read:man:downfield', 'read:man:lateral', 'read:man:inertia', 'read:trigger']) {
     assert.equal(g[key], 0, `${key} must start at zero`);
   }
   // read:man:commit starts at its own FLOOR, not its ceiling -- the zero
@@ -121,15 +121,19 @@ test('the per-man read keys are inert at init', () => {
  * The maximum |z| a genome could ever present for one defender on a turn
  * learnedOrders actually consults (t >= 1, once a cover assignment exists --
  * see read.js's advanceRead). Both cues are clamped to [-1, 1] before their
- * weight applies (read.js's clamp1), so the most one turn's evidence can add
- * is |read:man:downfield| + |read:man:lateral|, with both cues driven to
- * whichever sign matches their own weight's sign. read:man:inertia carries a
- * fraction of that forward turn over turn, so the accumulator's own fixed
- * point -- cueMax / (1 - inertia) -- is the largest |z| repeated evidence can
- * ever build to; at inertia 1 nothing decays and the reach is unbounded.
+ * weight applies (read.js's clamp1), so the most one turn's cues can add is
+ * |read:man:downfield| + |read:man:lateral|, with both cues driven to
+ * whichever sign matches their own weight's sign. read:man:bias is added on
+ * every advance too, unclamped, and at whatever sign maximizes |z| it adds
+ * straight onto that ceiling. read:man:inertia carries a fraction of the
+ * whole turn's addition forward turn over turn, so the accumulator's own
+ * fixed point -- (cueMax + |bias|) / (1 - inertia) -- is the largest |z|
+ * repeated evidence can ever build to; at inertia 1 nothing decays and the
+ * reach is unbounded.
  */
 function maxReachableZ(genome) {
-  const cueMax = Math.abs(genome['read:man:downfield']) + Math.abs(genome['read:man:lateral']);
+  const cueMax = Math.abs(genome['read:man:downfield']) + Math.abs(genome['read:man:lateral'])
+    + Math.abs(genome['read:man:bias']);
   const inertia = genome['read:man:inertia'];
   if (inertia >= 1) return Infinity;
   return cueMax / (1 - inertia);

@@ -216,17 +216,22 @@ count large enough to swamp the accumulator on its own.
   a lineman's own `maxSpeed`, and negated so that driving downfield reads as a
   run. Run blocking drives; pass protection sets and holds. Velocity, never the
   plan.
-- **`ballAir`** — `1` when `state.ball.carrierId === null`, `0` otherwise.
-  Usefully *not* conclusive: `planLearnedRun`'s give is a `setPass` from the
-  centre to the back, so a direct snap looks like a throw for exactly one turn.
-  That is the mesh point, and it falls out for free rather than being modelled.
+A third cue, `ballAir` (`1` when nobody is carrying the ball), was specified and
+then **removed**. It could never inform an action: `learnedOrders`' first guard
+returns early on `!carrier`, which is exactly the condition that made the cue
+`1`, so the only turns it was observable on were turns where the defense had
+already been taken over by another branch. It was also the sole source of an
+asymmetry — being an indicator, its weight could only ever push toward *pass* —
+which left the run side of the accumulator with less reach than the pass side
+under a single shared threshold. Two signed cues, each able to push either way,
+is the whole evidence set.
 
 Turn 0 has no cues, because nothing has moved yet. The read at the snap is the
 prior and the look, which is the order a defense actually gets its information
 in.
 ## New genome keys
 
-Nine, appended to `DEFENSE_SPEC` in `learned/defense-spec.js`.
+Eight, appended to `DEFENSE_SPEC` in `learned/defense-spec.js`.
 
 | key | range | init | what it weighs |
 |---|---|---|---|
@@ -236,7 +241,6 @@ Nine, appended to `DEFENSE_SPEC` in `learned/defense-spec.js`.
 | `read:inertia` | 0…1 | 0 | how much of last turn's belief carries |
 | `read:qbDepth` | −4…4 | 0 | the quarterback's depth |
 | `read:lineFlow` | −4…4 | 0 | the line driving downfield |
-| `read:ballAir` | −4…4 | 0 | the ball loose |
 | `read:commit` | 0…8 | 0 | evidence needed before acting on the read |
 | `read:trigger` | 0…10 | 0 | yards the second level bails on a pass read |
 
@@ -276,23 +280,26 @@ is untouched: `applyOrders` still issues through `setCover`, exactly as today.
 
 ### The trigger
 
-Where the read bites. Both halves reuse helpers that already exist.
+The trigger is **symmetric, and it never breaks coverage**. Second-level aims
+that are not coverage orders (`deepAim`, `flowLinebacker`) move
+`read:trigger × confidence` yards along `defendDir`: *toward* the line on a
+committed run read, *away* from it on a committed pass read. A man who has been
+given somebody to cover keeps him, whatever the read says.
 
-**Committed to run** — backers, and covering backs who are not the deep free
-man, *drop their coverage* and take an aim at the carrier through
-`leverageAim(p, interceptPoint(p, car), car)`, the same call guard three already
-makes.
+**Why not "he drops his man and comes"**, which is what this design originally
+specified and what the first build shipped: because it made the trigger a bad
+play, and training proved it. With coverage abandoned, a wrong read leaves a
+receiver running free — a touchdown — while a right read buys little, since
+guard three already converges the whole defense on the carrier once he is past
+the line. Selection saw that trade and switched the feature off, raising
+`read:commit` above the reach of any evidence.
 
-This is the whole mechanic. He leaves his man, and on play-action the throw goes
-exactly where he was standing. It needs no new parameter: `read:commit` decides
-how sure he must be, and that is the only question worth learning.
+A linebacker who bites is **late, not absent**. That is what play-action does to
+a real defense; it is a loss the defense survives often enough to be worth
+risking; and it is what gives selection a reason to keep the trigger on at all.
 
-**Committed to pass** — second-level aims that are *not* coverage orders
-(`deepAim`, `flowLinebacker`) move `read:trigger × confidence` yards *away* from
-the line of scrimmage, along `defendDir`. He gives ground rather than filling.
-
-The rushing line and the deep free man are excluded from both. Their jobs do not
-change with the read, and decision 7 keeps them rule-based.
+The rushing line and the deep free man are excluded from both directions. Their
+jobs do not change with the read, and decision 7 keeps them rule-based.
 
 ### The read is said out loud
 
@@ -313,6 +320,32 @@ that move are `learned/offense-policy.js` (the write and the read),
 
 The offense does **not** read the defense. Diagnosing coverage and pressure is a
 symmetric feature roughly doubling this one, and it is a non-goal here.
+
+## What the first build got wrong
+
+Three defects survived task-level review and were only visible once the whole
+branch ran. All three are recorded here because each was a design error in this
+document, not a slip in the code that implemented it.
+
+**The trigger was a bad play, so training switched it off.** Abandoning coverage
+on a run read risked a free receiver to gain something guard three already
+provided. Selection raised `read:commit` above the evidence's reach rather than
+use it. Fixed by making the trigger a symmetric slide that never breaks
+coverage — see *The trigger*.
+
+**`ballAir` could never inform an action.** `learnedOrders` returns early on
+`!carrier`, the same condition that made the cue `1`. Removed — see *The cues*.
+
+**`read:commit` inited at its maximum.** What makes an untrained genome inert is
+the zero weights, not the threshold; a maximum init bought nothing and made the
+feature untrainable from its own starting point. Now inits at `0` — see *Why the
+parameters start at zero*.
+
+The common thread: each was a property of the *whole loop* — cue, threshold,
+consumer, and fitness together — and none was visible from any single task's
+diff. A feature whose parts are individually correct can still be collectively
+inert, and the check for that is behavioural, not structural. Hence the
+reachability test named in **Testing**.
 
 ## Training
 
@@ -420,7 +453,7 @@ turn-0 throw, and three of its four throws are power-1 tosses to `o-rb` on turn
 1 — pitches, not dropbacks. It is better than a synthetic option at being the run
 arm (varied looks, hand-drawn arrows, downs running 3 to 17 turns), and those
 pitches are real examples of "the ball is in the air and it is still a run",
-which is exactly the ambiguity `read:ballAir` exists to price.
+which was the ambiguity the since-removed `ballAir` cue was meant to price.
 
 `default-offense2.json` is the **pass arm**. Twenty downs, fifteen of them
 carrying a throw, seven of those to `o-wr1` or `o-wr2` at full power on turns
@@ -491,6 +524,12 @@ A new `test/game/read.test.js` pins the properties the design rests on:
   inertia, and the read is still on run. The mechanic as a scenario.
 - **It runs hot-seat.** `advancePlay` with `aiTeam` null, which is every play the
   harness ever scores.
+- **The shipped genome's read is reachable.** With the committed
+  `defense-genome.js`, some attainable combination of cues on a turn where
+  `learnedOrders` actually consults the read must exceed `read:commit`. This is
+  the invariant whose absence let the feature ship inert, and it belongs with
+  `active.test.js:16`'s "the shipped genome holds every key its spec names" as a
+  property of the shipped artefact rather than of the code.
 - **Scheme and assignments hold** across the turns of one down.
 
 The variant relaxation gets its own coverage in `test/tools/ghost.test.js` (or

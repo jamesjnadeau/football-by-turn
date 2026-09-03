@@ -7,7 +7,7 @@ import {
 import { DEFENSE_SPEC } from '../../../lib/game/learned/defense-spec.js';
 import { makeGenome } from '../../../lib/game/learned/genome.js';
 import { createGame, getPlayer } from '../../../lib/game/state.js';
-import { coverAssignments, positionGroup } from '../../../lib/game/defense.js';
+import { coverAssignments, positionGroup, deepMan } from '../../../lib/game/defense.js';
 import { fieldPos } from '../../../lib/game/view.js';
 import { zoneAnchorPoint } from '../../../lib/game/zone.js';
 import { advancePlay, snapLook } from '../../../lib/game/read.js';
@@ -236,4 +236,25 @@ test('the rushing line is never triggered', () => {
       assert.deepEqual(o.aim, before.get(o.id));
     }
   }
+});
+
+test('the deep free man is not triggered, whichever way the read goes', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -4, 'read:trigger': 6 };
+  advancePlay(s, g);
+
+  const free = deepMan(s, 'defense');
+  assert.ok(free, 'this formation must field a deep man for the test to mean anything');
+  const orderFor = (orders) => orders.find((o) => o.id === free.id);
+  const before = orderFor(learnedOrders(s, 'defense', g));
+
+  // Committed to run: everybody else leaves his man. He does not.
+  s.playRead.read = { pass: -5, confidence: Math.tanh(5), committed: true };
+  assert.deepEqual(orderFor(learnedOrders(s, 'defense', g)), before);
+
+  // Committed to pass: everybody else gives ground. He is already deep.
+  s.playRead.read = { pass: 5, confidence: 1, committed: true };
+  assert.deepEqual(orderFor(learnedOrders(s, 'defense', g)), before);
 });

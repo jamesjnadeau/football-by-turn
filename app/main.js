@@ -1012,17 +1012,22 @@ function pressRun() {
   };
   if (frames.length > 0) {
     // Lock the controls now, not at the next paint() — paint() does not run
-    // again until finish(), and until then every button is still live.
+    // again until finish(), so without a call here every button would just
+    // keep whatever state the last paint left it in for the whole animation.
+    // paintControls() is that call, and it covers every button that has an
+    // entry in lib/game/controls.js — run, autoplan, ai, reposition,
+    // personnel, save and the slot buttons — greying each on both the board
+    // and the menu (and, for reposition, hiding it, since controlsFor() drops
+    // that control outright once animating is true). What is left to disable
+    // by hand below is exactly the menu's buttons that have no control at
+    // all: they are rows the menu draws for itself, so paintControls() has
+    // nothing to find for them and the lock has to be spelled out here.
     animating = true;
-    runBtn.disabled = true;
-    autoplanBtn.disabled = true;
+    paintControls();
     clearBtn.disabled = true;
     nextBtn.disabled = true;
     newBtn.disabled = true;
     homeBtn.disabled = true;
-    aiBtn.disabled = true;
-    repositionBtn.disabled = true;
-    personnelBtn.disabled = true;
     debugBtn.disabled = true;
     copyLogBtn.disabled = true;
     clearLogBtn.disabled = true;

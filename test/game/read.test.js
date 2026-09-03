@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { snapLook, advanceRead, advancePlay, setCalledPlay } from '../../lib/game/read.js';
+import { learnedOrders } from '../../lib/game/learned/defense-policy.js';
 import { createGame, getPlayer, setMode, setPlan } from '../../lib/game/state.js';
 import { nextDown } from '../../lib/game/rules.js';
 import { makeGenome } from '../../lib/game/learned/genome.js';
@@ -235,4 +236,18 @@ test('the read never looks at the orders', () => {
   advancePlay(drawn, g);
   advancePlay(bare, g);
   assert.deepEqual(drawn.playRead.read, bare.playRead.read);
+});
+
+test('an inert genome triggers nothing, ever', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = inert();
+  advancePlay(s, g);
+  const withPercept = learnedOrders(s, 'defense', g);
+  // The same state with no percept at all: the fallback path.
+  const bare = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  bare.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  bare.plannedPass = null;
+  assert.deepEqual(withPercept, learnedOrders(bare, 'defense', g));
 });

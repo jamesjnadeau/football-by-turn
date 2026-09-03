@@ -7,7 +7,7 @@ import {
 import { DEFENSE_SPEC } from '../../../lib/game/learned/defense-spec.js';
 import { makeGenome } from '../../../lib/game/learned/genome.js';
 import { createGame, getPlayer } from '../../../lib/game/state.js';
-import { coverAssignments } from '../../../lib/game/defense.js';
+import { coverAssignments, positionGroup } from '../../../lib/game/defense.js';
 import { fieldPos } from '../../../lib/game/view.js';
 import { zoneAnchorPoint } from '../../../lib/game/zone.js';
 import { advancePlay, snapLook } from '../../../lib/game/read.js';
@@ -185,4 +185,55 @@ test('a defender keeps the man he took, even when somebody nearer appears', () =
 
   advancePlay(s, g);
   assert.deepEqual(covers(learnedOrders(s, 'defense', g)), before);
+});
+
+test('a committed run read pulls the second level off its men', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -4 };
+  advancePlay(s, g);
+  const covering = learnedOrders(s, 'defense', g).filter((o) => o.cover).length;
+  assert.ok(covering > 0);
+
+  // Force the belief to a committed RUN (negative is run).
+  s.playRead.read = { pass: -5, confidence: Math.tanh(5), committed: true };
+  const after = learnedOrders(s, 'defense', g);
+  assert.equal(after.filter((o) => o.cover).length, 0, 'they have all left their men');
+  for (const o of after) assert.ok(o.aim, 'and every one of them has somewhere to be');
+});
+
+test('a committed pass read gives ground, by read:trigger yards', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': 4, 'read:trigger': 6 };
+  advancePlay(s, g);
+  const flat = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o.aim]));
+
+  s.playRead.read = { pass: 5, confidence: 1, committed: true };
+  const deep = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o.aim]));
+
+  // At least one non-lineman's aim moved further from the line of scrimmage.
+  const moved = [...deep].filter(([id, aim]) => {
+    const p = getPlayer(s, id);
+    return aim && flat.get(id) && positionGroup(p) !== 'line'
+      && aim.y > flat.get(id).y; // the defense defends toward +y
+  });
+  assert.ok(moved.length > 0);
+});
+
+test('the rushing line is never triggered', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = { ...makeGenome(DEFENSE_SPEC), 'read:trigger': 6 };
+  advancePlay(s, g);
+  const before = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o.aim]));
+  s.playRead.read = { pass: 5, confidence: 1, committed: true };
+  for (const o of learnedOrders(s, 'defense', g)) {
+    if (positionGroup(getPlayer(s, o.id)) === 'line') {
+      assert.deepEqual(o.aim, before.get(o.id));
+    }
+  }
 });

@@ -66,7 +66,8 @@ this and could only suggest pinning the one testable leg.
 
 Both the bottom bar and the Coaches Menu render from `controlsFor`, so each
 rule is written once and is under test — including the legs that were
-previously unreachable. The rules themselves do not change:
+previously unreachable. The rules themselves do not change, save the one
+exception recorded under the table:
 
 | control | rule |
 |---|---|
@@ -78,6 +79,17 @@ previously unreachable. The rules themselves do not change:
 | 👥 personnel | disabled when `animating \|\| !canReposition(state) \|\| aiTeam === 'defense'` |
 | 💾 save | disabled when `animating \|\| !canUsePlays(state)` |
 | 1️⃣–5️⃣ | as save, and also when that slot of `book` is empty |
+
+**One rule does change, and it is the menu's, not the board's.** 🔀 reposition
+has always gone rather than greyed on the board; the Coaches Menu's own
+Reposition button greyed. Painting both surfaces from one list makes that
+difference impossible to keep: a control the list leaves out is a control
+neither surface draws, so the menu's button now vanishes mid-down as the
+board's does. That is the intended reading. The two surfaces saying different
+things about the same rule is precisely what this decision exists to stop, and
+a coach who has learned that the shuffle is gone once the play is under way
+should not find it greyed but present a dialog away. Written down here because
+it is the one place where moving a rule also settled it.
 
 `allow` filters the list, so the tutorial's deny-by-default whitelist keeps
 working with no tutorial change — the same mechanism, moved.
@@ -250,7 +262,9 @@ holds the blast radius down: a bug there is a painting bug, not a rules bug.
 ## Not doing
 
 - No change to any press function, or to any rule about when a control is
-  live. This moves where the rules are stated, not what they say.
+  live, save the single exception decision 2 records — the Coaches Menu's
+  Reposition button now goes where it used to grey. This moves where the rules
+  are stated, not what they say.
 - No change to `canUsePlays` — see decision 4. The play-call rule was already
   correct.
 - No new tutorial lesson and no change to an existing one. `allow` and the

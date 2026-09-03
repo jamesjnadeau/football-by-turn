@@ -162,3 +162,27 @@ test('the scheme is called once and does not flip when men scatter', () => {
   learnedOrders(s, 'defense', g);
   assert.equal(s.playRead.call.defense.scheme, called);
 });
+
+test('a defender keeps the man he took, even when somebody nearer appears', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -4 }; // firmly man
+  advancePlay(s, g);
+  const first = learnedOrders(s, 'defense', g);
+  const covers = (orders) => Object.fromEntries(
+    orders.filter((o) => o.cover).map((o) => [o.id, o.cover]),
+  );
+  const before = covers(first);
+  assert.ok(Object.keys(before).length > 0, 'somebody must be covering somebody');
+
+  // Swap the receivers' positions: a greedy re-claim would re-pair them.
+  const wr1 = s.players.find((p) => p.id === 'o-wr1');
+  const wr2 = s.players.find((p) => p.id === 'o-wr2');
+  const held = wr1.pos;
+  wr1.pos = wr2.pos;
+  wr2.pos = held;
+
+  advancePlay(s, g);
+  assert.deepEqual(covers(learnedOrders(s, 'defense', g)), before);
+});

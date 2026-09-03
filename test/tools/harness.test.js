@@ -178,6 +178,32 @@ test('an arm is chosen once per down, not once per turn', () => {
   assert.equal(s.dealtArm, arm);
 });
 
+test('playOnePlay never tallies a read when nothing was dealt', () => {
+  // scriptedOffenseCoach never sets state.dealtArm, so there is no ground
+  // truth to score a read against -- this is the shape of every play
+  // evaluateDefense's default scriptedOffenseCoach path produces.
+  const genome = makeGenome(DEFENSE_SPEC);
+  const s = scenario(mulberry32(21));
+  const r = playOnePlay(s, scriptedOffenseCoach, defenseCoach(genome), mulberry32(3));
+  assert.equal(r.readsRight, 0);
+  assert.equal(r.readsTotal, 0);
+});
+
+test('playOnePlay tallies each covering defender\'s read against the dealt arm\'s truth', () => {
+  // Seed 21 is the same one "the candidate defense genome reaches the down's
+  // read" (below) already relies on for a man-covered look -- reused here so
+  // this test is not gambling on whether this down happens to land in man.
+  const runLog = loadGhostLog('coaching-logs/default-offense.json');
+  const passLog = loadGhostLog('coaching-logs/default-offense2.json');
+  const genome = makeGenome(DEFENSE_SPEC);
+  const offense = dealtOffenseCoach({ runLog, passLog, rand: mulberry32(1) });
+  const s = scenario(mulberry32(21));
+  const r = playOnePlay(s, offense, defenseCoach(genome), mulberry32(3));
+  assert.ok(s.dealtArm, 'an arm was in fact dealt');
+  assert.ok(r.readsTotal > 0, 'a man-covered, multi-turn play should score at least one read');
+  assert.ok(Number.isInteger(r.readsRight) && r.readsRight >= 0 && r.readsRight <= r.readsTotal);
+});
+
 test('the candidate defense genome reaches the down\'s read, not just its orders', () => {
   // advancePlay (turn.js) falls back to the SHIPPED genome unless the state
   // carries an override, so defenseCoach must put the candidate there itself

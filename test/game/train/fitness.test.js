@@ -4,7 +4,7 @@ import {
   defenseFitness, offenseFitness,
   TURNOVER_BONUS_YARDS, TOUCHDOWN_PENALTY_YARDS, TFL_MULTIPLIER,
   SECONDS_PENALTY, PASS_PENALTY, AIR_YARD_PENALTY,
-  TD_BONUS_YARDS, TURNOVER_PENALTY_YARDS,
+  TD_BONUS_YARDS, TURNOVER_PENALTY_YARDS, READ_ACCURACY_YARDS,
 } from '../../../lib/game/train/fitness.js';
 import { summarizePlays } from '../../../lib/game/train/harness.js';
 import { TURN_SECONDS } from '../../../lib/game/constants.js';
@@ -93,6 +93,46 @@ test('defenseFitness over many plays equals the mean of the per-play rule applie
   };
   const expected = plays.reduce((sum, p) => sum + playScore(p), 0) / plays.length;
   assert.equal(defenseFitness(summarizePlays(plays)), expected);
+});
+
+// -----------------------------------------------------------------------
+// The read-accuracy term. Its whole reason to exist is that the read's own
+// consumer (a coverage shade) moves yards allowed by less than an
+// evaluation's noise floor -- see fitness.js's comment on
+// READ_ACCURACY_YARDS -- so this section prices readAccuracy directly rather
+// than through any yardage outcome.
+// -----------------------------------------------------------------------
+
+test('readAccuracy null contributes exactly 0 -- a caller that never deals an arm scores identically whether or not the field is present', () => {
+  const withoutField = statsFor({ yards: 3, turns: 2, passes: 1, airYards: 5 });
+  // statsFor -> summarizePlays already leaves readAccuracy at null here, since
+  // none of these hand-built plays carry readsRight/readsTotal. Assert that
+  // explicitly, then prove the term contributes nothing on top of it by
+  // comparing against the same stats with the field spelled out.
+  assert.equal(withoutField.readAccuracy, null);
+  const withNullField = { ...withoutField, readAccuracy: null };
+  assert.equal(defenseFitness(withoutField), defenseFitness(withNullField));
+});
+
+test('a defense that reads every down perfectly scores strictly better than one reading at chance, all else equal', () => {
+  const perfect = statsFor({
+    yards: 5, turns: 2, readsRight: 20, readsTotal: 20,
+  });
+  const chance = statsFor({
+    yards: 5, turns: 2, readsRight: 10, readsTotal: 20,
+  });
+  assert.ok(defenseFitness(perfect) > defenseFitness(chance));
+});
+
+test('READ_ACCURACY_YARDS prices perfect reading at +2 over chance, and chance at +2 over always-wrong', () => {
+  const perfect = statsFor({ readsRight: 10, readsTotal: 10 });
+  const chance = statsFor({ readsRight: 5, readsTotal: 10 });
+  const alwaysWrong = statsFor({ readsRight: 0, readsTotal: 10 });
+  assert.equal(defenseFitness(perfect) - defenseFitness(chance), READ_ACCURACY_YARDS);
+  assert.equal(defenseFitness(chance) - defenseFitness(alwaysWrong), READ_ACCURACY_YARDS);
+  // Chance itself (readAccuracy 0.5) must add nothing on top of the rest of
+  // the per-play rule.
+  assert.equal(defenseFitness(chance), defenseFitness(statsFor({})));
 });
 
 test('offenseFitness still reads only yardsPerPlay, touchdownRate and turnoverRate, unchanged', () => {

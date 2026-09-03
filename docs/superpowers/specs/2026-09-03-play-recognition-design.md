@@ -178,74 +178,84 @@ slides zone anchors by recorded tendency. A learned side read would double the
 genome surface to re-derive what the rule layer does well. Run-versus-pass is
 the axis nothing in the codebase currently answers.
 
-## The read
+## The read is per defender, and his key is his own man
 
-One signed accumulator and two derived numbers. Positive is pass.
+One belief for the whole defense was the original design and it failed four
+times, for four different-looking reasons that were all the same reason: a
+single scalar built from team aggregates is too weak to act on, and acting on it
+displaces the whole second level at once, so being wrong is expensive enough
+that training switches the mechanic off. Measured, the global read scored
+**28.1% correct** over a thousand post-snap turns — worse than a coin flip, and
+anti-correlated on runs.
+
+**Each covering defender now reads his own man.** That is how the position is
+coached, and it fixes both halves of the failure: the signal is far stronger,
+and a wrong read costs one man being out of position rather than a unit being
+displaced.
 
 ```
-z₀ = read:prior + read:spread·look.spread + read:backs·look.backs
-zₜ = read:inertia·zₜ₋₁ + Σ read:<cue>·cueₜ
-
-read = { pass: z, confidence: tanh(|z|), committed: |z| > read:commit }
+state.playRead.reads = { [defenderId]: { pass, confidence, committed } }
 ```
 
-`tanh` bounds confidence into `[0,1)` with no extra parameter to tune.
-`read:inertia` in `[0,1]` is what makes the defense fallible in a way it can
-learn out of: at 1 it never forgets and stays wrong for turns, at 0 it is
-jumpy and never commits to anything.
+A defender gets a read only if he has been given somebody to cover. The rushing
+line, the deep free man, and every defender in a zone scheme have no man to read
+and therefore no read.
 
-Fallibility is deterministic. Nothing here rolls a die; the defense is fooled
-because the evidence in front of it genuinely says the wrong thing for a turn,
-which is both honest football and a property the training harness requires.
+### The cues, both measured off his own man
 
-### The cues
+Both are independent of where the defender himself stands — a cue that moved
+when he moved would be reading his own position, not the offense.
 
-All three are physical, all three are read at the top of turn `t ≥ 1`, off the
-result of turn `t-1`'s physics.
+- **`downfield`** — his man's velocity along the field, over that man's own
+  mode-free top speed. Measured across 300 downs: **2.70 units/s on a run
+  against 14.18 on a pass.** A man who is not getting downfield is not running a
+  route. That the cover map puts somebody on the back is what makes this work:
+  covering a man means his job tells you the play.
+- **`lateral`** — the absolute sideways component of the same velocity, over the
+  same speed. It separates the fake from a real pass (`d = 0.79`), which
+  downfield velocity alone does not.
 
-Every cue is normalized into roughly `[-1, 1]` before its weight is applied, so
-that one `−4…4` range serves all three and a genome cannot be handed a raw yard
-count large enough to swamp the accumulator on its own.
+```
+z_d(t) = read:man:inertia · z_d(t-1)
+       + read:man:downfield · downfield_d
+       + read:man:lateral   · lateral_d
 
-- **`qbDepth`** — the quarterback's depth behind the line in yards, signed by
-  `defendDir` so that dropping back is positive, divided by a full drop's depth
-  and clamped. The loudest pass key in football, and it separates cleanly here:
-  a real drop is `setPlan(qb, {x:0,y:-1}, genome['qb:drop'])`, while the option's
-  fake boots him *forward* at `OPTION_FAKE_FORWARD`.
-- **`lineFlow`** — the offensive line's mean velocity component downfield, over
-  a lineman's own `maxSpeed`, and negated so that driving downfield reads as a
-  run. Run blocking drives; pass protection sets and holds. Velocity, never the
-  plan.
-A third cue, `ballAir` (`1` when nobody is carrying the ball), was specified and
-then **removed**. It could never inform an action: `learnedOrders`' first guard
-returns early on `!carrier`, which is exactly the condition that made the cue
-`1`, so the only turns it was observable on were turns where the defense had
-already been taken over by another branch. It was also the sole source of an
-asymmetry — being an indicator, its weight could only ever push toward *pass* —
-which left the run side of the accumulator with less reach than the pass side
-under a single shared threshold. Two signed cues, each able to push either way,
-is the whole evidence set.
+reads[d] = { pass: z_d, confidence: tanh(|z_d|), committed: |z_d| > read:man:commit }
+```
 
-Turn 0 has no cues, because nothing has moved yet. The read at the snap is the
-prior and the look, which is the order a defense actually gets its information
-in.
+There are no cues at the snap: nothing has moved, and the cover assignments are
+not made until `learnedOrders` first runs. Every read starts at zero and first
+advances on turn 1.
+
+### What he does about it
+
+Exactly one thing: he plays his man from leverage. A committed read shades his
+cover order by `read:trigger x confidence` yards — toward the line when the read
+says run, deeper when it says pass — through the `shade` that cover.js already
+carries. **He never leaves his man.** Abandoning coverage is what made the first
+trigger a bad play, measured at nearly twice the yards allowed.
+
+On play-action his man blocks, he shades downhill, and when the man releases he
+is late. That is the mechanic, and it is local: one defender beaten, not a
+defense out of position.
+
 ## New genome keys
 
-Eight, appended to `DEFENSE_SPEC` in `learned/defense-spec.js`.
+Five, appended to `DEFENSE_SPEC` in `learned/defense-spec.js`.
 
 | key | range | init | what it weighs |
 |---|---|---|---|
-| `read:prior` | −4…4 | 0 | belief before any evidence |
-| `read:spread` | −4…4 | 0 | how wide they lined up |
-| `read:backs` | −4…4 | 0 | how many are in the backfield |
-| `read:inertia` | 0…1 | 0 | how much of last turn's belief carries |
-| `read:qbDepth` | −4…4 | 0 | the quarterback's depth |
-| `read:lineFlow` | −4…4 | 0 | the line driving downfield |
-| `read:commit` | 0…8 | 0 | evidence needed before acting on the read |
-| `read:trigger` | 0…10 | 0 | yards the second level bails on a pass read |
+| `read:man:downfield` | -4...4 | 0 | his man getting downfield |
+| `read:man:lateral` | -4...4 | 0 | his man working sideways |
+| `read:man:inertia` | 0...1 | 0 | how much of last turn's belief carries |
+| `read:man:commit` | 0...4 | 0 | evidence needed before he plays leverage |
+| `read:trigger` | 0...10 | 0 | yards of leverage at full confidence |
 
-At these inits `z ≡ 0`, so `committed` is never true (`|0| > 0` is false),
-`read:trigger` is zero, and the defense is unchanged.
+At these inits every `z_d` is identically `0`, so `|0| > 0` is false, nobody
+commits, no shade is applied, and the defense plays byte for byte what it plays
+today. `read:man:commit`'s ceiling is **4**, not 8: a threshold no attainable
+evidence can cross is the trap this design fell into twice, and a tight range is
+the cheapest guard against it.
 
 ## How the defense uses it
 
@@ -280,26 +290,17 @@ is untouched: `applyOrders` still issues through `setCover`, exactly as today.
 
 ### The trigger
 
-The trigger is **symmetric, and it never breaks coverage**. Second-level aims
-that are not coverage orders (`deepAim`, `flowLinebacker`) move
-`read:trigger × confidence` yards along `defendDir`: *toward* the line on a
-committed run read, *away* from it on a committed pass read. A man who has been
-given somebody to cover keeps him, whatever the read says.
+A defender whose own read has committed plays his man from leverage: his cover
+order carries a `shade` of `read:trigger x confidence` yards, applied by
+`coverAim`, toward the line on a run read and deeper on a pass read. Nothing
+else changes — no aim is rewritten, no assignment is dropped, and a defender
+without a cover order is never triggered at all.
 
-**Why not "he drops his man and comes"**, which is what this design originally
-specified and what the first build shipped: because it made the trigger a bad
-play, and training proved it. With coverage abandoned, a wrong read leaves a
-receiver running free — a touchdown — while a right read buys little, since
-guard three already converges the whole defense on the carrier once he is past
-the line. Selection saw that trade and switched the feature off, raising
-`read:commit` above the reach of any evidence.
-
-A linebacker who bites is **late, not absent**. That is what play-action does to
-a real defense; it is a loss the defense survives often enough to be worth
-risking; and it is what gives selection a reason to keep the trigger on at all.
-
-The rushing line and the deep free man are excluded from both directions. Their
-jobs do not change with the read, and decision 7 keeps them rule-based.
+That is the whole of it, and the narrowness is the point. Two earlier versions
+moved more and were measured worse: dropping coverage cost nearly twice the
+yards, and sliding every second-level aim cost the same at every magnitude
+tested. The rule layer's geometry is good; the read's job is to lean on it, not
+to override it.
 
 ### The read is said out loud
 

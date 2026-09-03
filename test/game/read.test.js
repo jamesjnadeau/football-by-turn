@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { snapLook, advanceRead, advancePlay, setCalledPlay } from '../../lib/game/read.js';
-import { createGame, getPlayer, setMode } from '../../lib/game/state.js';
+import { createGame, getPlayer, setMode, setPlan } from '../../lib/game/state.js';
 import { nextDown } from '../../lib/game/rules.js';
 import { makeGenome } from '../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
@@ -134,4 +134,81 @@ test('a fresh down clears the percept, and the next advancePlay takes a new snap
   const g = { ...inert(), 'read:prior': 1.5 };
   advancePlay(s, g);
   assert.equal(s.playRead.read.pass, 1.5);
+});
+
+test('a quarterback dropping back reads pass, and the option keep does not', () => {
+  const g = { ...inert(), 'read:qbDepth': 1 };
+  const s = createGame({ seed: 1 });
+  advancePlay(s, g);
+  const qb = s.players.find((p) => p.id === 'o-qb');
+  const started = qb.pos.y;
+
+  // Five yards further from the line: a full drop.
+  qb.pos = { x: qb.pos.x, y: started - 5 * (fieldPos(0, 1).y - fieldPos(0, 0).y) };
+  advancePlay(s, g);
+  assert.ok(s.playRead.read.pass > 0, 'a drop is a pass key');
+
+  // Reset the belief, then send him forward instead: the option's fake.
+  s.playRead = null;
+  advancePlay(s, g);
+  qb.pos = { x: qb.pos.x, y: started + 2 * (fieldPos(0, 1).y - fieldPos(0, 0).y) };
+  advancePlay(s, g);
+  assert.ok(s.playRead.read.pass < 0, 'running forward is a run key');
+});
+
+test('a line driving downfield reads run', () => {
+  const g = { ...inert(), 'read:lineFlow': 1 };
+  const s = createGame({ seed: 1 });
+  advancePlay(s, g);
+  for (const p of s.players) {
+    if (p.team === 'offense') p.vel = { x: 0, y: 40 }; // downfield, hard
+  }
+  advancePlay(s, g);
+  assert.ok(s.playRead.read.pass < 0);
+});
+
+test('a loose ball reads pass, whoever let go of it', () => {
+  const g = { ...inert(), 'read:ballAir': 1 };
+  const s = createGame({ seed: 1 });
+  advancePlay(s, g);
+  s.ball = { carrierId: null, pos: fieldPos(0, s.losYard), vel: { x: 0, y: 1 } };
+  advancePlay(s, g);
+  assert.ok(s.playRead.read.pass > 0);
+});
+
+test('inertia is what play-action fools: run keys stick after they stop', () => {
+  const g = { ...inert(), 'read:lineFlow': 2, 'read:inertia': 0.9, 'read:commit': 0.5 };
+  const s = createGame({ seed: 1 });
+  advancePlay(s, g);
+  // Turn 1: the line drives. Run keys, hard.
+  //
+  // 40 u/s is a real drive, not a nudge: a lineman's own speed is
+  // SPEED_FACTOR / radius = 150 / 3.5 = 42.86, so this is most of what he has,
+  // and the cue lands near -0.93 rather than the -0.07 a walking pace gives.
+  // The read has to clear read:commit below for `committed` to mean anything.
+  for (const p of s.players) if (p.team === 'offense') p.vel = { x: 0, y: 40 };
+  advancePlay(s, g);
+  assert.ok(s.playRead.read.pass < 0 && s.playRead.read.committed);
+  // Turn 2: everything stops — the fake is over and it was a pass all along.
+  for (const p of s.players) if (p.team === 'offense') p.vel = { x: 0, y: 0 };
+  advancePlay(s, g);
+  assert.ok(s.playRead.read.pass < 0, 'he is still wrong, which is the point');
+});
+
+test('the read never looks at the orders', () => {
+  const g = { ...inert(), 'read:qbDepth': 1, 'read:lineFlow': 1, 'read:ballAir': 1 };
+  const drawn = createGame({ seed: 1 });
+  const bare = createGame({ seed: 1 });
+  // Draw a whole passing play on one of them and nothing on the other. No
+  // physics has run, so the two boards are physically identical.
+  const qb = drawn.players.find((p) => p.id === 'o-qb');
+  setPlan(drawn, qb.id, { x: 0, y: -1 }, 1);
+  for (const p of drawn.players) {
+    if (p.team === 'offense' && p.id !== qb.id) setPlan(drawn, p.id, { x: 0, y: 1 }, 1);
+  }
+  advancePlay(drawn, g);
+  advancePlay(bare, g);
+  advancePlay(drawn, g);
+  advancePlay(bare, g);
+  assert.deepEqual(drawn.playRead.read, bare.playRead.read);
 });

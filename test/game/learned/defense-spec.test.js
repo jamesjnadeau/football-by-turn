@@ -94,3 +94,14 @@ test('the sub-package newcomers start on their own roster spots', () => {
   assert.equal(g['pos:d-cb3:across'], 2.5);
   assert.equal(g['pos:d-cb3:down'], 2);
 });
+
+test('the read keys are inert at init', () => {
+  const g = makeGenome(DEFENSE_SPEC);
+  for (const key of ['read:prior', 'read:spread', 'read:backs', 'read:inertia',
+    'read:qbDepth', 'read:lineFlow', 'read:ballAir', 'read:trigger']) {
+    assert.equal(g[key], 0, `${key} must start at zero`);
+  }
+  // The commit bar starts at its own ceiling, so nothing ever crosses it.
+  const commit = DEFENSE_SPEC.find((p) => p.key === 'read:commit');
+  assert.equal(g['read:commit'], commit.max);
+});

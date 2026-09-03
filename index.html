@@ -72,43 +72,54 @@
        stray press on it replaces the whole formation with no undo. */
     @media (max-width: 700px) {
       #playbook-toggle { display: flex; }
+      /* The bar stands at the foot of the flow and the board takes whatever
+         height is left, rather than the bar floating over a board that
+         reserved a flat 3.75rem for it. The flat figure was only ever right
+         for a bar of exactly one row, and the row below is now allowed to
+         wrap; letting the column do the arithmetic means the reservation
+         follows the bar wherever it goes, with nothing measuring anything at
+         run time. It also closes the 3px of dead band the fixed figure left
+         between the two at 375x812. */
+      body { display: flex; flex-direction: column; }
+      #board { flex: 1 1 0; height: auto; min-height: 0; }
       #controls {
-        top: auto; right: 0; left: 0; bottom: 0; transform: none;
-        flex-direction: column; align-items: stretch;
-        gap: 0; padding: .375rem; box-sizing: border-box;
+        position: relative; inset: auto; transform: none;
+        flex-direction: column; align-items: stretch; gap: 0;
         background: #fff; border-top: 1px solid #ccc;
       }
-      #controls [data-group="game"] {
-        flex-direction: row; justify-content: space-evenly; order: 2;
+      /* Seven 2.75rem targets and their spacing do not fit 375px once the
+         reader's text is much above the default: at a 20px root the row wanted
+         452px, and ⏩ Run Turn — the primary action of the whole game — began
+         22px past the right edge of a window that does not scroll. The buttons
+         keep their size, since their size is the entire reason this bar exists
+         at all, and the row wraps instead. `space-evenly` is what actually
+         separates them, so the column gap is zero and every pixel of width
+         goes to fitting one more button on the line; the row gap shows only
+         once a line has genuinely run out. A wrapped bar costs another 2.75rem
+         of field, but only on the screens and text sizes that had no room to
+         give in the first place.
+         The toggle rides inside the game row rather than under it, so the bar
+         is one row of seven — six game controls and the way to the playbook —
+         wherever seven still fit. It leads the row rather than closing it
+         because it is the group's first child in the markup and
+         mountControls() appends the six after it: an `order` that moved it to
+         the right would leave the first thing a keyboard reaches the last
+         thing an eye reaches, and one button's tidiness is not worth that. */
+      #controls .control-group {
+        flex-direction: row; justify-content: space-evenly;
+        flex-wrap: wrap; gap: .375rem 0; padding: .375rem;
       }
-      /* The toggle rides inside the game row rather than under it, which is
-         what makes the bar one row of seven — six game controls and the way to
-         the playbook. That is the arithmetic the design was priced on: seven
-         thumb-sized targets inside a 390-pixel screen. A second row would cost
-         another 2.75rem of field on the one device this whole layout exists
-         for. It leads the row rather than closing it because it is the group's
-         first child in the markup and mountControls() appends the six after
-         it: an `order` that moved it to the right would leave the first thing
-         a keyboard reaches the last thing an eye reaches, and one button's
-         tidiness is not worth that. */
-      /* The sheet sits above the bar and is closed until the toggle opens it. */
+      /* The sheet is drawn over the field rather than standing in the flow
+         beneath it, and is closed until the toggle opens it. A coach opens the
+         playbook with his arrows already on the board, and a sheet that took
+         its room out of the flow would rescale the field under his finger; a
+         drawer only covers it, and only for as long as it is open. Its own
+         background and border-top are what the fixed bar used to lend it. */
       #controls [data-group="playbook"] {
-        order: 1; flex-direction: row; justify-content: space-evenly;
-        padding-bottom: .375rem;
+        position: absolute; left: 0; right: 0; bottom: 100%;
+        background: #fff; border-top: 1px solid #ccc;
       }
       #controls:not(.playbook-open) [data-group="playbook"] { display: none; }
-      /* The bar takes its height from the field rather than covering it: the
-         bottom of the window is behind the offense at the snap, which is
-         exactly where a coach is dragging. 3.75rem is a fixed reservation
-         rather than the bar's own measured height, because it only has to
-         stay ahead of it: the closed bar is one 2.75rem row plus .75rem of
-         padding plus a 1px border-top — 3.5rem + 1px at any root font size,
-         and 57px measured at 375x812 — and a flat rem figure scales with it
-         exactly, so the quarter-rem of gap between them widens rather than
-         closes as text grows, never the reverse. The open sheet is taller
-         than this and is meant to be: it is a drawer over the field for as
-         long as it is open, not a permanent claim on it. */
-      #board { height: calc(100% - 3.75rem); }
     }
 
     /* The home screen owns the whole viewport until a game starts, and gets it

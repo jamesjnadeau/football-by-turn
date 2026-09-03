@@ -31,7 +31,7 @@ test('the spec covers formation, zones, coverage weights and the scheme gate', (
     'sub:nickel:bias', 'sub:dime:bias']) {
     assert.ok(keys.has(k), k);
   }
-  assert.equal(DEFENSE_SPEC.length, 55);
+  assert.equal(DEFENSE_SPEC.length, 54);
 });
 
 test('every spec entry is well-formed and its init is inside its range', () => {
@@ -62,8 +62,15 @@ test('the spec inits reproduce the roster alignment', () => {
 test('the shipped genome loads, matches the variant, and is already clamped', () => {
   assert.equal(DEFENSE_GENOME.meta.variant, DEFENSE_VARIANT);
   const g = clampGenome(DEFENSE_SPEC, DEFENSE_GENOME.values);
-  // Every number the file carries comes back untouched...
-  for (const [k, v] of Object.entries(DEFENSE_GENOME.values)) assert.equal(g[k], v, k);
+  const specKeys = new Set(DEFENSE_SPEC.map((p) => p.key));
+  // Every number the file carries for a key the spec still names comes back
+  // untouched. read:ballAir is the one key this file carries that the spec no
+  // longer names -- clampGenome drops it, by the same discipline documented
+  // above for a key a genome predates -- so it is excluded here rather than
+  // asserted equal to a value nothing reads any more.
+  for (const [k, v] of Object.entries(DEFENSE_GENOME.values)) {
+    if (specKeys.has(k)) assert.equal(g[k], v, k);
+  }
   // ...and a key added after that genome was trained comes back at its init,
   // which is the whole reason a genome trained before the defense could adapt
   // still plays the formation it was trained to play.
@@ -98,7 +105,7 @@ test('the sub-package newcomers start on their own roster spots', () => {
 test('the read keys are inert at init', () => {
   const g = makeGenome(DEFENSE_SPEC);
   for (const key of ['read:prior', 'read:spread', 'read:backs', 'read:inertia',
-    'read:qbDepth', 'read:lineFlow', 'read:ballAir', 'read:trigger']) {
+    'read:qbDepth', 'read:lineFlow', 'read:trigger']) {
     assert.equal(g[key], 0, `${key} must start at zero`);
   }
   // read:commit starts at its own FLOOR, not its ceiling -- the zero weights
@@ -109,4 +116,38 @@ test('the read keys are inert at init', () => {
   // selection earns it.
   const commit = DEFENSE_SPEC.find((p) => p.key === 'read:commit');
   assert.equal(g['read:commit'], commit.min);
+});
+
+/**
+ * The maximum |z| a genome could ever present on a turn learnedOrders
+ * actually consults (t >= 1, once real cues exist -- see read.js's
+ * advanceRead). Both physical cues are clamped to [-1, 1] before their
+ * weight applies (read.js's clamp1), so the most one turn's evidence can add
+ * is |read:qbDepth| + |read:lineFlow| with both cues driven to whichever sign
+ * matches their own weight's sign. read:inertia carries a fraction of that
+ * forward turn over turn, so the accumulator's own fixed point --
+ * cueMax / (1 - inertia) -- is the largest |z| repeated evidence can ever
+ * build to; at inertia 1 nothing decays and the reach is unbounded.
+ */
+function maxReachableZ(genome) {
+  const cueMax = Math.abs(genome['read:qbDepth']) + Math.abs(genome['read:lineFlow']);
+  const inertia = genome['read:inertia'];
+  if (inertia >= 1) return Infinity;
+  return cueMax / (1 - inertia);
+}
+
+test('the read is reachable: the shipped genome can actually cross its own read:commit', () => {
+  // This is the invariant whose absence let the whole feature ship inert
+  // three times running: a genome whose evidence cannot reach read:commit
+  // never commits, never triggers, and no read:* weight ever moves fitness --
+  // selection has nothing to climb and nothing to notice. It is not enough
+  // for the weights to be non-zero; the accumulator has to be able to CROSS
+  // the threshold on a turn learnedOrders will actually ask about.
+  const g = clampGenome(DEFENSE_SPEC, DEFENSE_GENOME.values);
+  const maxZ = maxReachableZ(g);
+  assert.ok(
+    maxZ > g['read:commit'],
+    `the shipped genome's evidence can only ever reach |z| = ${maxZ}, `
+      + `short of its own read:commit = ${g['read:commit']} -- the read can never commit to anything`,
+  );
 });

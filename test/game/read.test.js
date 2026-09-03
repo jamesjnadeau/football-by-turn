@@ -36,6 +36,9 @@ test('the look is frozen: scattering the offense does not move it', () => {
   for (const p of s.players) {
     if (p.team === 'offense') p.pos = fieldPos(20, s.losYard - 6);
   }
+  // A new turn: advancePlay is a no-op on a turn it has already advanced, so
+  // without this the second call below would prove nothing at all.
+  s.turnIndex = 1;
   advancePlay(s, inert());
   assert.deepEqual(s.playRead.look, before);
 });
@@ -99,6 +102,9 @@ test('a lineman in a pass-protection stance reads the same as one without', () =
       setMode(pass, p.id, 'holding');
     }
   }
+  // A new turn: advancePlay is a no-op on a turn it has already advanced.
+  run.turnIndex = 1;
+  pass.turnIndex = 1;
   advancePlay(run, g);
   advancePlay(pass, g);
   assert.equal(pass.playRead.read.pass, run.playRead.read.pass);
@@ -146,19 +152,23 @@ test('a fresh down clears the percept, and the next advancePlay takes a new snap
 test('a quarterback dropping back reads pass, and the option keep does not', () => {
   const g = { ...inert(), 'read:qbDepth': 1 };
   const s = createGame({ seed: 1 });
-  advancePlay(s, g);
+  advancePlay(s, g); // turn 0: the snap read
   const qb = s.players.find((p) => p.id === 'o-qb');
   const started = qb.pos.y;
 
   // Five yards further from the line: a full drop.
   qb.pos = { x: qb.pos.x, y: started - 5 * (fieldPos(0, 1).y - fieldPos(0, 0).y) };
+  // A new turn: advancePlay is a no-op on a turn it has already advanced.
+  s.turnIndex = 1;
   advancePlay(s, g);
   assert.ok(s.playRead.read.pass > 0, 'a drop is a pass key');
 
   // Reset the belief, then send him forward instead: the option's fake.
   s.playRead = null;
-  advancePlay(s, g);
+  s.turnIndex = 0;
+  advancePlay(s, g); // a fresh snap read
   qb.pos = { x: qb.pos.x, y: started + 2 * (fieldPos(0, 1).y - fieldPos(0, 0).y) };
+  s.turnIndex = 1;
   advancePlay(s, g);
   assert.ok(s.playRead.read.pass < 0, 'running forward is a run key');
 });
@@ -173,6 +183,8 @@ test('a line driving downfield reads run', () => {
   for (const p of s.players) {
     if (p.team === 'offense') p.vel = { x: 0, y: 40 }; // downfield, hard
   }
+  // A new turn: advancePlay is a no-op on a turn it has already advanced.
+  s.turnIndex = 1;
   advancePlay(s, g);
   assert.ok(s.playRead.read.pass < 0);
 });
@@ -184,18 +196,10 @@ test('a line retreating reads pass, not run', () => {
   for (const p of s.players) {
     if (p.team === 'offense') p.vel = { x: 0, y: -40 }; // pass-set, hard
   }
+  s.turnIndex = 1;
   advancePlay(s, g);
   // Near +0.93, the mirror of the downfield case: 40 / (150/3.5) = 0.9333.
   assert.ok(s.playRead.read.pass > 0, 'a retreating line is a pass key, not a run key');
-});
-
-test('a loose ball reads pass, whoever let go of it', () => {
-  const g = { ...inert(), 'read:ballAir': 1 };
-  const s = createGame({ seed: 1 });
-  advancePlay(s, g);
-  s.ball = { carrierId: null, pos: fieldPos(0, s.losYard), vel: { x: 0, y: 1 } };
-  advancePlay(s, g);
-  assert.ok(s.playRead.read.pass > 0);
 });
 
 test('inertia is what play-action fools: run keys stick after they stop', () => {
@@ -209,10 +213,12 @@ test('inertia is what play-action fools: run keys stick after they stop', () => 
   // and the cue lands near -0.93 rather than the -0.07 a walking pace gives.
   // The read has to clear read:commit below for `committed` to mean anything.
   for (const p of s.players) if (p.team === 'offense') p.vel = { x: 0, y: 40 };
+  s.turnIndex = 1;
   advancePlay(s, g);
   assert.ok(s.playRead.read.pass < 0 && s.playRead.read.committed);
   // Turn 2: everything stops — the fake is over and it was a pass all along.
   for (const p of s.players) if (p.team === 'offense') p.vel = { x: 0, y: 0 };
+  s.turnIndex = 2;
   advancePlay(s, g);
   assert.ok(s.playRead.read.pass < 0, 'he is still wrong, which is the point');
 });
@@ -221,7 +227,7 @@ test('the read never looks at the orders', () => {
   // Covers every field read.js:21 forbids except `mode`, which the separate
   // 'a lineman in a pass-protection stance reads the same as one without'
   // test above already pins.
-  const g = { ...inert(), 'read:qbDepth': 1, 'read:lineFlow': 1, 'read:ballAir': 1 };
+  const g = { ...inert(), 'read:qbDepth': 1, 'read:lineFlow': 1 };
   const drawn = createGame({ seed: 1 });
   const bare = createGame({ seed: 1 });
   // Draw a whole passing play on one of them and nothing on the other: a
@@ -239,6 +245,9 @@ test('the read never looks at the orders', () => {
   };
   advancePlay(drawn, g);
   advancePlay(bare, g);
+  // A new turn: advancePlay is a no-op on a turn it has already advanced.
+  drawn.turnIndex = 1;
+  bare.turnIndex = 1;
   advancePlay(drawn, g);
   advancePlay(bare, g);
   assert.deepEqual(drawn.playRead.read, bare.playRead.read);

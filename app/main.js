@@ -23,11 +23,14 @@ import { receiverAt, lockOnPass, passLanding, backOnPasser } from '../lib/game/p
 import { lobLanded } from '../lib/game/lob.js';
 import {
   TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
+  MIN_ZOOM_SCALE, MAX_ZOOM_SCALE,
 } from '../lib/game/constants.js';
 import {
   minOnLine, DEFAULT_VARIANT, OFFENSIVE_LINE_ROLES, PERSONNEL_PACKAGES, personnelId,
 } from '../lib/game/rosters.js';
-import { followYard, yardsOfY } from '../lib/game/view.js';
+import { followYard, yardsOfY, gameView } from '../lib/game/view.js';
+import { applyZoomPan } from '../lib/game/zoom.js';
+import { VIEWBOX_WIDTH } from '../lib/field/geometry.js';
 import { attachInput } from './input.js';
 import { mountControls } from './controls.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
@@ -147,6 +150,12 @@ let repositioning = false;
 // below falls straight through.
 let lesson = null;
 
+// Touch pinch-zoom/drag-pan, live only pre-snap. A pure offset on top of the
+// auto-following camera (see lib/game/zoom.js), reset to identity by
+// rebuildBoard() so every new down/play/game starts unzoomed -- there is no
+// zoom position to carry between downs, same reasoning as cameraYard().
+let zoom = { scale: MIN_ZOOM_SCALE, panX: 0, panY: 0 };
+
 function layer(id) {
   return board.findOne(`#${id}`);
 }
@@ -166,6 +175,7 @@ function cameraYard(ballYard = null) {
 }
 
 function rebuildBoard() {
+  zoom = { scale: MIN_ZOOM_SCALE, panX: 0, panY: 0 };
   const cam = cameraYard();
   const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard, cam);
   board.attr('viewBox', viewBox);
@@ -192,9 +202,24 @@ function rebuildBoard() {
  * and would otherwise slide off with a long run and snap back at the whistle.
  */
 function aimCamera(cam) {
-  board.attr('viewBox', cameraViewBox(state.losYard, cam));
+  board.attr('viewBox', cameraOrZoomedViewBox(cam));
   layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cam));
   layer('game-tutorial').clear().svg(lessonMark(cam));
+}
+
+/**
+ * cameraViewBox's base window, cropped further by any live pinch-zoom/pan --
+ * but only pre-snap: once a play is animating, the zoom offset would have to
+ * track a scrolling camera it was never anchored to, so the live play always
+ * shows the plain auto-following window, exactly as before this feature.
+ */
+function cameraOrZoomedViewBox(cam) {
+  if (state.phase !== 'planning' || (zoom.scale === MIN_ZOOM_SCALE && zoom.panX === 0 && zoom.panY === 0)) {
+    return cameraViewBox(state.losYard, cam);
+  }
+  const view = gameView(state.losYard, cam);
+  const box = applyZoomPan(view, VIEWBOX_WIDTH, zoom);
+  return `${box.x} ${box.y} ${box.width} ${box.height}`;
 }
 
 /**
@@ -610,6 +635,43 @@ function onDragPreview(playerId, log, prevTapAt) {
     ? throwMark(p, g, tip)
     : runOrCoverMark(p, g.travel, tip);
   layer('game-preview').clear().svg(mark);
+}
+
+/**
+ * One-finger drag on empty field: shift the pan offset by exactly the
+ * pointer's own travel (already in SVG units, from board.point()), so the
+ * field tracks the finger 1:1. Dead once a play is running or the plan is
+ * over -- same guard onDragPreview uses -- because zoom/pan has no meaning
+ * once the camera it rides on top of is no longer sitting still.
+ */
+function onPan(dx, dy) {
+  if (animating || state.phase !== 'planning') return;
+  zoom = { ...zoom, panX: zoom.panX - dx, panY: zoom.panY - dy };
+  paint();
+}
+
+/**
+ * Two-finger pinch: `factor` is this move's distance ratio (>1 apart, <1
+ * together), applied multiplicatively to the running scale and clamped to
+ * the game's zoom range. `anchor` (in SVG units, the fingers' midpoint) is
+ * kept under the fingers: the box shrinks/grows around it by the standard
+ * viewBox zoom-to-point formula (new edge = anchor - (anchor - old edge) *
+ * new_size/old_size), computed against the box actually on screen right now
+ * -- the same displayed box aimCamera would draw -- so a pinch that starts
+ * mid-pan or against a clamped edge still zooms toward the fingers rather
+ * than snapping to wherever an un-clamped pan would have put it.
+ */
+function onPinch(factor, anchor) {
+  if (animating || state.phase !== 'planning') return;
+  const view = gameView(state.losYard, cameraYard());
+  const box = applyZoomPan(view, VIEWBOX_WIDTH, zoom);
+  const scale = Math.min(MAX_ZOOM_SCALE, Math.max(MIN_ZOOM_SCALE, zoom.scale * factor));
+  const width = VIEWBOX_WIDTH / scale;
+  const height = view.height / scale;
+  const x = anchor.x - (anchor.x - box.x) * (width / box.width);
+  const y = anchor.y - (anchor.y - box.y) * (height / box.height);
+  zoom = { scale, panX: x, panY: y - view.windowTopY };
+  paint();
 }
 
 /**
@@ -1470,7 +1532,7 @@ function nextLesson() {
 export function startTutorial({ onExit = () => {} } = {}) {
   exitToHome = onExit;
   if (!inputAttached) {
-    attachInput(board, { hitTest, onGesture, onDragPreview });
+    attachInput(board, { hitTest, onGesture, onDragPreview, onPan, onPinch });
     inputAttached = true;
   }
   lesson = createLesson();
@@ -1483,7 +1545,7 @@ export function startGame({ variant = DEFAULT_VARIANT, side = 'training', onExit
   variantId = variant;
   sideId = side;
   if (!inputAttached) {
-    attachInput(board, { hitTest, onGesture, onDragPreview });
+    attachInput(board, { hitTest, onGesture, onDragPreview, onPan, onPinch });
     inputAttached = true;
   }
   startNewGame();

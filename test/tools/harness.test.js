@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import {
   MAX_TURNS_PER_PLAY, scenario, playOnePlay, defenseCoach,
   scriptedOffenseCoach, evaluateDefense, learnedOffenseCoach, evaluateMatch,
+  playActionCoach, dealtOffenseCoach,
 } from '../../tools/harness.js';
 import { mulberry32 } from '../../lib/game/rng.js';
 import { makeGenome } from '../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 import { OFFENSE_SPEC } from '../../lib/game/learned/offense-spec.js';
 import { spotFault, formationFoul } from '../../lib/game/formation.js';
+import { loadGhostLog } from '../../tools/ghost.js';
 
 test('scenario deals a plannable hot-seat down inside the field', () => {
   const rand = mulberry32(11);
@@ -129,4 +131,49 @@ test('the same seed deals the same looks', () => {
     }
   }
   assert.deepEqual(one, two);
+});
+
+test('the play-action script sells a run and then throws', () => {
+  const s = scenario(mulberry32(7));
+  playActionCoach(s);
+  // Turn 0: the line drives downfield — run keys, and no throw of its own.
+  const line = s.players.filter((p) => p.team === 'offense' && ['C','LG','RG','LT','RT'].includes(p.role));
+  assert.ok(line.every((p) => p.plan && p.plan.dir.y > 0), 'the line is driving');
+  assert.ok(!s.plannedPass || s.plannedPass.auto, 'nothing thrown at the snap');
+
+  // Turn 2: the throw goes up.
+  s.turnIndex = 2;
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  playActionCoach(s);
+  assert.ok(s.plannedPass && !s.plannedPass.auto, 'the fake is over and it is a pass');
+});
+
+test('the three-way deal is reproducible and uses all three arms', () => {
+  const runLog = loadGhostLog('coaching-logs/default-offense.json');
+  const passLog = loadGhostLog('coaching-logs/default-offense2.json');
+  const arms = (seed) => {
+    const coach = dealtOffenseCoach({ runLog, passLog, rand: mulberry32(seed) });
+    const seen = [];
+    for (let i = 0; i < 30; i++) {
+      const s = scenario(mulberry32(100 + i));
+      coach(s);
+      seen.push(s.dealtArm);
+    }
+    return seen;
+  };
+  const first = arms(1);
+  assert.deepEqual(first, arms(1), 'same seed, same downs');
+  assert.equal(new Set(first).size, 3, 'all three arms get dealt');
+});
+
+test('an arm is chosen once per down, not once per turn', () => {
+  const runLog = loadGhostLog('coaching-logs/default-offense.json');
+  const passLog = loadGhostLog('coaching-logs/default-offense2.json');
+  const coach = dealtOffenseCoach({ runLog, passLog, rand: mulberry32(3) });
+  const s = scenario(mulberry32(11));
+  coach(s);
+  const arm = s.dealtArm;
+  for (let t = 1; t < 4; t++) { s.turnIndex = t; coach(s); }
+  assert.equal(s.dealtArm, arm);
 });

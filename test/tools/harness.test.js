@@ -11,7 +11,6 @@ import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 import { OFFENSE_SPEC } from '../../lib/game/learned/offense-spec.js';
 import { spotFault, formationFoul } from '../../lib/game/formation.js';
 import { loadGhostLog } from '../../tools/ghost.js';
-import { runTurn } from '../../lib/game/turn.js';
 
 test('scenario deals a plannable hot-seat down inside the field', () => {
   const rand = mulberry32(11);
@@ -180,22 +179,40 @@ test('an arm is chosen once per down, not once per turn', () => {
 });
 
 test('the candidate defense genome reaches the down\'s read, not just its orders', () => {
-  // advancePlay (turn.js) computes the snap read from
-  // activeGenome(state, 'defense'), which falls back to the SHIPPED genome
-  // unless the state carries an override. defenseCoach must put the
-  // candidate there itself, or a candidate's read:* weights never move
-  // fitness by a single yard no matter how they are trained.
-  const distinctive = { ...makeGenome(DEFENSE_SPEC), 'read:prior': 3 };
+  // advancePlay (turn.js) falls back to the SHIPPED genome unless the state
+  // carries an override, so defenseCoach must put the candidate there itself
+  // -- both through its own advancePlay call and through genomeOverrides --
+  // or a candidate's read:man:* weights never move fitness by a single yard
+  // no matter how they are trained. There are no cues at the snap (turn 0),
+  // so this has to reach turn 1, where a real cover map exists to key off.
+  const distinctive = { ...makeGenome(DEFENSE_SPEC), 'read:man:downfield': 3 };
   const s1 = scenario(mulberry32(21));
-  defenseCoach(distinctive)(s1);
-  runTurn(s1, mulberry32(22));
-  // With only read:prior set, the snap read is
-  // read:prior + read:spread*look.spread + read:backs*look.backs = 3 + 0 + 0.
-  assert.equal(s1.playRead.read.pass, 3, 'the candidate\'s read:prior did not reach the read');
+  const coach1 = defenseCoach(distinctive);
+  coach1(s1); // turn 0: man is the default scheme, so a real cover map is made
+
+  const cover1 = s1.playRead.call.defense.cover;
+  assert.ok(cover1 && cover1.size > 0, 'this look must actually be covered for the test to mean anything');
+  const [defenderId, receiverId] = [...cover1][0];
+  s1.players.find((p) => p.id === receiverId).vel = { x: 0, y: 60 };
+  s1.turnIndex = 1;
+  coach1(s1); // turn 1: read:man:downfield now applies to what it just saw
 
   const inert = makeGenome(DEFENSE_SPEC);
   const s2 = scenario(mulberry32(21));
-  defenseCoach(inert)(s2);
-  runTurn(s2, mulberry32(22));
-  assert.equal(s2.playRead.read.pass, 0);
+  const coach2 = defenseCoach(inert);
+  coach2(s2);
+  const cover2 = s2.playRead.call.defense.cover;
+  assert.deepEqual([...cover2], [...cover1], 'the same seed must cover the same man');
+  s2.players.find((p) => p.id === receiverId).vel = { x: 0, y: 60 };
+  s2.turnIndex = 1;
+  coach2(s2);
+
+  assert.notEqual(
+    s1.playRead.reads[defenderId].pass, 0,
+    'the candidate\'s read:man:downfield did not reach the read',
+  );
+  assert.equal(
+    s2.playRead.reads[defenderId].pass, 0,
+    'an inert genome should read nothing off the very same motion',
+  );
 });

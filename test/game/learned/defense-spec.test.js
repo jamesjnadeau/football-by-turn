@@ -31,7 +31,7 @@ test('the spec covers formation, zones, coverage weights and the scheme gate', (
     'sub:nickel:bias', 'sub:dime:bias']) {
     assert.ok(keys.has(k), k);
   }
-  assert.equal(DEFENSE_SPEC.length, 54);
+  assert.equal(DEFENSE_SPEC.length, 51);
 });
 
 test('every spec entry is well-formed and its init is inside its range', () => {
@@ -102,52 +102,58 @@ test('the sub-package newcomers start on their own roster spots', () => {
   assert.equal(g['pos:d-cb3:down'], 2);
 });
 
-test('the read keys are inert at init', () => {
+test('the per-man read keys are inert at init', () => {
   const g = makeGenome(DEFENSE_SPEC);
-  for (const key of ['read:prior', 'read:spread', 'read:backs', 'read:inertia',
-    'read:qbDepth', 'read:lineFlow', 'read:trigger']) {
+  for (const key of ['read:man:downfield', 'read:man:lateral', 'read:man:inertia', 'read:trigger']) {
     assert.equal(g[key], 0, `${key} must start at zero`);
   }
-  // read:commit starts at its own FLOOR, not its ceiling -- the zero weights
-  // above are what make z identically zero and keep the read inert; a
-  // threshold the evidence can never reach would instead be a floor
+  // read:man:commit starts at its own FLOOR, not its ceiling -- the zero
+  // weights above are what make z identically zero and keep the read inert;
+  // a threshold the evidence can never reach would instead be a floor
   // evolution has no gradient to lower, since nothing would ever cross it to
   // show a difference in fitness. Permissive at init, cautious only once
   // selection earns it.
-  const commit = DEFENSE_SPEC.find((p) => p.key === 'read:commit');
-  assert.equal(g['read:commit'], commit.min);
+  const commit = DEFENSE_SPEC.find((p) => p.key === 'read:man:commit');
+  assert.equal(g['read:man:commit'], commit.min);
 });
 
 /**
- * The maximum |z| a genome could ever present on a turn learnedOrders
- * actually consults (t >= 1, once real cues exist -- see read.js's
- * advanceRead). Both physical cues are clamped to [-1, 1] before their
+ * The maximum |z| a genome could ever present for one defender on a turn
+ * learnedOrders actually consults (t >= 1, once a cover assignment exists --
+ * see read.js's advanceRead). Both cues are clamped to [-1, 1] before their
  * weight applies (read.js's clamp1), so the most one turn's evidence can add
- * is |read:qbDepth| + |read:lineFlow| with both cues driven to whichever sign
- * matches their own weight's sign. read:inertia carries a fraction of that
- * forward turn over turn, so the accumulator's own fixed point --
- * cueMax / (1 - inertia) -- is the largest |z| repeated evidence can ever
- * build to; at inertia 1 nothing decays and the reach is unbounded.
+ * is |read:man:downfield| + |read:man:lateral|, with both cues driven to
+ * whichever sign matches their own weight's sign. read:man:inertia carries a
+ * fraction of that forward turn over turn, so the accumulator's own fixed
+ * point -- cueMax / (1 - inertia) -- is the largest |z| repeated evidence can
+ * ever build to; at inertia 1 nothing decays and the reach is unbounded.
  */
 function maxReachableZ(genome) {
-  const cueMax = Math.abs(genome['read:qbDepth']) + Math.abs(genome['read:lineFlow']);
-  const inertia = genome['read:inertia'];
+  const cueMax = Math.abs(genome['read:man:downfield']) + Math.abs(genome['read:man:lateral']);
+  const inertia = genome['read:man:inertia'];
   if (inertia >= 1) return Infinity;
   return cueMax / (1 - inertia);
 }
 
-test('the read is reachable: the shipped genome can actually cross its own read:commit', () => {
+test('the read is reachable: the shipped genome can actually cross its own read:man:commit', () => {
   // This is the invariant whose absence let the whole feature ship inert
-  // three times running: a genome whose evidence cannot reach read:commit
-  // never commits, never triggers, and no read:* weight ever moves fitness --
-  // selection has nothing to climb and nothing to notice. It is not enough
-  // for the weights to be non-zero; the accumulator has to be able to CROSS
-  // the threshold on a turn learnedOrders will actually ask about.
+  // three times running: a genome whose evidence cannot reach read:man:commit
+  // never commits, never triggers, and no read:man:* weight ever moves
+  // fitness -- selection has nothing to climb and nothing to notice. It is
+  // not enough for the weights to be non-zero; the accumulator has to be able
+  // to CROSS the threshold on a turn learnedOrders will actually ask about.
+  //
+  // EXPECTED TO FAIL until the next retrain: this genome was trained against
+  // the global read's seven keys, which the per-man read replaces, so its
+  // four read:man:* weights all come back at their spec init (0) through
+  // clampGenome -- see 'the shipped genome loads, matches the variant, and is
+  // already clamped' above for why that is the correct, honest reading of a
+  // genome trained before this design existed, not a bug in this test.
   const g = clampGenome(DEFENSE_SPEC, DEFENSE_GENOME.values);
   const maxZ = maxReachableZ(g);
   assert.ok(
-    maxZ > g['read:commit'],
+    maxZ > g['read:man:commit'],
     `the shipped genome's evidence can only ever reach |z| = ${maxZ}, `
-      + `short of its own read:commit = ${g['read:commit']} -- the read can never commit to anything`,
+      + `short of its own read:man:commit = ${g['read:man:commit']} -- the read can never commit to anything`,
   );
 });

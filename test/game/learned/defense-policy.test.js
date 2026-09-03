@@ -187,53 +187,12 @@ test('a defender keeps the man he took, even when somebody nearer appears', () =
   assert.deepEqual(covers(learnedOrders(s, 'defense', g)), before);
 });
 
-test('a committed run read is a symmetric slide: coverage holds, aim comes downhill', () => {
-  // The first build took a committed run read as license to drop coverage
-  // entirely and point every second-level man at the carrier -- catastrophic
-  // on a wrong read (a receiver run completely free) for little gain on a
-  // right one, and training answered by pushing the read out of the
-  // evidence's reach. The fix: a man who has been given somebody to cover
-  // keeps him; what moves is everybody else's aim, toward the line.
-  //
-  // Zone, not man: this exercises the bare-`aim` half of the trigger (zone
-  // anchors have nobody to cover, so they are the ones whose AIM slides).
-  // The next test below exercises the other half -- the shade a covering man
-  // gets in man scheme, where every triggerable body already has a man.
-  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
-  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
-  s.plannedPass = null;
-  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': 4, 'read:trigger': 6 };
-  advancePlay(s, g);
-  const before = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o]));
-  const coveringBefore = [...before.values()].filter((o) => o.cover).length;
-
-  // Force the belief to a committed RUN (negative is run).
-  s.playRead.read = { pass: -5, confidence: Math.tanh(5), committed: true };
-  const after = learnedOrders(s, 'defense', g);
-  assert.equal(
-    after.filter((o) => o.cover).length,
-    coveringBefore,
-    'a man taken at the snap is the man he keeps, whichever way the read goes',
-  );
-
-  // At least one non-covering man's aim came downhill: toward the line of
-  // scrimmage rather than away from it, which is what "late, not absent"
-  // means for the second level's flow-and-zone assignments.
-  const moved = after.filter((o) => {
-    const p = getPlayer(s, o.id);
-    const was = before.get(o.id);
-    return o.aim && was.aim && positionGroup(p) !== 'line'
-      && o.aim.y < was.aim.y; // the defense defends toward +y
-  });
-  assert.ok(moved.length > 0, 'a backer who bites is late to his spot, not gone from the play');
-});
-
 test('in MAN, a committed run read shades the covering men downhill without touching who they cover', () => {
-  // Every triggerable body in this roster's man scheme is already covering
-  // somebody (the two corners and the lone backer, against three threats), so
-  // a version of the trigger that only slid a bare `aim` would move nobody
-  // here and the genome would train to always-man. The fix plays each of
-  // them from downhill leverage instead: a shade on the cover order.
+  // With the read moved onto the man each defender covers, the trigger has
+  // no bare-`aim` half left at all: only a man WITH a cover order has a read
+  // to act on (see applyTrigger), so a zone anchor or a rushing lineman is
+  // never in `reads` and never shaded. What moves for a covering man is HOW
+  // he plays his man: a shade on the cover order itself.
   const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   s.plannedPass = null;
@@ -244,8 +203,10 @@ test('in MAN, a committed run read shades the covering men downhill without touc
   assert.ok(coveringBefore.length > 0, 'this scheme must actually field coverage for the test to mean anything');
   for (const o of coveringBefore) assert.equal(o.shade ?? 0, 0, 'no shade before a read commits');
 
-  // Force the belief to a committed RUN (negative is run).
-  s.playRead.read = { pass: -5, confidence: Math.tanh(5), committed: true };
+  // Force each covering man's OWN read to a committed RUN (negative is run).
+  s.playRead.reads = Object.fromEntries(
+    coveringBefore.map((o) => [o.id, { pass: -5, confidence: Math.tanh(5), committed: true }]),
+  );
   const after = learnedOrders(s, 'defense', g);
   const coveringAfter = after.filter((o) => o.cover);
 
@@ -259,24 +220,33 @@ test('in MAN, a committed run read shades the covering men downhill without touc
   }
 });
 
-test('a committed pass read gives ground, by read:trigger yards', () => {
+test('a committed run read and a committed pass read shade the same covering man in opposite directions', () => {
   const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   s.plannedPass = null;
-  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': 4, 'read:trigger': 6 };
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -4, 'read:trigger': 6 }; // firmly man
   advancePlay(s, g);
-  const flat = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o.aim]));
+  const coveringIds = learnedOrders(s, 'defense', g).filter((o) => o.cover).map((o) => o.id);
+  assert.ok(coveringIds.length > 0, 'this scheme must actually field coverage for the test to mean anything');
 
-  s.playRead.read = { pass: 5, confidence: 1, committed: true };
-  const deep = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o.aim]));
+  s.playRead.reads = Object.fromEntries(
+    coveringIds.map((id) => [id, { pass: -5, confidence: Math.tanh(5), committed: true }]),
+  );
+  const run = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o.shade]));
 
-  // At least one non-lineman's aim moved further from the line of scrimmage.
-  const moved = [...deep].filter(([id, aim]) => {
-    const p = getPlayer(s, id);
-    return aim && flat.get(id) && positionGroup(p) !== 'line'
-      && aim.y > flat.get(id).y; // the defense defends toward +y
-  });
-  assert.ok(moved.length > 0);
+  s.playRead.reads = Object.fromEntries(
+    coveringIds.map((id) => [id, { pass: 5, confidence: 1, committed: true }]),
+  );
+  const pass = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o.shade]));
+
+  for (const id of coveringIds) {
+    assert.notEqual(run.get(id), 0, `${id} plays his man from leverage on a run read`);
+    assert.notEqual(pass.get(id), 0, `${id} plays his man from leverage on a pass read`);
+    assert.equal(
+      Math.sign(run.get(id)), -Math.sign(pass.get(id)),
+      `${id}'s leverage flips direction between a run read and a pass read`,
+    );
+  }
 });
 
 test('the rushing line is never triggered', () => {
@@ -285,11 +255,20 @@ test('the rushing line is never triggered', () => {
   s.plannedPass = null;
   const g = { ...makeGenome(DEFENSE_SPEC), 'read:trigger': 6 };
   advancePlay(s, g);
-  const before = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o.aim]));
-  s.playRead.read = { pass: 5, confidence: 1, committed: true };
+  const before = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o]));
+  // Force a committed read onto the line too -- proving they are never
+  // triggered because a rusher's order never carries a cover, not merely
+  // because nothing upstream happens to hand them a read today.
+  s.playRead.reads = {
+    'd-nt': { pass: 5, confidence: 1, committed: true },
+    'd-dt1': { pass: 5, confidence: 1, committed: true },
+    'd-dt2': { pass: 5, confidence: 1, committed: true },
+  };
   for (const o of learnedOrders(s, 'defense', g)) {
     if (positionGroup(getPlayer(s, o.id)) === 'line') {
-      assert.deepEqual(o.aim, before.get(o.id));
+      assert.deepEqual(o.aim, before.get(o.id).aim);
+      assert.equal(o.cover, null);
+      assert.equal(o.shade ?? 0, 0);
     }
   }
 });
@@ -306,11 +285,13 @@ test('the deep free man is not triggered, whichever way the read goes', () => {
   const orderFor = (orders) => orders.find((o) => o.id === free.id);
   const before = orderFor(learnedOrders(s, 'defense', g));
 
-  // Committed to run: everybody else leaves his man. He does not.
-  s.playRead.read = { pass: -5, confidence: Math.tanh(5), committed: true };
+  // Committed to run: everybody else leaves his man. He does not -- and he
+  // never has a read to act on in the first place, since he is never a value
+  // in the cover map (learnedCoverAssignments excludes him by construction).
+  s.playRead.reads = { [free.id]: { pass: -5, confidence: Math.tanh(5), committed: true } };
   assert.deepEqual(orderFor(learnedOrders(s, 'defense', g)), before);
 
   // Committed to pass: everybody else gives ground. He is already deep.
-  s.playRead.read = { pass: 5, confidence: 1, committed: true };
+  s.playRead.reads = { [free.id]: { pass: 5, confidence: 1, committed: true } };
   assert.deepEqual(orderFor(learnedOrders(s, 'defense', g)), before);
 });

@@ -1,5 +1,50 @@
 # The defense reads the play
 
+> **OUTCOME: the read was built, measured, and removed. The infrastructure it
+> was built on was kept.**
+>
+> Seven attempts across three model shapes and six retrains could not make the
+> read tell a run from a pass. The decisive test was hand-building the optimal
+> classifier the measured data implied, rather than trusting training to find
+> it: it scored **46.5% accuracy — worse than chance**, against the trained
+> genome's 49.7%. That is a signal failure, not a search failure. No training
+> schedule, model shape, intercept or fitness weighting recovers information a
+> cue does not carry.
+>
+> The aggregate means separated 5:1 — a covered man moves downfield 2.70 units/s
+> on a run against 14.18 on a pass — but the per-turn distributions overlap
+> almost entirely. Comparing means without checking overlap is the mistake that
+> cost most of this work.
+>
+> In football terms: in this engine, against this training data, a pre-throw run
+> and a pre-throw pass look alike. The recorded coach sends his receivers
+> downfield on runs too, and the arms differ in what the quarterback does with
+> the ball rather than in how the covered men move. The information does not
+> exist in a covered man's motion until the ball is already gone.
+>
+> **What was kept** — all of it independently reviewed and measurably better than
+> what it replaced:
+>
+> - `state.playRead`, holding the frozen snap look and the call the defense
+>   committed to. The scheme is decided once at the snap instead of re-decided
+>   every turn off a picture that has moved, so the mid-down man/zone flip is
+>   gone; and coverage assignments are held for the down instead of re-claimed
+>   greedily every turn, so defenders no longer hand men off silently.
+> - The three-arm training distribution — recorded human runs, recorded human
+>   passes, and a scripted play-action fake — replacing an offense that never
+>   threw a forward pass.
+> - The ghost's base-variant relaxation, which took `train:vs-ghost` from 3 of
+>   the 20 recorded passing downs to all 20.
+> - Three harness correctness fixes: the candidate genome never reached the
+>   engine, the read was scored a turn stale, and the scheme was claimed off a
+>   post-snap picture.
+>
+> **What was removed**: the accumulator, its cues, its genome keys, the coverage
+> shade it drove, and the read-accuracy term added to try to train it.
+>
+> Everything below is the design as it stood, kept as the record of what was
+> tried and why. Read it as history, not as a description of the code.
+
 ## Motivation
 
 The computer does not know what a down is. It knows what a turn is.

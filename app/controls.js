@@ -36,13 +36,28 @@ export function mountControls(root, handlers, playbookIcon) {
   // hidden sibling still holds its place in flex layout — DOM order is what
   // decides where each button falls, regardless of which are visible.
   for (const name of controlNames()) {
+    // Both of these are mount-time assertions about the two things this file
+    // cannot see for itself: the markup it appends into, and the handler map
+    // it was handed. Without them a control whose group has no container in
+    // index.html throws `Cannot read properties of undefined` out of the loop
+    // and takes the whole app down at mount with nothing naming the missing
+    // piece, while a control with no handler is worse — it builds, paints,
+    // takes the press and does nothing at all, silently.
+    const group = groups.get(CONTROL_GROUPS[name]);
+    if (!group) {
+      throw new Error(
+        `the ${name} control belongs to the ${CONTROL_GROUPS[name]} group, `
+        + 'which has no [data-group] container in index.html',
+      );
+    }
+    if (!handlers[name]) throw new Error(`the ${name} control was mounted with no handler`);
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'control';
     btn.dataset.control = name;
     btn.hidden = true;
-    btn.addEventListener('click', () => handlers[name]?.());
-    groups.get(CONTROL_GROUPS[name]).appendChild(btn);
+    btn.addEventListener('click', () => handlers[name]());
+    group.appendChild(btn);
     buttons.set(name, btn);
   }
 
@@ -50,6 +65,7 @@ export function mountControls(root, handlers, playbookIcon) {
   // query. Its open/closed state is view state and belongs here; nothing in the
   // game knows or cares whether the sheet is showing.
   const toggle = root.querySelector('#playbook-toggle');
+  if (!toggle) throw new Error('#playbook-toggle is missing from index.html');
   const setOpen = (open) => {
     root.classList.toggle('playbook-open', open);
     toggle.setAttribute('aria-expanded', String(open));
@@ -58,6 +74,16 @@ export function mountControls(root, handlers, playbookIcon) {
   toggle.setAttribute('aria-label', 'Show the playbook');
   toggle.hidden = false;
   toggle.addEventListener('click', () => setOpen(!root.classList.contains('playbook-open')));
+  // Escape closes the sheet, because that is what Escape does to anything
+  // covering the page — the <dialog> the Coaches Menu lives in gets it for
+  // free from the platform, and a sheet built out of a class on a div has to
+  // ask. It listens on the document rather than on the sheet: the coach may
+  // have the sheet open with focus still on the board behind it. Registered
+  // here at mount alongside the toggle's own listener, so sync() keeps its
+  // promise never to create, remove or re-parent anything.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && root.classList.contains('playbook-open')) setOpen(false);
+  });
   setOpen(false);
 
   return {

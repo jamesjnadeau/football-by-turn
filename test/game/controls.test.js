@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { controlsFor, controlNames, CONTROL_ICONS } from '../../lib/game/controls.js';
+import { controlsFor, controlNames, CONTROL_ICONS, CONTROL_GROUPS } from '../../lib/game/controls.js';
 import { createGame } from '../../lib/game/state.js';
 import { PLAY_SLOTS } from '../../lib/game/playbook.js';
 import { SCENARIOS } from '../../lib/game/tutorial/script.js';
@@ -117,6 +117,16 @@ test('the playbook is a first-turn thing, and an empty slot cannot be called', (
   assert.equal(byName(list, 'play1').disabled, true);
 });
 
+test('the autoplan label names the side the coach actually has', () => {
+  // One press draws up a whole play for whichever side is the human's, so the
+  // label has to say which — a coach who has handed the computer the other
+  // team is being offered a different thing by the same button.
+  const mine = controlsFor(createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' }));
+  assert.equal(byName(mine, 'autoplan').label, 'Autoplan offense');
+  const theirs = controlsFor(createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' }));
+  assert.equal(byName(theirs, 'autoplan').label, 'Autoplan defense');
+});
+
 test('the defense label is handed in, not reached for', () => {
   const list = controlsFor(createGame({ seed: 1 }), { aiLabel: 'Defense: computer (learned)' });
   assert.equal(byName(list, 'ai').label, 'Defense: computer (learned)');
@@ -125,6 +135,20 @@ test('the defense label is handed in, not reached for', () => {
 test('a lesson fields only the controls it names', () => {
   const list = controlsFor(createGame({ seed: 1 }), { allow: ['run', 'menu'] });
   assert.deepEqual(list.map((c) => c.name), ['menu', 'run']);
+});
+
+test('a lesson can keep the clipboard off the board altogether', () => {
+  // `allow` is a whole-scenario gate, so the lesson that teaches the clipboard
+  // has to name `menu` in it for every step in order to ring it on the one
+  // step that does the teaching. `showsMenu` is the per-step gate on top of
+  // that: the clipboard stays off the board for the four steps before.
+  const s = createGame({ seed: 1 });
+  assert.ok(byName(controlsFor(s), 'menu'), 'fielded when nobody says otherwise');
+  assert.ok(byName(controlsFor(s, { showsMenu: true }), 'menu'), 'and when the gate is open');
+  assert.equal(byName(controlsFor(s, { showsMenu: false }), 'menu'), undefined,
+    'and gone, not greyed, when the lesson has closed it');
+  // And it is the only control the gate touches.
+  assert.equal(controlsFor(s, { showsMenu: false }).length, controlNames().length - 1);
 });
 
 test('the ring lands on the control a lesson is pointing at', () => {
@@ -146,13 +170,35 @@ test('the menu heading wears the clipboard the table gives it', async () => {
     'the one icon written in markup still matches the table');
 });
 
+test('every group a control names has a container in the markup', async () => {
+  // app/controls.js does `groups.get(CONTROL_GROUPS[name]).appendChild(btn)`
+  // for every control at mount. A group with no container in index.html is
+  // therefore not a layout nuisance but `undefined.appendChild` — thrown
+  // before a single button exists, taking the whole page down with it. The
+  // two files are edited independently, so the pairing is asserted here.
+  const html = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
+  const inMarkup = new Set(
+    [...html.matchAll(/class="control-group"\s+data-group="([^"]+)"/g)].map((m) => m[1]),
+  );
+  for (const group of new Set(Object.values(CONTROL_GROUPS))) {
+    assert.ok(inMarkup.has(group), `index.html has no .control-group for the ${group} group`);
+  }
+});
+
 test('no lesson rings a control that a phone keeps behind the playbook sheet', () => {
   // On a phone the playbook lives inside a sheet that is closed by default,
   // so a lesson that rings a play button would be pointing at something the
   // player cannot see. The bar's own game controls are always on screen at
   // any width, so a lesson may ring only those.
+  //
+  // The set comes from the table rather than from a list built for some
+  // particular state: a guard whose whole job is to hold whatever the game is
+  // doing should not itself depend on what the game is doing. Read off a
+  // fresh game, `reposition` would be in the set only because a fresh game
+  // happens to allow repositioning, and the day that stopped being true this
+  // guard would start failing about the wrong thing entirely.
   const gameControls = new Set(
-    controlsFor(createGame({ seed: 1 })).filter((c) => c.group === 'game').map((c) => c.name),
+    Object.entries(CONTROL_GROUPS).filter(([, g]) => g === 'game').map(([name]) => name),
   );
   for (const scenario of SCENARIOS) {
     for (const step of scenario.steps) {

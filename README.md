@@ -61,9 +61,9 @@ deals one of three offenses per down: a recorded human run
 (`coaching-logs/default-offense2.json`), and a written play-action fake. The
 first two are real coaching, exported from the Coaches Menu and committed so
 that a genome trained this way can be rebuilt from a clean checkout; the third
-is written because no recorded down sells one play and throws another, and the
-defense's `read:inertia` — how long it stays wrong once it has been fooled —
-has nothing to learn without a fake.
+is written because no recorded down sells one play and throws another, and a
+defense that only ever sees straight runs and straight dropbacks is not
+practising against the one situation a fake creates.
 
 A log named `coaching-logs/default-*.json` is part of that corpus and is
 committed; every other export the Coaches Menu drops in that folder is
@@ -85,11 +85,12 @@ half its scenarios from the down-and-distances you actually played. Pass
 `--side offense` to train the computer's offense against a ghost of your
 defense instead. **Forget my tendencies** in the same menu clears the record.
 
-Training is a seeded evolutionary search over each side's ~30 parameters
-(starting spots, play-calling, coverage scheme and matchups, routes and
-reads), simulating whole plays headlessly through the same engine the
-browser runs. It is fully deterministic for a seed and writes the champions
-back into the genome modules, which are committed like any other source.
+Training is a seeded evolutionary search over each side's several dozen
+parameters (starting spots, play-calling, coverage scheme and matchups,
+routes and throws), simulating whole plays headlessly through the same
+engine the browser runs. It is fully deterministic for a seed and writes the
+champions back into the genome modules, which are committed like any other
+source.
 
 ## Contributing a trained genome
 

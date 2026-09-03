@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { controlsFor, controlNames, CONTROL_ICONS } from '../../lib/game/controls.js';
 import { createGame } from '../../lib/game/state.js';
 import { PLAY_SLOTS } from '../../lib/game/playbook.js';
+import { SCENARIOS } from '../../lib/game/tutorial/script.js';
 
 /** The control by that name, or undefined if the list left it out. */
 const byName = (list, name) => list.find((c) => c.name === name);
@@ -143,4 +144,21 @@ test('the menu heading wears the clipboard the table gives it', async () => {
   const html = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
   assert.ok(html.includes(`${CONTROL_ICONS.menu} Coaches Menu`),
     'the one icon written in markup still matches the table');
+});
+
+test('no lesson rings a control that a phone keeps behind the playbook sheet', () => {
+  // On a phone the playbook lives inside a sheet that is closed by default,
+  // so a lesson that rings a play button would be pointing at something the
+  // player cannot see. The bar's own game controls are always on screen at
+  // any width, so a lesson may ring only those.
+  const gameControls = new Set(
+    controlsFor(createGame({ seed: 1 })).filter((c) => c.group === 'game').map((c) => c.name),
+  );
+  for (const scenario of SCENARIOS) {
+    for (const step of scenario.steps) {
+      if (step.highlight?.kind !== 'button') continue;
+      assert.ok(gameControls.has(step.highlight.name),
+        `${scenario.id} rings ${step.highlight.name}, which is not in the bar's visible row`);
+    }
+  }
 });

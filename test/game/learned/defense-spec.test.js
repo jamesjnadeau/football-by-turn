@@ -101,7 +101,12 @@ test('the read keys are inert at init', () => {
     'read:qbDepth', 'read:lineFlow', 'read:ballAir', 'read:trigger']) {
     assert.equal(g[key], 0, `${key} must start at zero`);
   }
-  // The commit bar starts at its own ceiling, so nothing ever crosses it.
+  // read:commit starts at its own FLOOR, not its ceiling -- the zero weights
+  // above are what make z identically zero and keep the read inert; a
+  // threshold the evidence can never reach would instead be a floor
+  // evolution has no gradient to lower, since nothing would ever cross it to
+  // show a difference in fitness. Permissive at init, cautious only once
+  // selection earns it.
   const commit = DEFENSE_SPEC.find((p) => p.key === 'read:commit');
-  assert.equal(g['read:commit'], commit.max);
+  assert.equal(g['read:commit'], commit.min);
 });

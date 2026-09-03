@@ -63,12 +63,18 @@ test('the percept is built hot-seat, with no aiTeam at all', () => {
 });
 
 test('advanceRead at the snap is the prior and the look, and nothing else', () => {
-  const g = { ...inert(), 'read:prior': 0.5, 'read:spread': 2, 'read:backs': -1 };
+  // read:commit is set explicitly here, above the 0.5 this z lands on --
+  // it now inits at 0 (the permissive end; see defense-spec.js), so leaning
+  // on the spec's own default would make this test about that init instead
+  // of about what it is actually checking: the accumulator's arithmetic.
+  const g = {
+    ...inert(), 'read:prior': 0.5, 'read:spread': 2, 'read:backs': -1, 'read:commit': 8,
+  };
   const look = { spread: 0.25, backs: 0.5, qbDepth: 6 };
   const r = advanceRead(look, null, null, g);
   assert.equal(r.pass, 0.5 + 2 * 0.25 + -1 * 0.5); // 0.5
   assert.equal(r.confidence, Math.tanh(0.5));
-  assert.equal(r.committed, false); // read:commit inits at 8
+  assert.equal(r.committed, false);
 });
 
 test('confidence is bounded and committed follows read:commit', () => {

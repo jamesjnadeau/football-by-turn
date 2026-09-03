@@ -46,8 +46,9 @@ Training is a walk away from a known-good posture, not from noise.
 
 **How the shipped genome stays valid is worth stating precisely, because the
 obvious answer is wrong.** `clampGenome` does fill missing keys from their spec
-`init` — but only two callers on the read path use it (`formation.js:224` and
-`learned/formation.js:54`), and neither is on the one that matters here:
+`init` — but the callers that use it are all on the formation path (`formation.js:224`,
+`formation.js:490`, `learned/formation.js:54`), and none is on the one that
+matters here:
 `turn.js` and `ai.js:118` both hand `activeGenome(...)` to the policy **raw**. A
 shipped genome missing a key its policy dereferences yields `undefined`, and
 `undefined + undefined * x` is `NaN` for the whole game.

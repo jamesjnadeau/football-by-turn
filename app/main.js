@@ -34,7 +34,7 @@ import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/pl
 import {
   PLAY_SLOTS, firstEmptySlot, putPlay, bookFor, putBook, playbookSide, playbookHeading,
 } from '../lib/game/playbook.js';
-import { controlsFor } from '../lib/game/controls.js';
+import { controlsFor, CONTROL_ICONS } from '../lib/game/controls.js';
 import { loadLibrary, saveLibrary } from './playbook-store.js';
 import {
   captureSnapshot, appendSnapshot, emptyCoachLog, serializeCoachLog,
@@ -713,7 +713,7 @@ const boardControls = mountControls(controlsEl, {
   ...Object.fromEntries(
     Array.from({ length: PLAY_SLOTS }, (_, i) => [`play${i + 1}`, () => callPlay(i)]),
   ),
-});
+}, CONTROL_ICONS.playbook);
 
 /**
  * Both surfaces, painted from the one call: the board's own buttons from a

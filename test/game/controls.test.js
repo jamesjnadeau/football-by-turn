@@ -28,7 +28,18 @@ test('the game controls and the playbook are told apart by group', () => {
 test('every control wears the icon the table gives it, and no other', () => {
   const list = controlsFor(createGame({ seed: 1 }));
   for (const c of list) assert.equal(c.icon, CONTROL_ICONS[c.name], `${c.name}'s icon`);
-  assert.equal(Object.keys(CONTROL_ICONS).length, controlNames().length);
+  // CONTROL_ICONS runs one ahead of controlNames(): it also carries the
+  // playbook toggle, which wears an icon like everything else but is chrome
+  // rather than a control — see the dedicated test below.
+  assert.equal(Object.keys(CONTROL_ICONS).length, controlNames().length + 1);
+});
+
+test('the playbook toggle is a mark in the table but not a control', () => {
+  assert.ok(CONTROL_ICONS.playbook, 'the toggle has an icon like everything else');
+  assert.ok(!controlNames().includes('playbook'),
+    'but it is chrome, so the button-building loop in app/controls.js must not see it');
+  assert.ok(!controlsFor(createGame({ seed: 1 })).some((c) => c.name === 'playbook'),
+    'nor is it something the game enables or disables');
 });
 
 test('a control carries a short label and a standalone accessible name', () => {

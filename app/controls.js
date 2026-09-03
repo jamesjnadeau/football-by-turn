@@ -16,8 +16,11 @@ import { controlNames, CONTROL_GROUPS } from '../lib/game/controls.js';
 /**
  * @param root the #controls element
  * @param handlers a map of control name to the function its press calls
+ * @param playbookIcon the emoji the phone layout's playbook toggle wears —
+ *   handed in rather than reached for, so the icon stays written down once,
+ *   in CONTROLS in lib/game/controls.js
  */
-export function mountControls(root, handlers) {
+export function mountControls(root, handlers, playbookIcon) {
   const groups = new Map(
     [...root.querySelectorAll('.control-group')].map((el) => [el.dataset.group, el]),
   );
@@ -42,6 +45,20 @@ export function mountControls(root, handlers) {
     groups.get(CONTROL_GROUPS[name]).appendChild(btn);
     buttons.set(name, btn);
   }
+
+  // The playbook lives behind a toggle on a narrow screen — see the media
+  // query. Its open/closed state is view state and belongs here; nothing in the
+  // game knows or cares whether the sheet is showing.
+  const toggle = root.querySelector('#playbook-toggle');
+  const setOpen = (open) => {
+    root.classList.toggle('playbook-open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+  };
+  toggle.textContent = playbookIcon;
+  toggle.setAttribute('aria-label', 'Show the playbook');
+  toggle.hidden = false;
+  toggle.addEventListener('click', () => setOpen(!root.classList.contains('playbook-open')));
+  setOpen(false);
 
   return {
     sync(controls) {

@@ -43,6 +43,45 @@
     /* The tutorial's ring. A player is ringed in SVG because a player is on the
        field; a control is ringed here, because a control is not. */
     .control.is-ringed { outline: 3px solid #c9962c; outline-offset: 2px; }
+    /* The toggle only exists for the phone layout below, so it stays out of
+       the desktop column entirely rather than merely being sized to nothing. */
+    #playbook-toggle { display: none; }
+    /* Author `display` above and `display: flex` below would otherwise beat
+       the UA [hidden] rule the moment either wins on specificity — the same
+       trap #board, the menu's buttons and .control above each carry their own
+       note about. The toggle is marked `hidden` in the markup until
+       app/controls.js's mountControls() clears it, so without this rule a
+       page that has loaded its styles but not yet run its script would show
+       an inert toggle on a narrow screen. */
+    #playbook-toggle[hidden] { display: none; }
+
+    /* On a narrow screen the right-hand column would cost 23% of the width, so
+       the controls go to the bottom instead — the thumb zone — and the playbook
+       moves behind a toggle rather than sitting where a thumb rests, since a
+       stray press on it replaces the whole formation with no undo. */
+    @media (max-width: 700px) {
+      #playbook-toggle { display: flex; }
+      #controls {
+        top: auto; right: 0; left: 0; bottom: 0; transform: none;
+        flex-direction: column; align-items: stretch;
+        gap: 0; padding: .375rem; box-sizing: border-box;
+        background: #fff; border-top: 1px solid #ccc;
+      }
+      #controls [data-group="game"] {
+        flex-direction: row; justify-content: space-evenly; order: 2;
+      }
+      #playbook-toggle { order: 3; }
+      /* The sheet sits above the bar and is closed until the toggle opens it. */
+      #controls [data-group="playbook"] {
+        order: 1; flex-direction: row; justify-content: space-evenly;
+        padding-bottom: .375rem;
+      }
+      #controls:not(.playbook-open) [data-group="playbook"] { display: none; }
+      /* The bar takes its height from the field rather than covering it: the
+         bottom of the window is behind the offense at the snap, which is
+         exactly where a coach is dragging. */
+      #board { height: calc(100% - var(--control-bar, 7rem)); }
+    }
 
     /* The home screen owns the whole viewport until a game starts, and gets it
        back when one is left. It is empty in the markup: app/home.js writes the
@@ -93,7 +132,7 @@
   <svg id="board" xmlns="http://www.w3.org/2000/svg" hidden></svg>
   <div id="controls" hidden>
     <div class="control-group" data-group="game"></div>
-    <button id="playbook-toggle" type="button" hidden></button>
+    <button id="playbook-toggle" class="control" type="button" hidden></button>
     <div class="control-group" data-group="playbook"></div>
   </div>
   <dialog id="menu">

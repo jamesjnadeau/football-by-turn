@@ -711,7 +711,7 @@ test('a line driving downfield reads run', () => {
   const s = createGame({ seed: 1 });
   advancePlay(s, g);
   for (const p of s.players) {
-    if (p.team === 'offense') p.vel = { x: 0, y: 3 }; // downfield, hard
+    if (p.team === 'offense') p.vel = { x: 0, y: 40 }; // downfield, hard
   }
   advancePlay(s, g);
   assert.ok(s.playRead.read.pass < 0);
@@ -731,7 +731,12 @@ test('inertia is what play-action fools: run keys stick after they stop', () => 
   const s = createGame({ seed: 1 });
   advancePlay(s, g);
   // Turn 1: the line drives. Run keys, hard.
-  for (const p of s.players) if (p.team === 'offense') p.vel = { x: 0, y: 3 };
+  //
+  // 40 u/s is a real drive, not a nudge: a lineman's own speed is
+  // SPEED_FACTOR / radius = 150 / 3.5 = 42.86, so this is most of what he has,
+  // and the cue lands near -0.93 rather than the -0.07 a walking pace gives.
+  // The read has to clear read:commit below for `committed` to mean anything.
+  for (const p of s.players) if (p.team === 'offense') p.vel = { x: 0, y: 40 };
   advancePlay(s, g);
   assert.ok(s.playRead.read.pass < 0 && s.playRead.read.committed);
   // Turn 2: everything stops — the fake is over and it was a pass all along.

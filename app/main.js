@@ -13,6 +13,7 @@ import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
   planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
   lineZoneMark, passLandingMark, passLockMark, cameraViewBox, liveLobMark,
+  passFlightMark, passShadowMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '../lib/game/hud.js';
@@ -21,6 +22,7 @@ import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import {
   receiverAt, lockOnPass, passLanding, backOnPasser, passReach, loftFromDrag,
+  passOrigin, passAim, passShadowSpots,
 } from '../lib/game/pass.js';
 import { lobLanded, isLob } from '../lib/game/lob.js';
 import {
@@ -438,7 +440,11 @@ function throwMark(player, g, point) {
   const lock = receiverAt(state, point, player.id);
   if (lock) return passLockMark(player, getPlayer(state, lock));
   const land = passLanding(player, g.dir, g.throttle);
-  return (land ? passLandingMark(land.pos, land.radius) : '')
+  return (land
+    ? passLandingMark(land.pos, land.radius)
+      + passFlightMark(passOrigin(player, g.dir), passAim(player, g.dir, g.throttle))
+      + passShadowMark(passShadowSpots(player, g.dir, g.throttle, 0))
+    : '')
     + passArrowMark(player.pos, passArrowTip(player.pos, g.dir, g.throttle));
 }
 

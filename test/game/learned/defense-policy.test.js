@@ -187,20 +187,46 @@ test('a defender keeps the man he took, even when somebody nearer appears', () =
   assert.deepEqual(covers(learnedOrders(s, 'defense', g)), before);
 });
 
-test('a committed run read pulls the second level off its men', () => {
+test('a committed run read is a symmetric slide: coverage holds, aim comes downhill', () => {
+  // The first build took a committed run read as license to drop coverage
+  // entirely and point every second-level man at the carrier -- catastrophic
+  // on a wrong read (a receiver run completely free) for little gain on a
+  // right one, and training answered by pushing the read out of the
+  // evidence's reach. The fix: a man who has been given somebody to cover
+  // keeps him; what moves is everybody else's aim, toward the line.
+  //
+  // Zone, not man: this roster's man scheme claims every non-free defender
+  // for coverage (two corners plus the lone backer against three threats), so
+  // there is nobody left with a bare `aim` order to slide. Zone is where the
+  // trigger has a body to move -- exactly the scenario the pass-read test
+  // below already uses for the mirror-image assertion.
   const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   s.plannedPass = null;
-  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -4 };
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': 4, 'read:trigger': 6 };
   advancePlay(s, g);
-  const covering = learnedOrders(s, 'defense', g).filter((o) => o.cover).length;
-  assert.ok(covering > 0);
+  const before = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o]));
+  const coveringBefore = [...before.values()].filter((o) => o.cover).length;
 
   // Force the belief to a committed RUN (negative is run).
   s.playRead.read = { pass: -5, confidence: Math.tanh(5), committed: true };
   const after = learnedOrders(s, 'defense', g);
-  assert.equal(after.filter((o) => o.cover).length, 0, 'they have all left their men');
-  for (const o of after) assert.ok(o.aim, 'and every one of them has somewhere to be');
+  assert.equal(
+    after.filter((o) => o.cover).length,
+    coveringBefore,
+    'a man taken at the snap is the man he keeps, whichever way the read goes',
+  );
+
+  // At least one non-covering man's aim came downhill: toward the line of
+  // scrimmage rather than away from it, which is what "late, not absent"
+  // means for the second level's flow-and-zone assignments.
+  const moved = after.filter((o) => {
+    const p = getPlayer(s, o.id);
+    const was = before.get(o.id);
+    return o.aim && was.aim && positionGroup(p) !== 'line'
+      && o.aim.y < was.aim.y; // the defense defends toward +y
+  });
+  assert.ok(moved.length > 0, 'a backer who bites is late to his spot, not gone from the play');
 });
 
 test('a committed pass read gives ground, by read:trigger yards', () => {

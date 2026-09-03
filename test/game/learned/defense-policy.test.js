@@ -10,6 +10,7 @@ import { createGame, getPlayer } from '../../../lib/game/state.js';
 import { coverAssignments } from '../../../lib/game/defense.js';
 import { fieldPos } from '../../../lib/game/view.js';
 import { zoneAnchorPoint } from '../../../lib/game/zone.js';
+import { advancePlay, snapLook } from '../../../lib/game/read.js';
 
 function afterSnap(s) {
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
@@ -19,12 +20,13 @@ function afterSnap(s) {
 
 test('schemeFeatures normalizes down, distance and formation spread', () => {
   const s = createGame({ seed: 1 });
-  const f = schemeFeatures(s);
+  const look = snapLook(s);
+  const f = schemeFeatures(s, look);
   assert.equal(f.down, 0); // 1st down
   assert.equal(f.toGo, 1); // 10 to go
   assert.ok(f.spread > 0 && f.spread <= 1); // receivers split 30 yards
   s.down = 4;
-  assert.equal(schemeFeatures(s).down, 1);
+  assert.equal(schemeFeatures(s, look).down, 1);
 });
 
 test('the scheme gate is a thresholded logit over those features', () => {
@@ -133,4 +135,22 @@ test('a carrier past the line ends the scheme: everyone converges', () => {
     assert.equal(o.cover, null);
     assert.ok(o.aim, `${o.id} converges`);
   }
+});
+
+test('the scheme is called once and does not flip when men scatter', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  // A gate that answers purely to spread: wide reads zone, tight reads man.
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -2, 'scheme:spread': 8 };
+  advancePlay(s, g);
+  learnedOrders(s, 'defense', g);
+  const called = s.playRead.call.defense.scheme;
+
+  // Now sweep the offense to both sidelines — a live gate would flip to zone.
+  const half = s.players.filter((p) => p.team === 'offense');
+  half.forEach((p, i) => { p.pos = fieldPos(i % 2 ? 26 : -26, s.losYard - 1); });
+  advancePlay(s, g);
+  learnedOrders(s, 'defense', g);
+  assert.equal(s.playRead.call.defense.scheme, called);
 });

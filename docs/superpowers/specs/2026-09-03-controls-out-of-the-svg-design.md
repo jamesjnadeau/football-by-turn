@@ -29,10 +29,20 @@ A new `lib/game/controls.js` exports one function:
 controlsFor(state, { repositioning, animating, book, allow, aiLabel, highlight }) → Control[]
 ```
 
-A `Control` is plain data — `{ name, icon, label, group, disabled, pressed, ringed }`
-— with no markup and no DOM. Every rule about which controls exist, what they
-are called and when they are live lives there, so `node --test` holds them
-exactly as it holds the renderer today.
+A `Control` is plain data — `{ name, icon, label, aria, group, disabled,
+pressed, ringed }` — with no markup and no DOM. Every rule about which controls
+exist, what they are called and when they are live lives there, so
+`node --test` holds them exactly as it holds the renderer today.
+
+**`label` and `aria` are two strings on purpose.** `label` is the short text the
+Coaches Menu shows beside the icon; `aria` is the standalone accessible name for
+the bar's icon-only button, which has no visible text to lean on. For most
+controls they are the same, and the play slots are where they must differ: the
+menu reads `1️⃣ Fly sweep`, while the bar's button has to announce itself as
+`Call play 1: Fly sweep`. Today those two strings live in different files and
+have quietly drifted — the menu says "Run Turn" where the board says "Run the
+turn", "Reposition: off" against "Reposition players: off", "Save current play"
+against "Save the current play". Putting both in one row is what stops that.
 
 `app/controls.js` walks that list and syncs real `<button>` elements. It
 creates each button **once** and thereafter only writes `textContent`,
@@ -169,9 +179,17 @@ here rather than in the game.
 about 150 lines. `renderBoardShell` loses its `game-menu` and `game-buttons`
 layers. `GAME_VIEWBOX_WIDTH` goes.
 
-`FIELD_BUTTONS` survives as name → icon and nothing else. It remains the one
-place an emoji is written down, and both that invariant's test and the
-`index.html` heading assertion are untouched.
+`FIELD_BUTTONS`, `FIELD_BUTTON_ICONS` and `fieldButtonNames` are **deleted from
+`render.js` rather than kept there**. Once the plates are gone the renderer has
+no consumer for an icon at all — every remaining reader is the menu or the bar —
+so the table moves into `lib/game/controls.js` and becomes part of the control
+rows themselves. Keeping it in a module that no longer draws buttons would leave
+`controls.js` importing the whole renderer for one string, which is the same
+mistake the `ai.js` import was.
+
+The "one emoji, one place" invariant is unchanged in force — there is still
+exactly one table — and both its integrity test and the `index.html` heading
+assertion move with it.
 
 **`app/main.js`** — `aimCamera` stops painting the two button layers.
 `anchorFor` keeps only its player branch. The menu's own buttons take their

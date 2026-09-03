@@ -141,15 +141,23 @@ test('the scheme is called once and does not flip when men scatter', () => {
   const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   s.plannedPass = null;
-  // A gate that answers purely to spread: wide reads zone, tight reads man.
-  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -2, 'scheme:spread': 8 };
+  // A gate that answers purely to spread, tuned so the two pictures land on
+  // OPPOSITE sides of it: at the snap spread is 0.5625 and z = -3 + 4(0.5625)
+  // = -0.75, which is man; once they scatter spread is 0.975 and z = +0.9,
+  // which is zone. A genome that read the same class either way would make
+  // this test prove nothing.
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -3, 'scheme:spread': 4 };
   advancePlay(s, g);
   learnedOrders(s, 'defense', g);
   const called = s.playRead.call.defense.scheme;
+  assert.equal(called, 'man'); // the class the snap look implies
 
   // Now sweep the offense to both sidelines — a live gate would flip to zone.
   const half = s.players.filter((p) => p.team === 'offense');
   half.forEach((p, i) => { p.pos = fieldPos(i % 2 ? 26 : -26, s.losYard - 1); });
+  // Pin the counterfactual: this is the live answer the old code would have
+  // used, which proves the two pictures really do differ.
+  assert.equal(schemeChoice(s, g, null, snapLook(s)), 'zone');
   advancePlay(s, g);
   learnedOrders(s, 'defense', g);
   assert.equal(s.playRead.call.defense.scheme, called);

@@ -17,7 +17,7 @@ import { teamSize } from '../../lib/game/rosters.js';
 import { tackleReach } from '../../lib/game/modes.js';
 import { num, UNITS_PER_YARD_X } from '../../lib/field/geometry.js';
 import { fieldPos, gameView, GOAL_YARD } from '../../lib/game/view.js';
-import { passLanding } from '../../lib/game/pass.js';
+import { passLanding, passAim } from '../../lib/game/pass.js';
 import { lobPoint } from '../../lib/game/lob.js';
 
 test('the board shell has the field and every game layer', () => {
@@ -643,6 +643,52 @@ test('a lock on a man who is no longer on the field falls back to the plain arro
   assert.ok(!svg.includes('pass-halo'));
 });
 
+test('a lob previews a flight path, with the dead zone drawn apart from the two catchable ends', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  const svg = renderPassArrow(s);
+  assert.ok(svg.includes('class="pass-flight"'), 'the line from hand to aim point');
+  assert.ok(svg.includes('class="pass-flight pass-flight-dead"'), 'the stretch nobody can touch');
+});
+
+test('a throw inside the lock zone previews no flight path and no shadow balls', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4);
+  const svg = renderPassArrow(s);
+  assert.ok(!svg.includes('pass-flight'), 'nothing pending to preview on a throw that resolves this turn');
+  assert.ok(!svg.includes('pass-shadow'));
+});
+
+test('a locked-on throw previews no flight path and no shadow balls either', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + 30 };
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5, 'o-wr1');
+  const svg = renderPassArrow(s);
+  assert.ok(!svg.includes('pass-flight'), 'a throw aimed at a man never arcs, so there is nothing to preview');
+  assert.ok(!svg.includes('pass-shadow'));
+});
+
+test('a lob previews one shadow ball when it lands inside its own turn', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1); // full power, no loft: one turn, per Task 1
+  const svg = renderPassArrow(s);
+  const count = (svg.match(/class="pass-shadow"/g) || []).length;
+  assert.equal(count, 1, 'no loft dragged in, so the bomb still lands inside one turn');
+});
+
+test('a fully lofted bomb previews two shadow balls, one per turn it hangs', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1, null, 1); // full power, full loft
+  const svg = renderPassArrow(s);
+  const count = (svg.match(/class="pass-shadow"/g) || []).length;
+  assert.equal(count, 2, 'full loft on the longest throw matches the old two-turn hang time');
+  const qb = getPlayer(s, 'o-qb');
+  const aim = passAim(qb, { x: 0, y: 1 }, 1);
+  assert.ok(svg.includes(`translate(${num(aim.x)}, ${num(aim.y)})`), 'the last shadow sits on the aim point');
+});
+
 test('the loose ball is drawn bigger while it is over everyone\'s heads', () => {
   const s = createGame({ seed: 1 });
   const lob = { from: { x: 135, y: 70 }, to: { x: 135, y: 150 }, substeps: 40, elapsed: 30 };
@@ -679,6 +725,13 @@ test('the lob\'s two marks are styled in the game stylesheet', () => {
   const { markup } = renderBoardShell(0);
   assert.ok(markup.includes('.pass-land{'), 'the landing circle has a style rule');
   assert.ok(markup.includes('.pass-halo{'), 'and so does the lock halo');
+});
+
+test('the flight path and the shadow ball are styled in the game stylesheet', () => {
+  const { markup } = renderBoardShell(20, 30);
+  assert.ok(markup.includes('.pass-flight{'));
+  assert.ok(markup.includes('.pass-flight-dead{'));
+  assert.ok(markup.includes('.pass-shadow'));
 });
 
 test('the board always has a lesson layer', () => {

@@ -340,7 +340,7 @@ test('a lob hangs past the whistle and is ruled where it lands', () => {
   const s = createGame({ seed: 1 });
   afterSnap(s); // the centre starts with it now; this is about the throw
   s.players = s.players.filter((p) => p.id === 'o-qb'); // nobody out there to catch it
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1, null, 1); // full loft: this test is about a throw spanning multiple turns
   const random = mulberry32(1);
   runTurn(s, random);
   assert.equal(s.phase, 'planning', 'the turn ended with the ball still up');
@@ -360,7 +360,7 @@ test('a receiver who gets under a hanging lob catches it on the next turn', () =
   // Deep in his own end, and two thirds power: a lob that comes down SHORT of
   // the goal line, so the catch is a catch rather than a touchdown.
   getPlayer(s, 'o-qb').pos = fieldPos(0, -18);
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.67);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.67, null, 1);
   const random = mulberry32(1);
   runTurn(s, random);
   assert.ok(s.ball.lob && !lobLanded(s.ball.lob), 'still in the air at the whistle');

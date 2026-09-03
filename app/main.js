@@ -13,14 +13,18 @@ import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
   planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
   lineZoneMark, passLandingMark, passLockMark, cameraViewBox, liveLobMark,
+  passFlightMark, passShadowMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '../lib/game/hud.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
-import { receiverAt, lockOnPass, passLanding, backOnPasser } from '../lib/game/pass.js';
-import { lobLanded } from '../lib/game/lob.js';
+import {
+  receiverAt, lockOnPass, passLanding, backOnPasser, passReach, loftFromDrag,
+  passOrigin, passAim, passShadowSpots,
+} from '../lib/game/pass.js';
+import { lobLanded, isLob } from '../lib/game/lob.js';
 import {
   TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
   MIN_ZOOM_SCALE, MAX_ZOOM_SCALE,
@@ -31,6 +35,7 @@ import {
 import { followYard, yardsOfY, gameView } from '../lib/game/view.js';
 import { applyZoomPan } from '../lib/game/zoom.js';
 import { VIEWBOX_WIDTH } from '../lib/field/geometry.js';
+import { sub } from '../lib/game/vec.js';
 import { attachInput } from './input.js';
 import { mountControls } from './controls.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
@@ -242,8 +247,7 @@ function anchorFor(highlight, cam) {
   return p ? { x: p.pos.x, y: p.pos.y, r: p.radius } : null;
 }
 
-function paint() {
-  layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
+function paintArrows() {
   // The band goes in `game-arrows`, beneath the players, so a man standing in
   // it still reads as a man rather than as a man behind glass. While
   // repositioning there are no arrows to draw anyway — that is the mode.
@@ -263,6 +267,11 @@ function paint() {
       : ''
     ),
   );
+}
+
+function paint() {
+  layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
+  paintArrows();
   hud.textContent = `${downDistanceText(state)} — ${state.phase}`;
   paintControls();
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
@@ -397,6 +406,26 @@ function pressMenu() {
   lessonSaw();
 }
 
+/**
+ * Where the loft handle is: the same short, cosmetically-capped tip the
+ * arrow itself draws to (passArrowTip in render.js) — not the real landing
+ * spot, which the flight path and landing circle already mark (spec decision
+ * 2). Checked only when no player answers hitTest first, and only for a
+ * throw that is still live, unlocked, still the passer's own, and long
+ * enough to lob at all — the same four gates renderPassArrow's own new marks
+ * check before drawing anything.
+ */
+function loftHandleHit(p) {
+  const pp = state.plannedPass;
+  if (repositioning || state.phase !== 'planning') return null;
+  if (!pp || pp.target || state.ball.carrierId !== pp.from) return null;
+  if (!isControllable(state, pp.from)) return null;
+  if (!isLob(passReach(pp.power))) return null;
+  const passer = getPlayer(state, pp.from);
+  const tip = passArrowTip(passer.pos, pp.dir, pp.power);
+  return Math.hypot(tip.x - p.x, tip.y - p.y) <= PICK_SLOP_UNITS ? { loft: pp.from } : null;
+}
+
 function hitTest(p) {
   let best = null;
   let bestD = Infinity;
@@ -408,7 +437,7 @@ function hitTest(p) {
     const d = Math.hypot(pl.pos.x - p.x, pl.pos.y - p.y);
     if (d <= pl.radius + PICK_SLOP_UNITS && d < bestD) { best = pl.id; bestD = d; }
   }
-  return best;
+  return best || loftHandleHit(p);
 }
 
 /**
@@ -436,7 +465,11 @@ function throwMark(player, g, point) {
   const lock = receiverAt(state, point, player.id);
   if (lock) return passLockMark(player, getPlayer(state, lock));
   const land = passLanding(player, g.dir, g.throttle);
-  return (land ? passLandingMark(land.pos, land.radius) : '')
+  return (land
+    ? passLandingMark(land.pos, land.radius)
+      + passFlightMark(passOrigin(player, g.dir), passAim(player, g.dir, g.throttle))
+      + passShadowMark(passShadowSpots(player, g.dir, g.throttle, 0))
+    : '')
     + passArrowMark(player.pos, passArrowTip(player.pos, g.dir, g.throttle));
 }
 
@@ -588,6 +621,27 @@ function onGesture(playerId, gesture, point) {
   // him is a drag, and only in reposition mode — one tap is how you arm the
   // second, and it cannot also be how you move somebody.
   paint();
+  lessonSaw();
+}
+
+/**
+ * Grabbing the committed arrow's tip again, pre-snap: not a new throw, only
+ * how long this one takes to arrive. dir/power/target — the destination —
+ * never change here; only state.plannedPass.loft does, so the shadow balls
+ * and the dead zone move but the landing circle never does. There is nothing
+ * to roll back on release the way a cancelled run or throw drag has, so the
+ * live preview and the committed value are the same write.
+ */
+function onLoftDragPreview(passerId, log) {
+  if (animating || state.phase !== 'planning') return;
+  const pp = state.plannedPass;
+  if (!pp || pp.from !== passerId) return;
+  pp.loft = loftFromDrag(pp, sub(log[log.length - 1], log[0]));
+  paintArrows();
+}
+
+function onLoftDrag(passerId, log) {
+  onLoftDragPreview(passerId, log);
   lessonSaw();
 }
 
@@ -1532,7 +1586,9 @@ function nextLesson() {
 export function startTutorial({ onExit = () => {} } = {}) {
   exitToHome = onExit;
   if (!inputAttached) {
-    attachInput(board, { hitTest, onGesture, onDragPreview, onPan, onPinch });
+    attachInput(board, {
+      hitTest, onGesture, onDragPreview, onLoftDragPreview, onLoftDrag, onPan, onPinch,
+    });
     inputAttached = true;
   }
   lesson = createLesson();
@@ -1545,7 +1601,9 @@ export function startGame({ variant = DEFAULT_VARIANT, side = 'training', onExit
   variantId = variant;
   sideId = side;
   if (!inputAttached) {
-    attachInput(board, { hitTest, onGesture, onDragPreview, onPan, onPinch });
+    attachInput(board, {
+      hitTest, onGesture, onDragPreview, onLoftDragPreview, onLoftDrag, onPan, onPinch,
+    });
     inputAttached = true;
   }
   startNewGame();

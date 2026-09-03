@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import {
   isForward, passFoul, releasePass,
   passSpeed, passReach, passTravel, powerForTravel, passOrigin, passAim,
-  receiverAt, lockOnPass, passLanding, backOnPasser,
+  receiverAt, lockOnPass, passLanding, backOnPasser, loftFromDrag, passShadowSpots,
 } from '../../lib/game/pass.js';
 import { createGame, getPlayer, setPass, setPlan } from '../../lib/game/state.js';
 import { fieldPos, yardsOfY } from '../../lib/game/view.js';
 import { len } from '../../lib/game/vec.js';
 import {
   PASS_SPEED_MIN, PASS_SPEED_MAX, PASS_SPAWN_EPSILON, PASS_GRACE_SUBSTEPS,
-  PICKUP_RADIUS_BONUS, DT, BALL_FRICTION, SUBSTEPS_PER_TURN, PICK_SLOP_UNITS,
+  PICKUP_RADIUS_BONUS, DT, BALL_FRICTION, SUBSTEPS_PER_TURN, PICK_SLOP_UNITS, LOFT_DRAG_UNITS,
 } from '../../lib/game/constants.js';
 import { PASS_REACH_MAX } from '../../lib/game/flight.js';
 import { mulberry32 } from '../../lib/game/rng.js';
@@ -403,4 +403,45 @@ test('a throw drag that ends on the passer himself is a cancel', () => {
     backOnPasser(qb, { x: qb.pos.x, y: qb.pos.y - edge + 0.01 }), true,
     'it is a disc, not a forward-only test',
   );
+});
+
+test('loftFromDrag reads loft straight off this grab\'s own displacement', () => {
+  const pp = { dir: { x: 0, y: 1 } };
+  assert.equal(loftFromDrag(pp, { x: 0, y: 0 }), 0, 'no travel, no loft');
+  assert.equal(loftFromDrag(pp, { x: 0, y: LOFT_DRAG_UNITS }), 1, 'the whole span, away from the passer');
+  assert.ok(Math.abs(loftFromDrag(pp, { x: 0, y: LOFT_DRAG_UNITS / 2 }) - 0.5) < 1e-9, 'halfway is half');
+  assert.equal(loftFromDrag(pp, { x: 0, y: LOFT_DRAG_UNITS * 3 }), 1, 'clamped at the top');
+  assert.equal(loftFromDrag(pp, { x: 0, y: -5 }), 0, 'toward the passer floors at zero, never negative');
+  assert.equal(loftFromDrag(pp, { x: LOFT_DRAG_UNITS, y: 0 }), 0, 'sideways travel is not loft');
+});
+
+test('passShadowSpots marks nothing for a throw short of the lock zone', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  assert.deepEqual(passShadowSpots(qb, { x: 0, y: 1 }, 0.4), []);
+});
+
+test('passShadowSpots walks the aim line, one spot per turn boundary it hangs for', () => {
+  const s = createGame({ seed: 1 });
+  const qb = getPlayer(s, 'o-qb');
+  const dir = { x: 0, y: 1 };
+  const one = passShadowSpots(qb, dir, 1, 0);
+  assert.equal(one.length, 1, 'no loft: the bomb covers the board inside its own turn');
+  assert.deepEqual(one[0], passAim(qb, dir, 1));
+  const two = passShadowSpots(qb, dir, 1, 1);
+  assert.equal(two.length, 2, 'full loft: the same throw now takes two turns');
+  const origin = passOrigin(qb, dir);
+  const aim = passAim(qb, dir, 1);
+  assert.ok(Math.abs(two[0].y - (origin.y + (aim.y - origin.y) * 0.5)) < 1e-6, 'first turn: halfway there');
+  assert.deepEqual(two[1], aim, 'second turn: landed, on the aim point exactly');
+});
+
+test('releasePass threads the planned loft into the lob it actually throws', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1, null, 1); // full loft
+  releasePass(s, mulberry32(1));
+  const total = dist(s.ball.lob.from, s.ball.lob.to);
+  assert.equal(s.ball.lob.substeps, lobSubsteps(total, 1), 'the coach\'s loft survives to the real throw');
+  assert.ok(lobSubsteps(total, 1) > lobSubsteps(total, 0), 'and it is genuinely longer than no loft would be');
 });

@@ -5,15 +5,24 @@
  * `board.on()` wraps addEventListener. All decisions about what a gesture
  * MEANS live in lib/game/ — this file only observes and reports.
  *
+ * `hitTest` returns one of three things: a player id, `null`, or `{ loft:
+ * passerId }` — the one target in the game that is not a player, the
+ * committed throw arrow's own tip. That third shape skips classifyGesture
+ * entirely: a loft adjustment is not a run, a throw, or a stance toggle, it
+ * has no direction or throttle of its own to classify, only how far the
+ * pointer has travelled since it grabbed on. It is reported through its own
+ * pair of callbacks, onLoftDragPreview/onLoftDrag, rather than being forced
+ * through onDragPreview/onGesture's player-shaped contract.
+ *
  * A second job lives here too: touch-only pan and pinch-zoom on empty field.
  * It is tracked entirely separately from the player-drag `log` above — a
- * touch pointerdown that hits a player always starts a draw gesture, exactly
- * as before, and never joins pan/pinch tracking; a touch pointerdown that
- * doesn't hit a player joins pan/pinch tracking and never starts a draw
- * gesture. The two cannot mix mid-gesture: a second finger touching down
- * while a draw is in flight is ignored (the draw already holds pointer
- * capture), so pinch can only start from two fingers that both began on
- * empty field.
+ * touch pointerdown that hits a target (a player OR the loft handle) always
+ * starts a draw gesture, exactly as before, and never joins pan/pinch
+ * tracking; a touch pointerdown that doesn't hit anything joins pan/pinch
+ * tracking and never starts a draw gesture. The two cannot mix mid-gesture: a
+ * second finger touching down while a draw is in flight is ignored (the draw
+ * already holds pointer capture), so pinch can only start from two fingers
+ * that both began on empty field.
  */
 import { classifyGesture } from '../lib/game/gesture.js';
 
@@ -25,14 +34,17 @@ function mid(a, b) {
   return { clientX: (a.clientX + b.clientX) / 2, clientY: (a.clientY + b.clientY) / 2 };
 }
 
-export function attachInput(board, { hitTest, onGesture, onDragPreview, onPan, onPinch }) {
+export function attachInput(board, {
+  hitTest, onGesture, onDragPreview, onLoftDragPreview, onLoftDrag, onPan, onPinch,
+}) {
   let log = null;
-  let playerId = null;
+  let target = null; // a player id (string), or { loft: passerId }
   // When each player was last tapped. A tap arms the NEXT gesture on that same
   // player: released in place it is a double tap (his special move), dragged
   // away it is a throw. Anything else disarms him, so a tap from ten seconds
   // ago can never turn a run into a throw. classifyGesture owns the timing
-  // rule; this map only remembers the tap.
+  // rule; this map only remembers the tap. The loft handle never touches it —
+  // it has no double-tap concept of its own.
   const lastTapAt = new Map();
 
   // Touch pointers currently down on empty field, keyed by pointerId, holding
@@ -66,8 +78,8 @@ export function attachInput(board, { hitTest, onGesture, onDragPreview, onPan, o
     }
 
     const p = board.point(e.clientX, e.clientY);
-    playerId = hitTest(p);
-    if (!playerId) return;
+    target = hitTest(p);
+    if (!target) return;
     log = [{ t: e.timeStamp, ...p }];
     board.node.setPointerCapture(e.pointerId); // pointer capture has no SVG.js wrapper; use the raw node
     e.preventDefault();
@@ -96,7 +108,8 @@ export function attachInput(board, { hitTest, onGesture, onDragPreview, onPan, o
     if (!log) return;
     const p = board.point(e.clientX, e.clientY);
     log.push({ t: e.timeStamp, ...p });
-    onDragPreview(playerId, log, lastTapAt.get(playerId) ?? null);
+    if (typeof target === 'object') { onLoftDragPreview(target.loft, log); return; }
+    onDragPreview(target, log, lastTapAt.get(target) ?? null);
   });
 
   board.on('pointerup', (e) => {
@@ -108,12 +121,18 @@ export function attachInput(board, { hitTest, onGesture, onDragPreview, onPan, o
     if (!log) return;
     const p = board.point(e.clientX, e.clientY);
     log.push({ t: e.timeStamp, ...p });
-    const gesture = classifyGesture(log, lastTapAt.get(playerId) ?? null);
-    if (gesture.kind === 'click') lastTapAt.set(playerId, log[log.length - 1].t);
-    else lastTapAt.delete(playerId);
-    onGesture(playerId, gesture, p);
+    if (typeof target === 'object') {
+      onLoftDrag(target.loft, log);
+      log = null;
+      target = null;
+      return;
+    }
+    const gesture = classifyGesture(log, lastTapAt.get(target) ?? null);
+    if (gesture.kind === 'click') lastTapAt.set(target, log[log.length - 1].t);
+    else lastTapAt.delete(target);
+    onGesture(target, gesture, p);
     log = null;
-    playerId = null;
+    target = null;
   });
 
   board.on('pointercancel', (e) => {
@@ -122,9 +141,9 @@ export function attachInput(board, { hitTest, onGesture, onDragPreview, onPan, o
       pinchDist = null;
       return;
     }
-    if (playerId) lastTapAt.delete(playerId); // a cancelled gesture disarms, like any other non-tap
+    if (typeof target === 'string') lastTapAt.delete(target); // a cancelled gesture disarms, like any other non-tap
     log = null;
-    playerId = null;
+    target = null;
     onDragPreview(null, null, null);
   });
 }

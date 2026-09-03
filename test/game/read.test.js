@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { snapLook, advanceRead, advancePlay } from '../../lib/game/read.js';
-import { createGame, setMode } from '../../lib/game/state.js';
+import { snapLook, advanceRead, advancePlay, setCalledPlay } from '../../lib/game/read.js';
+import { createGame, getPlayer, setMode } from '../../lib/game/state.js';
+import { nextDown } from '../../lib/game/rules.js';
 import { makeGenome } from '../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -94,4 +95,43 @@ test('a lineman in a pass-protection stance reads the same as one without', () =
   advancePlay(run, g);
   advancePlay(pass, g);
   assert.equal(pass.playRead.read.pass, run.playRead.read.pass);
+});
+
+test('a call written before the first turn does not cost the down its snap read', () => {
+  // setCalledPlay can be the first thing to touch a down: the training harness
+  // coaches before runTurn, and the offense's autoplan button runs in planning.
+  const g = { ...inert(), 'read:prior': 1.5 };
+  const early = createGame({ seed: 1 });
+  setCalledPlay(early, 'offense', { call: 'run', side: 1, give: false });
+  advancePlay(early, g);
+
+  const plain = createGame({ seed: 1 });
+  advancePlay(plain, g);
+
+  assert.equal(early.playRead.read.pass, plain.playRead.read.pass);
+  assert.equal(early.playRead.read.pass, 1.5);
+});
+
+test('a fresh down clears the percept, and the next advancePlay takes a new snap read', () => {
+  // Idiom borrowed from rules.test.js's 'between downs' test: snap taken,
+  // carrier spotted downfield, then a whistle and nextDown.
+  const s = createGame({ seed: 1 }); // 1st & 10 at the 20, toGoYard 30
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  advancePlay(s, inert());
+  assert.ok(s.playRead, 'the down this play is about has a percept');
+
+  const qb = getPlayer(s, 'o-qb');
+  qb.pos = { x: 150, y: fieldPos(0, 24).y }; // a 4-yard gain, short of the sticks
+  s.deadReason = 'tackled';
+  s.turnIndex = 5;
+  nextDown(s);
+  assert.equal(s.playRead, null, 'the whistle wipes the percept, not just the call on it');
+
+  // The next down's first advancePlay must take the SNAP read (prior + look),
+  // not a continued one (inertia off a read that no longer exists) -- the
+  // same distinction Finding 1 pins, now proven across a whistle too.
+  const g = { ...inert(), 'read:prior': 1.5 };
+  advancePlay(s, g);
+  assert.equal(s.playRead.read.pass, 1.5);
 });

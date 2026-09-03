@@ -14,6 +14,30 @@
        is hidden until a game is picked off the home screen. */
     #board[hidden] { display: none; }
 
+    /* The controls used to be SVG plates drawn in field units, which welded
+       their size to the board's scale: on a phone a plate came out about
+       12.5px against the 44 a thumb needs. They are real buttons now, sized in
+       rem, so the reader's own text size decides how big they are and the
+       board's scale has nothing to do with it. */
+    #controls {
+      position: fixed; display: flex; gap: .5rem;
+      top: 50%; right: .5rem; transform: translateY(-50%);
+      flex-direction: row; align-items: center;
+    }
+    #controls[hidden] { display: none; }
+    .control-group { display: flex; flex-direction: column; gap: .5rem; }
+    .control {
+      min-width: 2.75rem; min-height: 2.75rem;
+      display: flex; align-items: center; justify-content: center;
+      font: inherit; font-size: 1.25rem; line-height: 1; cursor: pointer;
+      background: #fff; border: 1px solid #1a7f37; border-radius: .35rem;
+    }
+    .control[aria-pressed="true"] { background: #d7ebdc; border-width: 2px; }
+    .control:disabled { border-color: #ccc; opacity: .4; cursor: default; }
+    /* The tutorial's ring. A player is ringed in SVG because a player is on the
+       field; a control is ringed here, because a control is not. */
+    .control.is-ringed { outline: 3px solid #c9962c; outline-offset: 2px; }
+
     /* The home screen owns the whole viewport until a game starts, and gets it
        back when one is left. It is empty in the markup: app/home.js writes the
        heading and the buttons in from lib/game/home.js. */
@@ -61,6 +85,11 @@
 <body>
   <section id="home"></section>
   <svg id="board" xmlns="http://www.w3.org/2000/svg" hidden></svg>
+  <div id="controls" hidden>
+    <div class="control-group" data-group="game"></div>
+    <button id="playbook-toggle" type="button" hidden></button>
+    <div class="control-group" data-group="playbook"></div>
+  </div>
   <dialog id="menu">
     <div class="menu-body">
       <h1>📋 Coaches Menu</h1>

@@ -12,8 +12,7 @@ import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
   planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
-  lineZoneMark, renderFieldButtons, passLandingMark, passLockMark, cameraViewBox,
-  menuButtonMark, liveLobMark, fieldButtonAnchor,
+  lineZoneMark, passLandingMark, passLockMark, cameraViewBox, liveLobMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '../lib/game/hud.js';
@@ -30,6 +29,7 @@ import {
 } from '../lib/game/rosters.js';
 import { followYard, yardsOfY } from '../lib/game/view.js';
 import { attachInput } from './input.js';
+import { mountControls } from './controls.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
 import {
   PLAY_SLOTS, firstEmptySlot, putPlay, bookFor, putBook, playbookSide, playbookHeading,
@@ -167,12 +167,7 @@ function cameraYard(ballYard = null) {
 
 function rebuildBoard() {
   const cam = cameraYard();
-  // aimCamera repaints this plate on every frame, so the shell only has to
-  // agree with it — but it has to agree, or the clipboard flashes on for one
-  // paint at the start of every lesson.
-  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard, cam, {
-    menu: !lesson || lesson.showsMenu(),
-  });
+  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard, cam);
   board.attr('viewBox', viewBox);
   board.clear();
   board.svg(markup); // parses the markup string from render.js and inserts it as real SVG nodes
@@ -189,38 +184,24 @@ function rebuildBoard() {
  * Point the board at `cam`: the crop, and everything pinned to the screen
  * rather than to the field.
  *
- * The menu plate is repainted here with its two neighbours rather than left in
- * the board shell where it used to live: the three are one column, and a
- * scrolling run moves the window out from under anything placed once at the
- * snap. animate() calls this every frame for the same reason -- the column
- * and the message would otherwise slide off with the field for half a second
- * and snap back at the whistle.
+ * The controls are not repainted here any more — they left the SVG in this
+ * task, and they are fixed to the viewport in CSS rather than to the crop, so
+ * a scrolling run has nothing to carry them out from under. Only the message
+ * plate and the lesson's own card are still drawn from the camera, for the
+ * same reason they always were: both are pinned to the field's own window,
+ * and would otherwise slide off with a long run and snap back at the whistle.
  */
 function aimCamera(cam) {
   board.attr('viewBox', cameraViewBox(state.losYard, cam));
-  // The clipboard is hidden for the whole tutorial except its last beat, which
-  // teaches it — and leaving through it is how the tutorial ends.
-  layer('game-menu').clear().svg(
-    !lesson || lesson.showsMenu() ? menuButtonMark(state.losYard, cam) : '',
-  );
-  layer('game-buttons').clear().svg(
-    renderFieldButtons(state, {
-      repositioning, animating, cameraYard: cam, allow: lesson ? lesson.buttons() : null,
-      // The book and the Defense label are both handed over rather than read
-      // there: the renderer draws, and this is the file that already knows
-      // what is in the library and which way the setting is turned.
-      book: myBook(), aiLabel: AI_MODES[aiModeIndex(state)].label,
-    }),
-  );
   layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cam));
   layer('game-tutorial').clear().svg(lessonMark(cam));
 }
 
 /**
  * The lesson's card and the ring round whatever it wants pressed. Repainted
- * with the camera rather than once at the snap, for the same reason the button
- * column is: a play that scrolls downfield would otherwise slide the card off
- * the bottom of the window and snap it back at the whistle.
+ * with the camera rather than once at the snap, for the same reason the
+ * message plate is: a play that scrolls downfield would otherwise slide the
+ * card off the bottom of the window and snap it back at the whistle.
  */
 function lessonMark(cam) {
   if (!lesson) return '';
@@ -228,10 +209,10 @@ function lessonMark(cam) {
   return coachCardMark(card, state.losYard, cam) + highlightMark(anchorFor(card.highlight, cam));
 }
 
-/** Where the ring goes: a plate in the button column, or a man on the field. */
+/** Where the ring goes. Only a player: a control is ringed on its own button,
+ *  in app/controls.js, because a control is no longer on the field. */
 function anchorFor(highlight, cam) {
-  if (!highlight) return null;
-  if (highlight.kind === 'button') return fieldButtonAnchor(highlight.name, state.losYard, cam);
+  if (!highlight || highlight.kind === 'button') return null;
   const p = state.players.find((pl) => pl.id === highlight.id);
   return p ? { x: p.pos.x, y: p.pos.y, r: p.radius } : null;
 }
@@ -258,7 +239,7 @@ function paint() {
     ),
   );
   hud.textContent = `${downDistanceText(state)} — ${state.phase}`;
-  paintMenuButtons();
+  paintControls();
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
   copyLogBtn.textContent = `Copy coaching log (${coachLog.length})`;
@@ -275,10 +256,6 @@ function paint() {
   newBtn.disabled = animating;
   homeBtn.disabled = animating;
   nextBtn.hidden = state.phase !== 'playOver';
-  // The board's own quick-press buttons are redrawn every paint rather than
-  // built with the board, which is what lets the shuffle disappear at the
-  // snap and the run button grey out — the menu hit rect beside them never
-  // changes, so it stays in the shell.
   // The crop is re-asserted on every paint, not just on a rebuild: a play that
   // scrolled downfield ends with the camera well past the line of scrimmage,
   // and the board has to stay there until the next down re-spots the ball.
@@ -720,20 +697,50 @@ const menuButtons = {
 for (let i = 0; i < PLAY_SLOTS; i++) menuButtons[`play${i + 1}`] = slotBtns[i];
 
 /**
- * The Coaches Menu's buttons, from the same list the board's are painted from.
- * A control the list leaves out is hidden rather than greyed — that is how the
- * shuffle disappears once the play is under way, and hiding rather than
- * disabling keeps the menu's own reading of it identical to the board's.
+ * The board's own controls. They call exactly the functions the Coaches Menu's
+ * buttons call — one rule per control, never a second copy — which is why the
+ * handlers are handed over here rather than reached for inside app/controls.js.
  */
-function paintMenuButtons() {
-  const live = new Map(controlsFor(state, {
+const controlsEl = document.getElementById('controls');
+const boardControls = mountControls(controlsEl, {
+  menu: pressMenu,
+  reposition: toggleReposition,
+  ai: pressAi,
+  personnel: pressPersonnel,
+  autoplan: pressAutoplan,
+  run: pressRun,
+  save: savePlay,
+  ...Object.fromEntries(
+    Array.from({ length: PLAY_SLOTS }, (_, i) => [`play${i + 1}`, () => callPlay(i)]),
+  ),
+});
+
+/**
+ * Both surfaces, painted from the one call: the board's own buttons from a
+ * list the lesson may have filtered, and the Coaches Menu from an unfiltered
+ * one. A control the menu's list leaves out is hidden rather than greyed —
+ * that is how the shuffle disappears once the play is under way, and hiding
+ * rather than disabling keeps the menu's own reading of it identical to the
+ * board's.
+ */
+function paintControls() {
+  const controls = controlsFor(state, {
     repositioning,
     animating,
     book: myBook(),
+    allow: lesson ? lesson.buttons() : null,
+    aiLabel: AI_MODES[aiModeIndex(state)].label,
+    highlight: lesson ? lesson.card().highlight : null,
+  });
+  boardControls.sync(controls);
+  // The menu shows every control the game has, not only the ones a lesson
+  // fields, so it is painted from an unfiltered list of the same rules.
+  const forMenu = new Map(controlsFor(state, {
+    repositioning, animating, book: myBook(),
     aiLabel: AI_MODES[aiModeIndex(state)].label,
   }).map((c) => [c.name, c]));
   for (const [name, btn] of Object.entries(menuButtons)) {
-    const c = live.get(name);
+    const c = forMenu.get(name);
     btn.hidden = !c;
     if (!c) continue;
     btn.textContent = `${c.icon} ${c.label}`;
@@ -746,7 +753,7 @@ function paintMenuButtons() {
  * heading says which — a coach who hands the computer the other team is
  * looking at a different book a moment later, and five relabelled buttons with
  * nothing to explain them read as five lost plays. The slot buttons' own text
- * and disabled state come from paintMenuButtons(); this just keeps the heading
+ * and disabled state come from paintControls(); this just keeps the heading
  * above them honest.
  */
 function paintPlays() {
@@ -826,42 +833,18 @@ function closeMenu() {
 }
 
 /**
- * What a press on the board itself does: open the menu, or work whichever
- * quick-press plate the press landed on. Every one of these nodes is
- * re-created — the menu rect by rebuildBoard(), the plates by every paint()
- * — so the listener goes on the board and matches on the way up rather than
- * on the nodes themselves.
- *
- * The plates are shortcuts and nothing more: each one calls the same
- * function the menu's own matching control does, so there is no second copy
- * of any rule to keep in step.
+ * What a press on the board itself does. The quick-press plates are gone —
+ * they are real buttons in app/controls.js now, with their own click
+ * listeners — so the only thing left on the board to press is the tutorial's
+ * own "Next"/"Skip" control, which is still SVG because the coach card it
+ * belongs to is still SVG. That node is re-created every paint, which is why
+ * the listener goes on the board and matches on the way up rather than on the
+ * node itself.
  */
 function pressBoardButton(target) {
   if (!target.closest) return false;
-  if (target.closest('[data-tutorial-next]')) nextLesson();
-  // Openable in an ordinary drive, and on the one lesson step that asks for it
-  // — where opening it is what ends the tutorial. Everywhere else in a lesson
-  // there is no plate to press anyway; this is the second lock on that door.
-  else if (target.closest('[data-menu-button]')) pressMenu();
-  else if (target.closest('[data-reposition-button]')) toggleReposition();
-  else if (target.closest('[data-run-button]')) pressRun();
-  else if (target.closest('[data-autoplan-button]')) pressAutoplan();
-  else if (target.closest('[data-ai-button]')) pressAi();
-  else if (target.closest('[data-personnel-button]')) pressPersonnel();
-  else if (target.closest('[data-save-button]')) savePlay();
-  else return callPlayFromBoard(target);
-  return true;
-}
-
-/**
- * The five load plates share one attribute and are told apart by its value, so
- * one line reads the slot straight off the plate that was pressed rather than
- * five branches saying the same thing.
- */
-function callPlayFromBoard(target) {
-  const el = target.closest('[data-play-button]');
-  if (!el) return false;
-  callPlay(Number(el.getAttribute('data-play-button')));
+  if (!target.closest('[data-tutorial-next]')) return false;
+  nextLesson();
   return true;
 }
 
@@ -869,10 +852,10 @@ board.on('click', (e) => {
   pressBoardButton(e.target);
 });
 
-// These rects are the only controls on the board, and everything the menu
-// holds lives in a closed <dialog> — out of the tab order until it is open.
-// Without this, a keyboard user who tabbed to one could never actually press
-// it. Space is also prevented from scrolling the page, as a native button does.
+// This rect is the only control left on the board, and it is reachable by
+// tabbing to it directly — nothing else on the board is a keyboard stop, so
+// there is no tab order for it to be out of. Space is also prevented from
+// scrolling the page, as a native button does.
 board.on('keydown', (e) => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
   if (pressBoardButton(e.target)) e.preventDefault();

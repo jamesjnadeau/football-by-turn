@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { controlsFor, controlNames, CONTROL_ICONS } from '../../lib/game/controls.js';
 import { createGame } from '../../lib/game/state.js';
 import { PLAY_SLOTS } from '../../lib/game/playbook.js';
@@ -125,4 +126,10 @@ test('the ring lands on the control a lesson is pointing at', () => {
     highlight: { kind: 'player', id: 'o-qb' },
   });
   assert.ok(onPlayer.every((c) => c.ringed === false));
+});
+
+test('the menu heading wears the clipboard the table gives it', async () => {
+  const html = await readFile(new URL('../../index.html', import.meta.url), 'utf8');
+  assert.ok(html.includes(`${CONTROL_ICONS.menu} Coaches Menu`),
+    'the one icon written in markup still matches the table');
 });

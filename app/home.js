@@ -13,6 +13,7 @@ import { loadTutorialDone } from './tutorial-store.js';
 
 const home = document.getElementById('home');
 const board = document.getElementById('board');
+const controls = document.getElementById('controls');
 
 // The game module, once it has been asked for. main.js registers its listeners
 // at module scope, so it is imported exactly once however many drives get
@@ -44,6 +45,7 @@ function show(el, visible) {
 
 function showHome() {
   show(board, false);
+  show(controls, false);
   show(home, true);
   showChoices();
 }
@@ -51,6 +53,7 @@ function showHome() {
 async function startTutorial() {
   show(home, false);
   show(board, true);
+  show(controls, true);
   game ??= await import('./main.js');
   game.startTutorial({ onExit: showHome });
 }
@@ -61,6 +64,7 @@ async function start(variantId, side) {
   if (!isPlayable(variantId)) return;
   show(home, false);
   show(board, true);
+  show(controls, true);
   game ??= await import('./main.js');
   game.startGame({ variant: variantId, side, onExit: showHome });
 }

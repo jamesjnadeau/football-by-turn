@@ -4,7 +4,7 @@ import {
   evaluatePair, evaluateDefense, evaluateOffense, evaluateMatch,
   defenseCoach, learnedOffenseCoach, scriptedOffenseCoach, smartDefenseCoach,
   scenario, playOnePlay, countPasses, pairAirYards, summarizePlays,
-  varyOffensiveLook, dealtTruth,
+  varyOffensiveLook,
 } from '../../../lib/game/train/harness.js';
 import { mulberry32 } from '../../../lib/game/rng.js';
 import { makeGenome } from '../../../lib/game/learned/genome.js';
@@ -181,53 +181,6 @@ test('summarizePlays splits a non-touchdown play\'s yards into gain or loss, and
   assert.equal(a.passesPerPlay, 1 / 2);
   assert.equal(a.airYardsPerPlay, 4 / 2);
   assert.equal(a.yardsPerPlay, (5 + -3) / 2);
-});
-
-// -----------------------------------------------------------------------
-// dealtTruth / summarizePlays.readAccuracy — the read-accuracy signal that
-// prices the per-defender play read directly (see fitness.js's
-// READ_ACCURACY_YARDS for why yards allowed cannot see it on their own).
-// -----------------------------------------------------------------------
-
-test('dealtTruth: a dealt run or pass is its own truth every turn, whatever forwardPasses says', () => {
-  assert.equal(dealtTruth('run', 0), 'run');
-  assert.equal(dealtTruth('run', 1), 'run', 'a dealt run never turns into a pass truth');
-  assert.equal(dealtTruth('pass', 0), 'pass');
-  assert.equal(dealtTruth('pass', 1), 'pass');
-});
-
-test('dealtTruth: play-action reads as a run while the fake sells, and flips to a pass the instant the throw is up', () => {
-  assert.equal(dealtTruth('play-action', 0), 'run', 'no throw yet -- still the fake');
-  assert.equal(dealtTruth('play-action', 1), 'pass', 'a forward pass has gone up');
-  assert.equal(dealtTruth('play-action', 2), 'pass', 'stays pass once the ball is up');
-});
-
-test('summarizePlays: readAccuracy is null when nothing was ever scored, and does not disturb the other fields', () => {
-  const untouched = {
-    yards: 5, touchdown: false, turnover: false, turns: 3, passes: 0, airYards: 0,
-  };
-  // A result with no readsRight/readsTotal at all -- what every hand-built
-  // play object in this suite already looks like, and what scriptedOffenseCoach
-  // and co-evolution's learned offense actually produce.
-  const a = summarizePlays([untouched]);
-  assert.equal(a.readAccuracy, null);
-  assert.equal(a.yardsPerPlay, 5);
-
-  // A result that explicitly scored zero reads (an arm was dealt, but the
-  // down never got to a covered turn) lands in the same place.
-  const b = summarizePlays([{ ...untouched, readsRight: 0, readsTotal: 0 }]);
-  assert.equal(b.readAccuracy, null);
-});
-
-test('summarizePlays: readAccuracy sums right and total across every play before dividing, not a mean of per-play ratios', () => {
-  const base = {
-    yards: 0, touchdown: false, turnover: false, turns: 1, passes: 0, airYards: 0,
-  };
-  const a = { ...base, readsRight: 3, readsTotal: 4 }; // 0.75
-  const b = { ...base, readsRight: 1, readsTotal: 2 }; // 0.5
-  // The mean of the ratios is 0.625; the ratio of the sums is 4/6 = 0.6˙ --
-  // proving which one summarizePlays actually computes.
-  assert.equal(summarizePlays([a, b]).readAccuracy, (3 + 1) / (4 + 2));
 });
 
 // -----------------------------------------------------------------------

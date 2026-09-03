@@ -12,7 +12,6 @@ import { fieldPos } from '../../../lib/game/view.js';
 import { runTurn } from '../../../lib/game/turn.js';
 import { mulberry32 } from '../../../lib/game/rng.js';
 import { advancePlay } from '../../../lib/game/read.js';
-import { DEFENSE_SPEC } from '../../../lib/game/learned/defense-spec.js';
 import { OFFENSE_GENOME } from '../../../lib/game/learned/offense-genome.js';
 
 test('the box is the defenders crowding the line near the ball', () => {
@@ -253,7 +252,7 @@ test('a full learned-offense down runs turn by turn without incident', () => {
 
 test('the learned offense records its call on the down, not on a field of its own', () => {
   const s = createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' });
-  advancePlay(s, makeGenome(DEFENSE_SPEC));
+  advancePlay(s);
   coachLearnedOffense(s, OFFENSE_GENOME.values);
   assert.equal(s.aiPlay, undefined);
   assert.ok(['run', 'pass'].includes(s.playRead.call.offense.call));
@@ -261,7 +260,7 @@ test('the learned offense records its call on the down, not on a field of its ow
 
 test('the offense call survives into a later turn', () => {
   const s = createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' });
-  advancePlay(s, makeGenome(DEFENSE_SPEC));
+  advancePlay(s);
   coachLearnedOffense(s, OFFENSE_GENOME.values);
   const called = s.playRead.call.offense;
   s.turnIndex = 1;

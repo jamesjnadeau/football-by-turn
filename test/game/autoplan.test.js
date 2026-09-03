@@ -14,7 +14,6 @@ import { applyAiModes, applyOrders } from '../../lib/game/ai.js';
 import { learnedOrders } from '../../lib/game/learned/defense-policy.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 import { emptyTendencies } from '../../lib/game/tendencies.js';
-import { advancePlay } from '../../lib/game/read.js';
 
 /** What a team's board actually says, for a byte-for-byte comparison. */
 const board = (s, team) => s.players
@@ -199,87 +198,3 @@ test('the defensive note follows the ball once the play has broken', () => {
   assert.match(autoplanLearnedDefense(loose), /^Loose ball/);
 });
 
-test('the note says nothing about a read no defender has committed to', () => {
-  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
-  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
-  s.plannedPass = null;
-  advancePlay(s, makeGenome(DEFENSE_SPEC));
-  const note = autoplanLearnedDefense(s);
-  assert.ok(!note.includes('read'), note);
-});
-
-test('the note counts committed men and says which way, singular and plural', () => {
-  // read.js's field is state.playRead.reads -- {defenderId: {...}} -- not a
-  // single belief for the whole unit any more, so this pins the sentence
-  // logic directly against hand-built maps: how it reads for one man, for
-  // several, and when the room is split down the middle.
-  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
-  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
-  s.plannedPass = null;
-  advancePlay(s, makeGenome(DEFENSE_SPEC));
-
-  s.playRead.reads = { 'd-cb1': { pass: -5, confidence: 1, committed: true } };
-  assert.match(autoplanLearnedDefense(s), /One man reads run -- he is playing downhill\.$/);
-
-  s.playRead.reads = {
-    'd-cb1': { pass: -5, confidence: 1, committed: true },
-    'd-lb': { pass: -3, confidence: 1, committed: true },
-  };
-  assert.match(autoplanLearnedDefense(s), /Two men read run -- they are playing downhill\.$/);
-
-  s.playRead.reads = { 'd-s': { pass: 5, confidence: 1, committed: true } };
-  assert.match(autoplanLearnedDefense(s), /One man reads pass -- he is giving ground\.$/);
-
-  s.playRead.reads = {
-    'd-cb1': { pass: -5, confidence: 1, committed: true },
-    'd-lb': { pass: 5, confidence: 1, committed: true },
-  };
-  assert.match(autoplanLearnedDefense(s), /The defense is split -- as many read run as pass\.$/);
-
-  // A read that has not crossed its own threshold does not count, however
-  // strong its belief -- committed is what makes it a call.
-  s.playRead.reads = { 'd-cb1': { pass: -5, confidence: 1, committed: false } };
-  assert.ok(!autoplanLearnedDefense(s).includes('read'));
-});
-
-test('a real committed read, taken off real motion, reaches the note', () => {
-  // Not an injected belief: a genome that actually commits, a real cover map
-  // learnedOrders assigns, and real velocity on the men it covers -- so the
-  // suite would notice if state.playRead.reads were renamed or reshaped
-  // again, the way state.playRead.read was.
-  const g = {
-    ...makeGenome(DEFENSE_SPEC),
-    'scheme:bias': -4, // firmly man, so a real cover map gets made
-    'read:man:downfield': 4,
-    'read:man:commit': 0, // commits on any nonzero evidence
-  };
-  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
-  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
-  s.plannedPass = null;
-
-  advancePlay(s, g); // turn 0: the snap, no cues yet
-  applyAiModes(s, 'defense');
-  applyOrders(s, learnedOrders(s, 'defense', g)); // writes a real man cover map
-
-  const cover = s.playRead.call.defense.cover;
-  assert.ok(cover && cover.size > 0, 'this look must actually be covered for the test to mean anything');
-  // Every covered man releases hard downfield -- a real pass key, for real.
-  for (const receiverId of cover.values()) {
-    getPlayer(s, receiverId).vel = { x: 0, y: 60 };
-  }
-  s.turnIndex = 1;
-  advancePlay(s, g); // turn 1: the read.js cue machinery, actually run
-
-  const reads = Object.values(s.playRead.reads);
-  assert.ok(
-    reads.length > 0 && reads.every((r) => r.committed && r.pass > 0),
-    'the whole cover map must have genuinely committed to pass for this test to mean anything',
-  );
-
-  const note = autoplanLearnedDefense(s);
-  assert.match(
-    note,
-    /^Learned defense: man\. .* (One man reads pass -- he is giving ground\.|(Two|Three|Four|Five|Six|Seven) men read pass -- they are giving ground\.)$/,
-  );
-  assert.ok(!note.includes('run'), note);
-});

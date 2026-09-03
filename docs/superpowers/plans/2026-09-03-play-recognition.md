@@ -899,6 +899,11 @@ In `lib/game/learned/defense-policy.js`, add above `learnedOrders`:
 function percept(state) {
   return state.playRead ?? {
     look: snapLook(state),
+    // `snapped` carries read.js's own meaning — whether the snap read has been
+    // taken. Nothing advances this stand-in, so it never has been. It is here
+    // so the shape matches the real percept exactly: a consumer must not be
+    // able to tell which of the two it was handed.
+    snapped: false,
     read: { pass: 0, confidence: 0, committed: false },
     call: { offense: null, defense: null },
   };

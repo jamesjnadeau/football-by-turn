@@ -31,7 +31,7 @@ test('the spec covers formation, zones, coverage weights and the scheme gate', (
     'sub:nickel:bias', 'sub:dime:bias']) {
     assert.ok(keys.has(k), k);
   }
-  assert.equal(DEFENSE_SPEC.length, 46);
+  assert.equal(DEFENSE_SPEC.length, 55);
 });
 
 test('every spec entry is well-formed and its init is inside its range', () => {

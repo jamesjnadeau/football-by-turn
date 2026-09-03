@@ -265,6 +265,15 @@ test('a throw can be locked onto a receiver, and the next one clears the lock', 
   assert.equal(s.plannedPass.target, null, 'a fresh drag is a fresh order');
 });
 
+test('a throw can be given loft, and a fresh one resets it to none', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1, null, 0.7);
+  assert.equal(s.plannedPass.loft, 0.7);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1); // a fresh drag, no loft argument
+  assert.equal(s.plannedPass.loft, 0, 'a new throw starts at no loft, not wherever the old one was left');
+});
+
 test('Clear Arrows drops the coach\'s throw and leaves the snap standing', () => {
   const s = createGame({ seed: 1 });
   setPass(s, 'o-c', { x: 1, y: 0 }, 0.5); // his own call, out to the side

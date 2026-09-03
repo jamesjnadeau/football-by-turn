@@ -75,8 +75,8 @@ test('a learned-level game runs whole turns without incident', () => {
 test('coachAi dispatches the learned offense', () => {
   const s = createGame({ seed: 9, ai: 'offense', aiLevel: 'learned' });
   coachAi(s);
-  assert.ok(s.aiPlay, 'the snap call is made');
-  assert.ok(['run', 'pass'].includes(s.aiPlay.call));
+  assert.ok(s.playRead.call.offense, 'the snap call is made');
+  assert.ok(['run', 'pass'].includes(s.playRead.call.offense.call));
   const planned = s.players.filter((p) => p.team === 'offense' && p.plan).length;
   assert.ok(planned >= 3, 'the offense is coached');
 });

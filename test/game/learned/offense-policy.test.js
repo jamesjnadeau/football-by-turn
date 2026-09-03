@@ -10,8 +10,10 @@ import { makeGenome } from '../../../lib/game/learned/genome.js';
 import { createGame, getPlayer, ballPos } from '../../../lib/game/state.js';
 import { fieldPos } from '../../../lib/game/view.js';
 import { runTurn } from '../../../lib/game/turn.js';
-import { nextDown } from '../../../lib/game/rules.js';
 import { mulberry32 } from '../../../lib/game/rng.js';
+import { advancePlay } from '../../../lib/game/read.js';
+import { DEFENSE_SPEC } from '../../../lib/game/learned/defense-spec.js';
+import { OFFENSE_GENOME } from '../../../lib/game/learned/offense-genome.js';
 
 test('the box is the defenders crowding the line near the ball', () => {
   const s = createGame({ seed: 1 });
@@ -197,33 +199,23 @@ test('the hold clock forces the throw', () => {
   assert.ok(s.plannedPass);
 });
 
-test('state carries an aiPlay slot, born null and reset every down', () => {
-  const s = createGame({ seed: 1 });
-  assert.equal(s.aiPlay, null);
-  s.aiPlay = { call: 'run', side: 1, give: false };
-  s.deadReason = 'tackled';
-  s.phase = 'playOver';
-  nextDown(s);
-  assert.equal(s.aiPlay, null);
-});
-
 test('turn 0 decides the call and remembers it', () => {
   const s = createGame({ seed: 1 });
   const g = { ...makeGenome(OFFENSE_SPEC), 'call:bias': 4 }; // always pass
   coachLearnedOffense(s, g);
-  assert.deepEqual(s.aiPlay, { call: 'pass' });
+  assert.deepEqual(s.playRead.call.offense, { call: 'pass' });
   assert.ok(getPlayer(s, 'o-wr1').plan, 'routes are on');
 
   const s2 = createGame({ seed: 1 });
   const g2 = { ...makeGenome(OFFENSE_SPEC), 'call:bias': -4 }; // always run
   coachLearnedOffense(s2, g2);
-  assert.equal(s2.aiPlay.call, 'run');
+  assert.equal(s2.playRead.call.offense.call, 'run');
 });
 
 test('a run play coaches the carrier to daylight, tucked under pressure', () => {
   const s = createGame({ seed: 1 });
   s.turnIndex = 2;
-  s.aiPlay = { call: 'run', side: 1, give: false };
+  s.playRead = { look: null, read: null, call: { offense: { call: 'run', side: 1, give: false }, defense: null } };
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   s.plannedPass = null;
   const qb = getPlayer(s, 'o-qb');
@@ -237,7 +229,7 @@ test('a run play coaches the carrier to daylight, tucked under pressure', () => 
 test('a loose ball sends the whole offense after it', () => {
   const s = createGame({ seed: 1 });
   s.turnIndex = 3;
-  s.aiPlay = { call: 'run', side: 1, give: true };
+  s.playRead = { look: null, read: null, call: { offense: { call: 'run', side: 1, give: true }, defense: null } };
   s.ball = { carrierId: null, pos: fieldPos(2, s.losYard - 2), vel: { x: 0, y: 0 }, loose: 0 };
   s.plannedPass = null;
   coachLearnedOffense(s, makeGenome(OFFENSE_SPEC));
@@ -257,4 +249,22 @@ test('a full learned-offense down runs turn by turn without incident', () => {
   // Whatever the play became, the engine stayed coherent.
   assert.ok(['playOver', 'planning'].includes(s.phase));
   assert.equal(typeof s.turnIndex, 'number');
+});
+
+test('the learned offense records its call on the down, not on a field of its own', () => {
+  const s = createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' });
+  advancePlay(s, makeGenome(DEFENSE_SPEC));
+  coachLearnedOffense(s, OFFENSE_GENOME.values);
+  assert.equal(s.aiPlay, undefined);
+  assert.ok(['run', 'pass'].includes(s.playRead.call.offense.call));
+});
+
+test('the offense call survives into a later turn', () => {
+  const s = createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' });
+  advancePlay(s, makeGenome(DEFENSE_SPEC));
+  coachLearnedOffense(s, OFFENSE_GENOME.values);
+  const called = s.playRead.call.offense;
+  s.turnIndex = 1;
+  coachLearnedOffense(s, OFFENSE_GENOME.values);
+  assert.deepEqual(s.playRead.call.offense, called);
 });

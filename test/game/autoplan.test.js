@@ -37,7 +37,7 @@ test('the 🎁 draws exactly what the learned offense would have played', () => 
 
   assert.deepEqual(board(pressed, 'offense'), board(computer, 'offense'));
   assert.deepEqual(pressed.plannedPass, computer.plannedPass);
-  assert.deepEqual(pressed.aiPlay, computer.aiPlay);
+  assert.deepEqual(pressed.playRead.call.offense, computer.playRead.call.offense);
 });
 
 test('the 🎁 plays the genome the coach has trained, not the shipped one', () => {

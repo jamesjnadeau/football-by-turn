@@ -68,7 +68,7 @@ test('learnedOffenseCoach stands its formation and coaches the play', () => {
   const off = makeGenome(OFFENSE_SPEC);
   const s = scenario(mulberry32(8));
   learnedOffenseCoach(off, mulberry32(9))(s);
-  assert.ok(s.aiPlay, 'a call was made at the snap');
+  assert.ok(s.playRead.call.offense, 'a call was made at the snap');
 });
 
 test('every look scenario deals is one the rulebook would allow', () => {

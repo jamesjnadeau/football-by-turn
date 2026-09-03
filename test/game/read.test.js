@@ -156,6 +156,9 @@ test('a quarterback dropping back reads pass, and the option keep does not', () 
   assert.ok(s.playRead.read.pass < 0, 'running forward is a run key');
 });
 
+// Both directions are pinned deliberately: a cue built from Math.abs(vel.y)
+// instead of the signed value would drive downfield AND retreating equally,
+// and would still pass a test that only ever checked one direction.
 test('a line driving downfield reads run', () => {
   const g = { ...inert(), 'read:lineFlow': 1 };
   const s = createGame({ seed: 1 });
@@ -165,6 +168,18 @@ test('a line driving downfield reads run', () => {
   }
   advancePlay(s, g);
   assert.ok(s.playRead.read.pass < 0);
+});
+
+test('a line retreating reads pass, not run', () => {
+  const g = { ...inert(), 'read:lineFlow': 1 };
+  const s = createGame({ seed: 1 });
+  advancePlay(s, g);
+  for (const p of s.players) {
+    if (p.team === 'offense') p.vel = { x: 0, y: -40 }; // pass-set, hard
+  }
+  advancePlay(s, g);
+  // Near +0.93, the mirror of the downfield case: 40 / (150/3.5) = 0.9333.
+  assert.ok(s.playRead.read.pass > 0, 'a retreating line is a pass key, not a run key');
 });
 
 test('a loose ball reads pass, whoever let go of it', () => {
@@ -196,16 +211,25 @@ test('inertia is what play-action fools: run keys stick after they stop', () => 
 });
 
 test('the read never looks at the orders', () => {
+  // Covers every field read.js:21 forbids except `mode`, which the separate
+  // 'a lineman in a pass-protection stance reads the same as one without'
+  // test above already pins.
   const g = { ...inert(), 'read:qbDepth': 1, 'read:lineFlow': 1, 'read:ballAir': 1 };
   const drawn = createGame({ seed: 1 });
   const bare = createGame({ seed: 1 });
-  // Draw a whole passing play on one of them and nothing on the other. No
-  // physics has run, so the two boards are physically identical.
+  // Draw a whole passing play on one of them and nothing on the other: a
+  // movement plan, a cover assignment, and a planned pass, none of which the
+  // other board has. No physics has run, so the two boards are physically
+  // identical — only the orders differ.
   const qb = drawn.players.find((p) => p.id === 'o-qb');
   setPlan(drawn, qb.id, { x: 0, y: -1 }, 1);
   for (const p of drawn.players) {
     if (p.team === 'offense' && p.id !== qb.id) setPlan(drawn, p.id, { x: 0, y: 1 }, 1);
   }
+  drawn.players.find((p) => p.id === 'o-wr1').cover = 'd-cb1';
+  drawn.plannedPass = {
+    from: 'o-qb', dir: { x: 0, y: 1 }, power: 1, target: 'o-wr1', auto: false,
+  };
   advancePlay(drawn, g);
   advancePlay(bare, g);
   advancePlay(drawn, g);

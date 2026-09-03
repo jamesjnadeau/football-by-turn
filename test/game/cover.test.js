@@ -71,6 +71,30 @@ test('clearCover leaves the man standing where he was told to be', () => {
   assert.equal(getPlayer(s, 'o-c').cover, null);
 });
 
+test('a cover order can carry a shade, and clearing or replacing it drops that too', () => {
+  const s = createGame({ seed: 1 });
+  setCover(s, 'o-c', 'd-nt', 5);
+  const c = getPlayer(s, 'o-c');
+  assert.equal(c.coverShade, 5);
+  clearCover(s, 'o-c');
+  assert.equal(c.coverShade, 0, 'the shade dies with the order it was played');
+
+  setCover(s, 'o-c', 'd-nt', 5);
+  assert.equal(c.coverShade, 5);
+  setPlan(s, 'o-c', { x: 1, y: 0 }, 1);
+  assert.equal(c.coverShade, 0, 'a fresh arrow leaves no phantom leverage behind');
+
+  setCover(s, 'o-c', 'd-nt', 5);
+  clearAllPlans(s);
+  assert.equal(c.coverShade, 0, 'clearAllPlans is another way an order dies');
+});
+
+test('setCover with no shade argument leaves the shade at zero', () => {
+  const s = createGame({ seed: 1 });
+  setCover(s, 'o-c', 'd-nt');
+  assert.equal(getPlayer(s, 'o-c').coverShade, 0);
+});
+
 test('with no carrier of his own the blocker shadows the target, led', () => {
   const s = createGame({ seed: 1 });
   s.ball = { carrierId: null, pos: null, vel: null };
@@ -94,6 +118,43 @@ test('with the ball on his own team the blocker interposes', () => {
   // getting between them means aiming short of the target.
   assert.ok(aim.y < nt.pos.y, 'on the carrier side of the man he is blocking');
   assert.ok(dist(aim, qb.pos) < dist(nt.pos, qb.pos), 'closer to the ball than the target is');
+});
+
+test('a shaded cover order aims that many units off the unshaded answer, on both paths', () => {
+  // Shadow path: no carrier of his own.
+  const shadow = createGame({ seed: 1 });
+  shadow.ball = { carrierId: null, pos: null, vel: null };
+  setCover(shadow, 'o-c', 'd-nt');
+  const c1 = getPlayer(shadow, 'o-c');
+  const plain = coverAim(shadow, c1);
+  c1.coverShade = 7;
+  const shaded = coverAim(shadow, c1);
+  assert.equal(shaded.x, plain.x);
+  assert.equal(shaded.y, plain.y + 7, 'the shade is added to the shadow aim, not substituted for it');
+
+  // Interpose path: the ball is on this player's own team.
+  const interpose = createGame({ seed: 1 });
+  interpose.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  setCover(interpose, 'o-c', 'd-nt');
+  const c2 = getPlayer(interpose, 'o-c');
+  const plainI = coverAim(interpose, c2);
+  c2.coverShade = -4;
+  const shadedI = coverAim(interpose, c2);
+  assert.equal(shadedI.x, plainI.x);
+  assert.equal(shadedI.y, plainI.y - 4, 'the shade applies to whatever the interpose branch produced');
+});
+
+test('at coverShade 0, coverAim returns exactly what it always returned (the byte-for-byte guarantee)', () => {
+  for (const carrierId of [null, 'o-qb']) {
+    const s = createGame({ seed: 1 });
+    s.ball = { carrierId, pos: null, vel: null };
+    setCover(s, 'o-c', 'd-nt'); // no shade argument: coverShade stays 0
+    const p = getPlayer(s, 'o-c');
+    assert.equal(p.coverShade, 0);
+    const aim = coverAim(s, p);
+    p.coverShade = 0; // explicit, in case a future default ever changes
+    assert.deepEqual(coverAim(s, p), aim);
+  }
 });
 
 test('the assist re-aims the plan as the covered man moves', () => {

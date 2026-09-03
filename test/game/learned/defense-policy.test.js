@@ -195,11 +195,10 @@ test('a committed run read is a symmetric slide: coverage holds, aim comes downh
   // evidence's reach. The fix: a man who has been given somebody to cover
   // keeps him; what moves is everybody else's aim, toward the line.
   //
-  // Zone, not man: this roster's man scheme claims every non-free defender
-  // for coverage (two corners plus the lone backer against three threats), so
-  // there is nobody left with a bare `aim` order to slide. Zone is where the
-  // trigger has a body to move -- exactly the scenario the pass-read test
-  // below already uses for the mirror-image assertion.
+  // Zone, not man: this exercises the bare-`aim` half of the trigger (zone
+  // anchors have nobody to cover, so they are the ones whose AIM slides).
+  // The next test below exercises the other half -- the shade a covering man
+  // gets in man scheme, where every triggerable body already has a man.
   const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   s.plannedPass = null;
@@ -227,6 +226,37 @@ test('a committed run read is a symmetric slide: coverage holds, aim comes downh
       && o.aim.y < was.aim.y; // the defense defends toward +y
   });
   assert.ok(moved.length > 0, 'a backer who bites is late to his spot, not gone from the play');
+});
+
+test('in MAN, a committed run read shades the covering men downhill without touching who they cover', () => {
+  // Every triggerable body in this roster's man scheme is already covering
+  // somebody (the two corners and the lone backer, against three threats), so
+  // a version of the trigger that only slid a bare `aim` would move nobody
+  // here and the genome would train to always-man. The fix plays each of
+  // them from downhill leverage instead: a shade on the cover order.
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -4, 'read:trigger': 6 }; // firmly man
+  advancePlay(s, g);
+  const before = new Map(learnedOrders(s, 'defense', g).map((o) => [o.id, o]));
+  const coveringBefore = [...before.values()].filter((o) => o.cover);
+  assert.ok(coveringBefore.length > 0, 'this scheme must actually field coverage for the test to mean anything');
+  for (const o of coveringBefore) assert.equal(o.shade ?? 0, 0, 'no shade before a read commits');
+
+  // Force the belief to a committed RUN (negative is run).
+  s.playRead.read = { pass: -5, confidence: Math.tanh(5), committed: true };
+  const after = learnedOrders(s, 'defense', g);
+  const coveringAfter = after.filter((o) => o.cover);
+
+  assert.deepEqual(
+    coveringAfter.map((o) => [o.id, o.cover]).sort(),
+    coveringBefore.map((o) => [o.id, o.cover]).sort(),
+    'the same men cover the same men -- nobody is abandoned',
+  );
+  for (const o of coveringAfter) {
+    assert.notEqual(o.shade, 0, `${o.id} plays his man from leverage now, not squarely`);
+  }
 });
 
 test('a committed pass read gives ground, by read:trigger yards', () => {

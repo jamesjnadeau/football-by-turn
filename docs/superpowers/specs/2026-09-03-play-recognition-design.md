@@ -36,10 +36,23 @@ on that read, including when the read is wrong.
 
 ## Why the parameters start at zero
 
-Every parameter this design adds inits to `0`, except `read:commit`, which inits
-at its maximum. At those values the accumulator is identically zero, confidence
-is zero, `committed` is never true, and the defense plays **byte for byte** the
-defense it plays today.
+Every parameter this design adds inits to `0`, `read:commit` included. At those
+values the accumulator is identically zero, confidence is zero, `committed` is
+never true, and the defense plays **byte for byte** the defense it plays today.
+
+**`read:commit` must init at its minimum, not its maximum, and the reason is
+worth stating because the opposite is the intuitive choice and it is a trap.**
+What makes the read inert is the zero *weights*: `z` is identically `0` at init
+whatever the threshold is, so `|0| > 0` is false exactly as surely as `|0| > 8`.
+A maximum init buys no extra safety — and it costs the feature its trainability.
+From a threshold the accumulator cannot reach, the read never commits, so the
+trigger never fires, so no `read:*` weight can change any outcome, so evolution
+has no gradient by which to lower the threshold. It is a local optimum the search
+cannot escape, and it is not hypothetical: a full retrain from a max init
+reproduced its starting genome byte for byte, with a threshold of 6.477 against a
+maximum achievable `|z|` of 5.62.
+
+Start permissive and let selection add caution.
 
 This is the codebase's own idiom, not a new one, and `adapt:*` did it first.
 Training is a walk away from a known-good posture, not from noise.
@@ -224,11 +237,11 @@ Nine, appended to `DEFENSE_SPEC` in `learned/defense-spec.js`.
 | `read:qbDepth` | −4…4 | 0 | the quarterback's depth |
 | `read:lineFlow` | −4…4 | 0 | the line driving downfield |
 | `read:ballAir` | −4…4 | 0 | the ball loose |
-| `read:commit` | 0…8 | 8 | evidence needed before acting on the read |
+| `read:commit` | 0…8 | 0 | evidence needed before acting on the read |
 | `read:trigger` | 0…10 | 0 | yards the second level bails on a pass read |
 
-At these inits `z ≡ 0`, `committed` is never true, `read:trigger` is zero, and
-the defense is unchanged.
+At these inits `z ≡ 0`, so `committed` is never true (`|0| > 0` is false),
+`read:trigger` is zero, and the defense is unchanged.
 
 ## How the defense uses it
 

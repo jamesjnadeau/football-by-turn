@@ -140,6 +140,7 @@ The percept, its one call site, and its reset. The read it carries is a zero for
 - Modify: `lib/game/turn.js` (imports, and the line above `coachAi(state)` at `:63`)
 - Modify: `lib/game/state.js:162` (the `aiPlay: null` initializer's neighbourhood — add `playRead: null`)
 - Modify: `lib/game/rules.js:272` (add `state.playRead = null` beside `state.aiPlay = null`)
+- Modify: `lib/game/learned/defense-spec.js` (the nine `read:*` keys — Step 8; they live here rather than in Task 4 because this task's own code and tests dereference them)
 
 **Interfaces:**
 - Consumes: `onTheLine(state, player)` from `lib/game/formation.js`; `SIDELINE_LEFT`, `SIDELINE_RIGHT` from `lib/field/geometry.js`; `activeGenome(state, side)` from `lib/game/learned/active.js`.
@@ -447,20 +448,59 @@ and immediately above `coachAi(state);` at `:63`, above its existing comment blo
   advancePlay(state, activeGenome(state, 'defense'));
 ```
 
-- [ ] **Step 8: Run the tests**
+- [ ] **Step 8: Add the nine genome keys**
+
+`advanceRead` above dereferences `genome['read:prior']` and its neighbours, so
+the keys have to exist before anything here can run: without them the
+arithmetic is `undefined + undefined * x`, every read is `NaN`, and this task's
+own tests cannot pass.
+
+In `lib/game/learned/defense-spec.js`, inside the final `F.push(` call, before
+its closing `);`, append:
+
+```js
+  // What the defense makes of the play it is looking at (lib/game/read.js).
+  // The read is a signed accumulator in logit units, positive for pass:
+  //
+  //   z0 = prior + spread*look.spread + backs*look.backs
+  //   zt = inertia*z(t-1) + qbDepth*cue + lineFlow*cue + ballAir*cue
+  //
+  // Every weight is zero at init and the commit bar starts at its own
+  // ceiling, so an untrained genome reads nothing, commits to nothing, and
+  // plays byte for byte the defense that shipped before any of this existed —
+  // the same discipline the adapt:* pulls above keep, and for the same reason.
+  { key: 'read:prior', min: -4, max: 4, init: 0 },
+  { key: 'read:spread', min: -4, max: 4, init: 0 },
+  { key: 'read:backs', min: -4, max: 4, init: 0 },
+  // How much of last turn's belief carries into this one. This is the knob
+  // play-action turns: at 1 he never forgets and stays wrong for turns.
+  { key: 'read:inertia', min: 0, max: 1, init: 0 },
+  { key: 'read:qbDepth', min: -4, max: 4, init: 0 },
+  { key: 'read:lineFlow', min: -4, max: 4, init: 0 },
+  { key: 'read:ballAir', min: -4, max: 4, init: 0 },
+  // How sure he must be before he acts on it at all.
+  { key: 'read:commit', min: 0, max: 8, init: 8 },
+  // Yards the second level gives ground on a committed pass read, at full
+  // confidence. The run half of the trigger needs no number: it drops
+  // coverage or it does not.
+  { key: 'read:trigger', min: 0, max: 10, init: 0 },
+```
+
+- [ ] **Step 9: Run the tests**
 
 Run: `node --test test/game/read.test.js`
 Expected: PASS.
 
-- [ ] **Step 9: Run the whole suite**
+- [ ] **Step 10: Run the whole suite**
 
 Run: `npm test`
-Expected: PASS. Nothing reads `playRead` yet, so no behaviour has changed; if `test/game/turn.test.js` or `test/game/state.test.js` fails, it is because a test asserts on the exact shape of a state object — update the expectation, do not remove the field.
+Expected: PASS. `test/game/learned/genome.test.js` may assert a spec length —
+update the number, do not delete the assertion. Nothing reads `playRead` yet, so no behaviour has changed; if `test/game/turn.test.js` or `test/game/state.test.js` fails, it is because a test asserts on the exact shape of a state object — update the expectation, do not remove the field.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add lib/game/read.js test/game/read.test.js lib/game/turn.js lib/game/state.js lib/game/rules.js lib/game/constants.js
+git add lib/game/read.js test/game/read.test.js lib/game/turn.js lib/game/state.js lib/game/rules.js lib/game/constants.js lib/game/learned/defense-spec.js
 git commit -m "feat: the down is an object, and it starts with the look"
 ```
 
@@ -607,17 +647,24 @@ git commit -m "refactor: the offense's call is part of the down, not a field bes
 
 ---
 
-### Task 4: The nine genome keys, and cues that move the read
+### Task 4: Pin what the cues actually do
 
-The keys, and the cue wiring that makes them mean something. Everything stays inert at init.
+Task 2 added the nine keys and `readCues`, because its own code and tests could
+not run without them. **This task adds no production code.** It pins the
+behaviour those two things bought: each cue moves the read the way it is
+supposed to, inertia is what a fake exploits, the inits are inert, and the read
+does not read orders.
+
+Because the code already exists, these tests pass on their first run rather than
+failing first. That is a deliberate trade — see the controller's Ruling 1 — and
+it applies to this task only.
 
 **Files:**
-- Modify: `lib/game/learned/defense-spec.js` (append to the final `F.push(...)`)
 - Test: `test/game/learned/defense-spec.test.js`, `test/game/read.test.js`
 
 **Interfaces:**
-- Consumes: `readCues(state)` and `advanceRead(...)` from Task 2.
-- Produces: nine keys on `DEFENSE_SPEC` — `read:prior`, `read:spread`, `read:backs`, `read:inertia`, `read:qbDepth`, `read:lineFlow`, `read:ballAir`, `read:commit`, `read:trigger`.
+- Consumes: `readCues(state, look)`, `advanceRead(...)`, `advancePlay(...)` and the nine `read:*` keys, all from Task 2.
+- Produces: no new names.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -714,58 +761,30 @@ test('the read never looks at the orders', () => {
 
 Add `setPlan` to that file's import from `../../lib/game/state.js`.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [ ] **Step 2: Run the tests**
 
 Run: `node --test test/game/read.test.js test/game/learned/defense-spec.test.js`
-Expected: FAIL — the genome has no `read:*` keys, so `advanceRead` reads `undefined` and `pass` comes out `NaN`.
+Expected: PASS on the first run — Task 2 built the code these pin. If any of them
+FAILS, that is a real defect in Task 2's cue wiring: fix `lib/game/read.js`, do
+not weaken the test.
 
-- [ ] **Step 3: Add the keys**
+- [ ] **Step 3: Read each failure, if there is one**
 
-In `lib/game/learned/defense-spec.js`, inside the final `F.push(` call, before its closing `);`, append:
+The five cue tests are the specification of what a cue means, in the direction it
+means it. A `lineFlow` test that fails is telling you the sign is inverted; a
+`qbDepth` test that fails is telling you the drop reference is wrong. Fix the
+module.
 
-```js
-  // What the defense makes of the play it is looking at (lib/game/read.js).
-  // The read is a signed accumulator in logit units, positive for pass:
-  //
-  //   z0 = prior + spread*look.spread + backs*look.backs
-  //   zt = inertia*z(t-1) + qbDepth*cue + lineFlow*cue + ballAir*cue
-  //
-  // Every weight is zero at init and the commit bar starts at its own
-  // ceiling, so an untrained genome reads nothing, commits to nothing, and
-  // plays byte for byte the defense that shipped before any of this existed —
-  // the same discipline the adapt:* pulls above keep, and for the same reason.
-  { key: 'read:prior', min: -4, max: 4, init: 0 },
-  { key: 'read:spread', min: -4, max: 4, init: 0 },
-  { key: 'read:backs', min: -4, max: 4, init: 0 },
-  // How much of last turn's belief carries into this one. This is the knob
-  // play-action turns: at 1 he never forgets and stays wrong for turns.
-  { key: 'read:inertia', min: 0, max: 1, init: 0 },
-  { key: 'read:qbDepth', min: -4, max: 4, init: 0 },
-  { key: 'read:lineFlow', min: -4, max: 4, init: 0 },
-  { key: 'read:ballAir', min: -4, max: 4, init: 0 },
-  // How sure he must be before he acts on it at all.
-  { key: 'read:commit', min: 0, max: 8, init: 8 },
-  // Yards the second level gives ground on a committed pass read, at full
-  // confidence. The run half of the trigger needs no number: it drops
-  // coverage or it does not.
-  { key: 'read:trigger', min: 0, max: 10, init: 0 },
-```
-
-- [ ] **Step 4: Run the tests**
-
-Run: `node --test test/game/read.test.js test/game/learned/defense-spec.test.js`
-Expected: PASS.
-
-- [ ] **Step 5: Run the whole suite**
+- [ ] **Step 4: Run the whole suite**
 
 Run: `npm test`
-Expected: PASS. `test/game/learned/genome.test.js` may assert a spec length — update the number, do not delete the assertion.
+Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add lib/game/learned/defense-spec.js test/game/learned/defense-spec.test.js test/game/read.test.js
-git commit -m "feat: nine numbers for what the defense makes of a play"
+git add test/game/learned/defense-spec.test.js test/game/read.test.js
+git commit -m "test: what each cue means, and what inertia costs when it is wrong"
 ```
 
 ---
@@ -869,6 +888,13 @@ In `lib/game/learned/defense-policy.js`, add above `learnedOrders`:
  * playRead. Rather than refuse to play, this hands back a look measured now
  * and a read that believes nothing, which is exactly the defense this file
  * played before any of it existed.
+ *
+ * It deliberately does NOT attach that stand-in to `state` — learnedOrders is
+ * a pure orders-only contract and has no business inventing a percept on a
+ * caller's object. Which is exactly why learnedOrders resolves this ONCE, at
+ * the top, and passes the result down: called twice on a state with no
+ * playRead it would hand back two different objects, and the second caller
+ * would find the call the first one wrote missing.
  */
 function percept(state) {
   return state.playRead ?? {
@@ -885,8 +911,7 @@ function percept(state) {
  * before this it could, because the gate was re-run against a picture that
  * had moved.
  */
-function committedScheme(state, genome, tendencies) {
-  const p = percept(state);
+function committedScheme(state, p, genome, tendencies) {
   if (!p.call.defense) {
     p.call.defense = { scheme: schemeChoice(state, genome, tendencies, p.look), cover: null };
   }
@@ -900,10 +925,11 @@ Then in `learnedOrders`, replace:
   const scheme = schemeChoice(state, genome, tendencies);
 ```
 
-with:
+with a single resolution of the percept, which Task 6 and Task 7 both reuse:
 
 ```js
-  const scheme = committedScheme(state, genome, tendencies);
+  const p = percept(state);
+  const scheme = committedScheme(state, p, genome, tendencies);
 ```
 
 - [ ] **Step 5: Fix autoplan's reporter**
@@ -942,7 +968,7 @@ git commit -m "feat: the coverage call is made at the snap and it is kept"
 - Test: `test/game/learned/defense-policy.test.js`
 
 **Interfaces:**
-- Consumes: `percept(state)` and `committedScheme(...)` from Task 5.
+- Consumes: `percept(state)` and `committedScheme(state, p, genome, tendencies)` from Task 5, and the `p` that `learnedOrders` resolves once at the top.
 - Produces: `state.playRead.call.defense.cover` — a `Map` of defender id to receiver id, built once by `learnedCoverAssignments` and reused every turn after.
 
 - [ ] **Step 1: Write the failing test**
@@ -995,8 +1021,7 @@ In `lib/game/learned/defense-policy.js`, add beside `committedScheme`:
  * ends up with the ball, learnedOrders' own guards take the whole defense over
  * before this is ever consulted.
  */
-function committedCover(state, team, genome, tendencies) {
-  const p = percept(state);
+function committedCover(state, p, team, genome, tendencies) {
   if (!p.call.defense.cover) {
     p.call.defense.cover = learnedCoverAssignments(state, team, genome, tendencies);
   }
@@ -1016,11 +1041,16 @@ with:
 
 ```js
   const man = scheme === 'man'
-    ? committedCover(state, team, genome, tendencies)
+    ? committedCover(state, p, team, genome, tendencies)
     : new Map();
 ```
 
-`committedScheme` runs first and always writes `call.defense`, so `committedCover` can rely on it being there.
+`p` is the percept `learnedOrders` already resolved in Task 5, reused rather
+than re-fetched. That matters: on a state with no `playRead`, `percept()` builds
+a fresh stand-in every call, so fetching it again here would hand back an object
+whose `call.defense` is still `null` — and dereferencing `.cover` on it would
+throw for every hand-rolled test state in the suite. `committedScheme` runs
+first on the same `p` and always writes `call.defense`, so this can rely on it.
 
 - [ ] **Step 4: Run the tests**
 
@@ -1050,7 +1080,7 @@ Where the read finally bites. Committed to run, the second level drops coverage 
 - Test: `test/game/learned/defense-policy.test.js`
 
 **Interfaces:**
-- Consumes: `percept(state).read` from Task 5. `leverageAim`, `interceptPoint`, `deepMan`, `positionGroup`, `defendDir` and `UNITS_PER_YARD_X` are all already imported by `defense-policy.js`; `getPlayer` is not, and Step 3 adds it.
+- Consumes: the `p` that `learnedOrders` resolved at the top in Task 5 — use `p.read`, do not call `percept(state)` again (see Task 6's note on why a second call is a different object). `leverageAim`, `interceptPoint`, `deepMan`, `positionGroup`, `defendDir` and `UNITS_PER_YARD_X` are all already imported by `defense-policy.js`; `getPlayer` is not, and Step 3 adds it.
 - Produces: no new exported names. `learnedOrders`' returned orders change shape for triggered defenders only: a `{cover}` order becomes an `{aim}` order on a run read.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1172,8 +1202,7 @@ In `learnedOrders`, keep the per-player loop exactly as it is but pass every ord
 
 ```js
   orders.push(...zone);
-  const { read } = percept(state);
-  return orders.map((o) => applyTrigger(state, team, getPlayer(state, o.id), o, read, genome));
+  return orders.map((o) => applyTrigger(state, team, getPlayer(state, o.id), o, p.read, genome));
 ```
 
 - [ ] **Step 4: Run the tests**

@@ -2,12 +2,19 @@
 
 ## What this is
 
-Nine more quick-press plates on the right-hand margin, so that everything a
+Eight more quick-press plates on the right-hand margin, so that everything a
 coach reaches for during a down is on the board instead of behind a dialog he
-has to open first. Three of them are game controls that join the column that
-already exists — 🧹 Clear Arrows, 🤖 Defense, 👥 Personnel. Six are the
-playbook, in a second column beside it — 💾 Save current play, and 1️⃣–5️⃣ to
-call one.
+has to open first. Two of them are game controls that join the column that
+already exists — 🤖 Defense and 👥 Personnel. Six are the playbook, in a second
+column beside it — 💾 Save current play, and 1️⃣–5️⃣ to call one.
+
+**Amended after first use.** 🧹 Clear Arrows shipped as a ninth plate at slot
++3 and was taken back off. One press of it undoes a whole plan, and at the size
+these plates render it was being caught by accident. It keeps its Coaches Menu
+button — where reaching for it is deliberate — and joins Velocity, Next Down,
+New Game and Back to Home in the menu-only group, which means it loses its icon
+too: the mark exists to relate a plate to its menu line, and there is no longer
+a plate to relate it to.
 
 Every one of those icons also goes on to its own button inside the Coaches
 Menu, so the plate on the board and the line in the menu wear the same mark and
@@ -55,16 +62,14 @@ slot   column 0 (x 260.6)      column 1 (x 273.6)
   0    📋 menu        (today)   3️⃣ load 3
  +1    🎁 autoplan    (today)   4️⃣ load 4
  +2    ⏩ run turn    (today)   5️⃣ load 5
- +3    🧹 clear arrows          —
 ```
 
-Both columns centre on the window mid, as the single column does now, and the
-rows line up across. Seven slots at the existing 13-unit pitch is 87 units in a
-170-unit window, so there is room to spare.
+Slot +3 held 🧹 Clear Arrows when this shipped and is now empty — see the
+amendment at the top. Both columns are six plates.
 
-The cost is that 🧹 sits below ⏩ rather than up with the other planning tools.
-That is the right trade: Run the Turn is the most-pressed control in the game,
-and a broom is not worth moving it for.
+Both columns centre on the window mid, as the single column does now, and the
+rows line up across. Six slots at the existing 13-unit pitch is 74 units in a
+170-unit window, so there is room to spare.
 
 **2. The crop widens to 280; the field does not change.**
 
@@ -252,7 +257,6 @@ Each plate greys on exactly the condition its menu twin does:
 | 🔀 reposition | *vanishes* when `!canReposition(state)`, as today |
 | 🎁 autoplan | `animating \|\| phase !== 'planning'` |
 | ⏩ run | `animating \|\| phase !== 'planning'` |
-| 🧹 clear | `animating \|\| phase !== 'planning'` |
 | 🤖 defense | `animating \|\| phase !== 'planning'` |
 | 👥 personnel | `animating \|\| !canReposition(state) \|\| aiTeam === 'defense'` |
 | 💾 save | `animating \|\| !canUsePlays(state)` |

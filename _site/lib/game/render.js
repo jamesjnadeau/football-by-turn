@@ -4,7 +4,7 @@
  * writes these into the layer groups; per-frame animation only rewrites the
  * `transform` of each player group.
  */
-import { VIEWBOX_WIDTH, YARD_LABEL_RIGHT_X, CENTRE_X, SIDELINE_LEFT, SIDELINE_RIGHT, UNITS_PER_YARD_X, y as yardToY } from '../field/geometry.js';
+import { VIEWBOX_WIDTH, YARD_LABEL_RIGHT_X, YARD_LABEL_LEFT_X, CENTRE_X, SIDELINE_LEFT, SIDELINE_RIGHT, UNITS_PER_YARD_X, y as yardToY } from '../field/geometry.js';
 import { renderField } from '../field/field.js';
 import { STYLE, DEFS } from '../field/style.js';
 import { num } from '../field/geometry.js';
@@ -60,6 +60,9 @@ const FIELD_BTN_PITCH = FIELD_BTN_SIZE + FIELD_BTN_GAP;
  * to read as a field marking rather than as a control.
  */
 const YARD_LABEL_WIDTH = 10.23;
+
+/** When the play clock turns red: the last five seconds are the coach's problem. */
+export const PLAY_CLOCK_URGENT_SECONDS = 5;
 const FIELD_BTN_X = (YARD_LABEL_RIGHT_X + YARD_LABEL_WIDTH + VIEWBOX_WIDTH) / 2;
 /** The icon, the corner and the rim are all struck off the plate's size, so
  *  resizing the button keeps its proportions instead of needing four edits. */
@@ -177,6 +180,16 @@ export const STYLE_GAME = [
   // The plate sits on the hatched end zone, so it needs a ground of its own.
   // Both parts are click-through: the board underneath still takes drags.
   '.msg-plate{fill:#ffffff;fill-opacity:.92;stroke:#000;stroke-width:.6;pointer-events:none}',
+  // The play clock, in the left margin. Same plate as a message, because it
+  // is the same kind of thing: something the field is told, not something
+  // pressed.
+  '.pc-plate{fill:#ffffff;fill-opacity:.92;stroke:#000;stroke-width:.6;pointer-events:none}',
+  '.pc{font:bold 9px system-ui,sans-serif;text-anchor:middle;fill:#000;pointer-events:none}',
+  '.pc-urgent{fill:#b3261e}',
+  // Dimmed rather than hidden: the seconds still matter to a coach who has
+  // committed -- they are just no longer his to spend.
+  '.pc-dim{opacity:.45}',
+  '.pc-note{font:2.6px system-ui,sans-serif;text-anchor:middle;fill:#000;opacity:.55;pointer-events:none}',
   '.msg{font:bold 4.5px system-ui,sans-serif;text-anchor:middle;fill:#000;pointer-events:none}',
   // The line to gain: a solid line distinct from both the dashed scrimmage
   // line (black) and the dashed plan/pass arrows (green/red), since it is
@@ -269,14 +282,14 @@ const FIELD_BUTTONS = {
   reposition: { attr: 'data-reposition-button', icon: '\u{1F500}', col: 0, slot: -1 },
   autoplan: { attr: 'data-autoplan-button', icon: '\u{1F381}', col: 0, slot: 1 },
   run: { attr: 'data-run-button', icon: '\u{23E9}', col: 0, slot: 2 },
-  // Two the Coaches Menu used to keep to itself. They are as much a part of a
-  // down as the shuffle is — a package changed, the defense handed over — so
-  // they sit where a coach's hand already is. Clearing the arrows was a third,
-  // and came back off the board: it is one press from undoing a whole plan,
-  // and a plate that small is too easy to hit by accident. The menu still
-  // holds it, where reaching for it is deliberate.
+  // Three the Coaches Menu used to keep to itself. They are as much a part of
+  // a down as the shuffle is — a plan cleared, a package changed, the defense
+  // handed over — so they sit where a coach's hand already is.
   ai: { attr: 'data-ai-button', icon: '\u{1F916}', col: 0, slot: -3 },
   personnel: { attr: 'data-personnel-button', icon: '\u{1F465}', col: 0, slot: -2 },
+  // Below Run the Turn rather than up with the planning tools: Run is the
+  // most-pressed plate on the board, and a broom is not worth moving it for.
+  clear: { attr: 'data-clear-button', icon: '\u{1F9F9}', col: 0, slot: 3 },
   // The playbook, in a column of its own. Save on top, then the five slots in
   // order, so the column reads the way the menu's Plays section does.
   save: { attr: 'data-save-button', icon: '\u{1F4BE}', col: 1, slot: -3 },
@@ -475,6 +488,10 @@ export function renderFieldButtons(
   });
   plate('run', {
     label: 'Run the turn',
+    off: animating || state.phase !== 'planning',
+  });
+  plate('clear', {
+    label: 'Clear the arrows',
     off: animating || state.phase !== 'planning',
   });
   // The icon never changes with the setting and the plate carries no badge:
@@ -707,6 +724,38 @@ export function wrapWords(text, maxChars) {
  * click-through, so a player standing underneath it is cosmetic, not a
  * hit-testing problem. app/main.js writes this into `game-message`.
  */
+/**
+ * The play clock, drawn down the left margin — the mirror of the button
+ * column on the right, and placed by the same arithmetic: the middle of the
+ * gap between the edge of the viewBox and the yard numbers.
+ *
+ * `seconds` is what the coach has left, already rounded by the caller;
+ * null means there is no clock to draw, which is every game that is not a
+ * match. `waiting` is true once he has committed: the count carries on,
+ * because how long his opponent has is worth knowing, but it is dimmed and
+ * captioned, and it never turns red. Red means "you are about to lose your
+ * turn", and a coach who has already ended his cannot lose it.
+ */
+export function renderPlayClock(seconds, losYard, cameraYard = losYard, { waiting = false } = {}) {
+  if (seconds === null || seconds === undefined) return '';
+  const view = gameView(losYard, cameraYard);
+  const cx = (YARD_LABEL_LEFT_X - YARD_LABEL_WIDTH) / 2;
+  const plateW = 15;
+  const plateH = waiting ? 15 : 12;
+  const plateY = view.windowTopY + MESSAGE_PAD_Y / 2;
+  const urgent = !waiting && seconds <= PLAY_CLOCK_URGENT_SECONDS;
+  const cls = `pc${urgent ? ' pc-urgent' : ''}${waiting ? ' pc-dim' : ''}`;
+  const note = waiting
+    ? `<text class="pc-note" x="${num(cx)}" y="${num(plateY + 13)}">waiting</text>`
+    : '';
+  return (
+    `<rect class="pc-plate" x="${num(cx - plateW / 2)}" y="${num(plateY)}"` +
+    ` width="${num(plateW)}" height="${num(plateH)}" rx="2"/>` +
+    `<text class="${cls}" x="${num(cx)}" y="${num(plateY + 9)}">${seconds}</text>` +
+    note
+  );
+}
+
 export function renderMessage(text, losYard, cameraYard = losYard) {
   const lines = wrapWords(text, MESSAGE_MAX_CHARS);
   if (lines.length === 0) return '';

@@ -1,5 +1,11 @@
 # The coaches menu, out on the board — implementation plan
 
+> **Superseded in part.** This plan shipped 🧹 Clear Arrows as a board plate
+> (Task 3, slot +3). It was removed after first use — accidental presses, and
+> one press undoes a whole plan. The board carries eight of the nine plates
+> this plan describes; Clear Arrows is menu-only and icon-free. See the spec's
+> amendment.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Put nine more of the Coaches Menu's controls on the board as

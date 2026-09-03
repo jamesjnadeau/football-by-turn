@@ -683,33 +683,40 @@ test('all twelve quick-press buttons are reachable by keyboard, like the menu re
   // default call (no allow, no book) fields every plate this function draws,
   // the same way it always has, and a greyed plate keeps its tab stop.
   const markup = renderFieldButtons(createGame({ seed: 1 }));
-  assert.equal(markup.match(/tabindex="0"/g).length, 12);
-  assert.equal(markup.match(/role="button"/g).length, 12);
-  assert.equal(markup.match(/aria-label="/g).length, 12);
+  assert.equal(markup.match(/tabindex="0"/g).length, 11);
+  assert.equal(markup.match(/role="button"/g).length, 11);
+  assert.equal(markup.match(/aria-label="/g).length, 11);
 });
 
-test('the first column carries the three controls that used to be menu-only', () => {
+test('the first column carries the two controls that used to be menu-only', () => {
   const markup = renderFieldButtons(createGame({ seed: 1 }));
-  for (const attr of ['data-clear-button', 'data-ai-button', 'data-personnel-button']) {
+  for (const attr of ['data-ai-button', 'data-personnel-button']) {
     assert.ok(markup.includes(attr), `${attr} is on the board`);
   }
 });
 
+test('clearing the arrows is not on the board at all, only in the menu', () => {
+  // Taken off deliberately: one press undoes a whole plan, and a 9-unit plate
+  // is too easy to catch with a thumb. The menu keeps it.
+  const markup = renderFieldButtons(createGame({ seed: 1 }));
+  assert.ok(!markup.includes('data-clear-button'), 'no broom on the board');
+  assert.equal(fieldButtonAnchor('clear', 20), null, 'and the table has no row to anchor');
+});
+
 test('the new controls stack in the column the four old ones are in', () => {
   const pitch = fieldButtonAnchor('run', 20).y - fieldButtonAnchor('autoplan', 20).y;
-  for (const name of ['ai', 'personnel', 'clear']) {
+  for (const name of ['ai', 'personnel']) {
     assert.equal(fieldButtonAnchor(name, 20).x, fieldButtonAnchor('menu', 20).x,
       `${name} is in the first column`);
   }
-  // Slots -3, -2, 3 against the menu's 0.
+  // Slots -3 and -2 against the menu's 0.
   assert.equal(fieldButtonAnchor('ai', 20).y, fieldButtonAnchor('menu', 20).y - 3 * pitch);
   assert.equal(fieldButtonAnchor('personnel', 20).y, fieldButtonAnchor('menu', 20).y - 2 * pitch);
-  assert.equal(fieldButtonAnchor('clear', 20).y, fieldButtonAnchor('menu', 20).y + 3 * pitch);
 });
 
 test('a lesson fields none of the new controls unless it names them', () => {
   const markup = renderFieldButtons(createGame({ seed: 1 }), { allow: ['run', 'menu'] });
-  for (const attr of ['data-clear-button', 'data-ai-button', 'data-personnel-button']) {
+  for (const attr of ['data-ai-button', 'data-personnel-button']) {
     assert.ok(!markup.includes(attr), `${attr} stays off a lesson's board`);
   }
 });
@@ -717,12 +724,11 @@ test('a lesson fields none of the new controls unless it names them', () => {
 test('the new controls grey on the same conditions their menu buttons do', () => {
   const s = createGame({ seed: 1 });
   const live = renderFieldButtons(s);
-  assert.ok(!buttonGroup(live, 'data-clear-button').includes('fbtn-off'), 'clear is live before the snap');
   assert.ok(!buttonGroup(live, 'data-ai-button').includes('fbtn-off'), 'defense is live before the snap');
   assert.ok(!buttonGroup(live, 'data-personnel-button').includes('fbtn-off'), 'personnel is live before the snap');
 
   const drawing = renderFieldButtons(s, { animating: true });
-  for (const attr of ['data-clear-button', 'data-ai-button', 'data-personnel-button']) {
+  for (const attr of ['data-ai-button', 'data-personnel-button']) {
     assert.ok(buttonGroup(drawing, attr).includes('fbtn-off'),
       `${attr} is dead while the turn is drawn`);
   }
@@ -734,14 +740,14 @@ test('the new controls grey on the same conditions their menu buttons do', () =>
     'personnel is dead when the computer coaches the defense');
 });
 
-test('clear and defense grey once the down is over, with nothing being drawn', () => {
+test('defense greys once the down is over, with nothing being drawn', () => {
   // The animation flag is only half of each of these rules. Pinned without it
   // so that dropping the phase leg leaves a test failing rather than a board
-  // offering a broom on a play that is already over.
+  // handing the defense over on a play that is already over.
   const s = createGame({ seed: 1 });
   s.phase = 'playOver';
   const still = renderFieldButtons(s, { animating: false });
-  for (const attr of ['data-clear-button', 'data-ai-button']) {
+  for (const attr of ['data-ai-button']) {
     const dead = buttonGroup(still, attr);
     assert.ok(dead.includes('fbtn-off'), `${attr} is greyed off the planning phase`);
     assert.ok(dead.includes('aria-disabled="true"'), `${attr} says so to a screen reader`);

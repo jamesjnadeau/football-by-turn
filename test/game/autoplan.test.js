@@ -14,6 +14,7 @@ import { applyAiModes, applyOrders } from '../../lib/game/ai.js';
 import { learnedOrders } from '../../lib/game/learned/defense-policy.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 import { emptyTendencies } from '../../lib/game/tendencies.js';
+import { advancePlay } from '../../lib/game/read.js';
 
 /** What a team's board actually says, for a byte-for-byte comparison. */
 const board = (s, team) => s.players
@@ -196,4 +197,26 @@ test('the defensive note follows the ball once the play has broken', () => {
   loose.turnIndex = 1;
   loose.ball = { carrierId: null, pos: fieldPos(0, loose.losYard + 2), vel: { x: 0, y: 0 } };
   assert.match(autoplanLearnedDefense(loose), /^Loose ball/);
+});
+
+test('the note says nothing about a read the defense has not committed to', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  advancePlay(s, makeGenome(DEFENSE_SPEC));
+  const note = autoplanLearnedDefense(s);
+  assert.ok(!note.includes('read'), note);
+});
+
+test('the note says which way a committed read went', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  advancePlay(s, makeGenome(DEFENSE_SPEC));
+
+  s.playRead.read = { pass: -5, confidence: 1, committed: true };
+  assert.match(autoplanLearnedDefense(s), /read run/i);
+
+  s.playRead.read = { pass: 5, confidence: 1, committed: true };
+  assert.match(autoplanLearnedDefense(s), /read pass/i);
 });

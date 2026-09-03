@@ -88,6 +88,16 @@ export function mountControls(root, handlers, playbookIcon) {
         btn.classList.remove('is-ringed');
         btn.removeAttribute('aria-pressed');
       }
+      // The toggle has nothing behind it once the list fields no playbook
+      // control — a tutorial step that narrows the board to a single button
+      // is the case that matters, but any state with an empty playbook group
+      // would otherwise leave the toggle standing over a sheet with nothing
+      // in it. Hiding it is an attribute write on a node that already exists,
+      // same as every button above; closing the sheet alongside it means a
+      // state change can never leave it open over nothing.
+      const hasPlaybook = controls.some((c) => c.group === 'playbook');
+      toggle.hidden = !hasPlaybook;
+      if (!hasPlaybook) setOpen(false);
     },
   };
 }

@@ -79,8 +79,14 @@
       #controls:not(.playbook-open) [data-group="playbook"] { display: none; }
       /* The bar takes its height from the field rather than covering it: the
          bottom of the window is behind the offense at the snap, which is
-         exactly where a coach is dragging. */
-      #board { height: calc(100% - var(--control-bar, 7rem)); }
+         exactly where a coach is dragging. 7rem is a fixed reservation
+         rather than the bar's own measured height, because it only has to
+         stay ahead of it: the bar is two 2.75rem rows (game row, toggle)
+         plus .75rem of padding plus a 1px border-top — 6.25rem + 1px at any
+         root font size — and a flat rem figure scales with it exactly,
+         so the gap between them widens rather than closes as text grows,
+         never the reverse. */
+      #board { height: calc(100% - 7rem); }
     }
 
     /* The home screen owns the whole viewport until a game starts, and gets it

@@ -32,6 +32,12 @@
       font: inherit; font-size: 1.25rem; line-height: 1; cursor: pointer;
       background: #fff; border: 1px solid #1a7f37; border-radius: .35rem;
     }
+    /* Author `.control{display:flex}` above would otherwise beat the UA
+       [hidden] rule, the same trap #board and the menu's buttons above each
+       carry their own note about. app/controls.js hides a dropped control by
+       setting this attribute, not by removing the node, so without this rule
+       every hidden control would still take its flex slot in the column. */
+    .control[hidden] { display: none; }
     .control[aria-pressed="true"] { background: #d7ebdc; border-width: 2px; }
     .control:disabled { border-color: #ccc; opacity: .4; cursor: default; }
     /* The tutorial's ring. A player is ringed in SVG because a player is on the

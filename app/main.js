@@ -722,8 +722,20 @@ const boardControls = mountControls(controlsEl, {
  * that is how the shuffle disappears once the play is under way, and hiding
  * rather than disabling keeps the menu's own reading of it identical to the
  * board's.
+ *
+ * `lesson.buttons()` is a coarse, whole-scenario gate — the last lesson names
+ * `'menu'` in it for all five of its steps, because that is what lets the one
+ * step that teaches the clipboard put a ring on it. But the clipboard itself
+ * has to stay off the board for the other four: it is the thing that step is
+ * teaching, and a coach who can already see it has nothing left to learn.
+ * `showsMenu()` is the fine-grained, per-step gate that used to decide whether
+ * the SVG plate was drawn at all; the board's own list is filtered by it here
+ * for the same reason, now that the clipboard is a button rather than a
+ * plate. The Coaches Menu's own list is left unfiltered — it never renders a
+ * `menu` button anyway, so there is nothing there for this gate to touch.
  */
 function paintControls() {
+  const showMenuButton = !lesson || lesson.showsMenu();
   const controls = controlsFor(state, {
     repositioning,
     animating,
@@ -731,7 +743,7 @@ function paintControls() {
     allow: lesson ? lesson.buttons() : null,
     aiLabel: AI_MODES[aiModeIndex(state)].label,
     highlight: lesson ? lesson.card().highlight : null,
-  });
+  }).filter((c) => c.name !== 'menu' || showMenuButton);
   boardControls.sync(controls);
   // The menu shows every control the game has, not only the ones a lesson
   // fields, so it is painted from an unfiltered list of the same rules.

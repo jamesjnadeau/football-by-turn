@@ -106,3 +106,25 @@ test('loadGhostLog reads a log off disk', () => {
     rmSync(path, { force: true });
   }
 });
+
+test('an offense ghost matches across personnel packages', () => {
+  const a = { down: 1, toGo: 10, losYard: 20, turnIndex: 0, variant: '7', side: 'offense' };
+  const b = { ...a, variant: '7-nickel' };
+  assert.ok(Number.isFinite(situationDistance(a, b)));
+  // The package is not a difference it should pay for, either.
+  assert.equal(situationDistance(a, b), situationDistance(a, { ...a }));
+});
+
+test('a defense ghost does not match across personnel packages', () => {
+  const a = { down: 1, toGo: 10, losYard: 20, turnIndex: 0, variant: '7', side: 'defense' };
+  const b = { ...a, variant: '7-nickel' };
+  assert.equal(situationDistance(a, b), Infinity);
+});
+
+test('neither side matches across base variants', () => {
+  for (const side of ['offense', 'defense']) {
+    const a = { down: 1, toGo: 10, losYard: 20, turnIndex: 0, variant: '7', side };
+    assert.equal(situationDistance(a, { ...a, variant: '11' }), Infinity);
+    assert.equal(situationDistance(a, { ...a, variant: '11-nickel' }), Infinity);
+  }
+});

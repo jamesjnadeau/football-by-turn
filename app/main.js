@@ -13,10 +13,10 @@ import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
   planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
   lineZoneMark, renderFieldButtons, passLandingMark, passLockMark, cameraViewBox,
-  menuButtonMark, liveLobMark, fieldButtonAnchor, FIELD_BUTTON_ICONS,
+  menuButtonMark, liveLobMark, fieldButtonAnchor,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
-import { downDistanceText, gameOverMessage, kickoffMessage, humanSide, coachedSide } from '../lib/game/hud.js';
+import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '../lib/game/hud.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
@@ -34,6 +34,7 @@ import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/pl
 import {
   PLAY_SLOTS, firstEmptySlot, putPlay, bookFor, putBook, playbookSide, playbookHeading,
 } from '../lib/game/playbook.js';
+import { controlsFor } from '../lib/game/controls.js';
 import { loadLibrary, saveLibrary } from './playbook-store.js';
 import {
   captureSnapshot, appendSnapshot, emptyCoachLog, serializeCoachLog,
@@ -257,14 +258,7 @@ function paint() {
     ),
   );
   hud.textContent = `${downDistanceText(state)} — ${state.phase}`;
-  aiBtn.textContent = `${FIELD_BUTTON_ICONS.ai} ${AI_MODES[aiModeIndex(state)].label}`;
-  aiBtn.disabled = animating || state.phase !== 'planning';
-  repositionBtn.textContent = `${FIELD_BUTTON_ICONS.reposition} Reposition: ${repositioning ? 'on' : 'off'}`;
-  repositionBtn.disabled = animating || !canReposition(state);
-  personnelBtn.textContent = `${FIELD_BUTTON_ICONS.personnel} Personnel: ${personnelId(state.variantId)}`;
-  // Not the human's to press when the computer is coaching the defense: it
-  // picks its own package now, and the two would fight on every press.
-  personnelBtn.disabled = animating || !canReposition(state) || state.aiTeam === 'defense';
+  paintMenuButtons();
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
   copyLogBtn.textContent = `Copy coaching log (${coachLog.length})`;
@@ -276,15 +270,6 @@ function paint() {
     : 'Copy trained genome';
   copyGenomeBtn.disabled = animating || trainedSide === null;
   discardGenomeBtn.disabled = animating || trainedSide === null;
-  // Run, Clear and Save current play are the three menu buttons whose text is
-  // never rewritten, so they take their icon once at startup by being prefixed
-  // in place. Do not give any of them a textContent template here: it would
-  // paint over the prefix and the icon would simply stop appearing, with no
-  // test to catch it — the menu's own labels need a DOM, so none of them is
-  // under `node --test` at all.
-  runBtn.disabled = animating || state.phase !== 'planning';
-  autoplanBtn.textContent = `${FIELD_BUTTON_ICONS.autoplan} Autoplan ${coachedSide(state)}`;
-  autoplanBtn.disabled = animating || state.phase !== 'planning';
   clearBtn.disabled = animating || state.phase !== 'planning';
   nextBtn.disabled = animating;
   newBtn.disabled = animating;
@@ -722,37 +707,50 @@ for (let i = 0; i < PLAY_SLOTS; i++) {
 }
 
 /**
- * The menu's own buttons wear the icons their plates wear. Written from the
- * same table the board reads, so the two can never say different things —
- * which is the whole point of a coach being able to relate one to the other.
- *
- * Only the three whose text is never rewritten need doing here; the rest get
- * their icon from paint()'s templates.
+ * The Coaches Menu's own buttons, by the control name they answer to. Both
+ * this menu and the board's buttons are painted from one controlsFor list, so
+ * a control's label and its enable rule are written once — see
+ * lib/game/controls.js. `menu` has no entry: it is the control that opens this
+ * dialog, so inside the dialog there is nothing for it to be.
  */
-for (const [btn, name] of [[runBtn, 'run'], [savePlayBtn, 'save']]) {
-  btn.textContent = `${FIELD_BUTTON_ICONS[name]} ${btn.textContent}`;
+const menuButtons = {
+  ai: aiBtn, personnel: personnelBtn, reposition: repositionBtn,
+  autoplan: autoplanBtn, run: runBtn, save: savePlayBtn,
+};
+for (let i = 0; i < PLAY_SLOTS; i++) menuButtons[`play${i + 1}`] = slotBtns[i];
+
+/**
+ * The Coaches Menu's buttons, from the same list the board's are painted from.
+ * A control the list leaves out is hidden rather than greyed — that is how the
+ * shuffle disappears once the play is under way, and hiding rather than
+ * disabling keeps the menu's own reading of it identical to the board's.
+ */
+function paintMenuButtons() {
+  const live = new Map(controlsFor(state, {
+    repositioning,
+    animating,
+    book: myBook(),
+    aiLabel: AI_MODES[aiModeIndex(state)].label,
+  }).map((c) => [c.name, c]));
+  for (const [name, btn] of Object.entries(menuButtons)) {
+    const c = live.get(name);
+    btn.hidden = !c;
+    if (!c) continue;
+    btn.textContent = `${c.icon} ${c.label}`;
+    btn.disabled = c.disabled;
+  }
 }
 
 /**
- * A play is what you come to the line with, so both saving and calling one are
- * offered only on the first turn of a down. Off it the buttons go grey rather
- * than disappearing: a grey button explains itself, a vanished one does not.
- *
  * Which five plays these are follows the side the human is coaching, and the
  * heading says which — a coach who hands the computer the other team is
  * looking at a different book a moment later, and five relabelled buttons with
- * nothing to explain them read as five lost plays.
+ * nothing to explain them read as five lost plays. The slot buttons' own text
+ * and disabled state come from paintMenuButtons(); this just keeps the heading
+ * above them honest.
  */
 function paintPlays() {
-  const usable = !animating && canUsePlays(state);
-  const book = myBook();
   playsHeading.textContent = playbookHeading(state);
-  savePlayBtn.disabled = !usable;
-  for (let i = 0; i < PLAY_SLOTS; i++) {
-    const play = book[i];
-    slotBtns[i].textContent = `${FIELD_BUTTON_ICONS[`play${i + 1}`]} ${play ? play.name : '(empty)'}`;
-    slotBtns[i].disabled = !usable || !play;
-  }
 }
 
 /**

@@ -319,59 +319,119 @@ weighted toward the run: the read has to learn both classes, and a distribution
 that matched real play-calling frequency would give it the rarer class less
 evidence for no benefit to what is being measured.
 
-- **a recorded human run**, replayed from the committed ghost log (below);
-- **a scripted dropback pass** — `planLearnedPassSnap` and `planThrow` driven by
-  a fixed constant genome, rather than new football written for the harness;
+- **a recorded human run**, replayed from `default-offense.json`;
+- **a recorded human pass**, replayed from `default-offense2.json`;
 - **a scripted play-action pass** — run keys on turn 0, the line driving and the
   quarterback holding, and a throw on turn 2.
 
-The third is not garnish. It is the only thing in the distribution that punishes
-over-committing, and without it `read:inertia` is unconstrained and training
-returns whatever value drifts. A feature about being fooled needs fakes in its
-training set.
+The synthetic dropback script this design originally called for is **dropped**:
+`default-offense2.json` supplies twenty downs of real drop-back-and-throw, which
+is better football than anything the harness would fabricate, and one fewer
+thing to keep in step with the engine.
+
+The third stays synthetic and is not garnish. **Neither log contains a fake** —
+they are runs and they are passes, and nothing in either sells one and throws the
+other. It is the only thing in the distribution that punishes over-committing,
+and without it `read:inertia` is unconstrained and training returns whatever
+value drifts. A feature about being fooled needs fakes in its training set.
 
 `autoplanOffense` itself is **not** touched. It is the human's one-press button,
 and changing what that button does is outside this work.
 
-### The committed ghost log
+### Prerequisite: the variant barrier
 
-`coaching-logs/default-offense.json` — 61 snapshots, seven downs, all offense,
-variant `7`, all 61 surviving `parseCoachLog`.
+`situationDistance` walls off snapshots recorded under a different variant:
 
-It is committed because `train:vs-ghost`'s `--log` otherwise names a file every
+```js
+if (a.variant !== b.variant) return Infinity;
+```
+
+Its comment justifies this for seven-man against eleven-man football — a call
+made with eleven bodies is not a nearer version of a seven-man call. That is
+right, and it is not what the string actually compares.
+
+Seventeen of `default-offense2.json`'s twenty downs were played against a nickel
+defense and so carry `'7-nickel'`. `DEFENSE_VARIANT` is `'7'`. So a defense
+trained at `'7'` can reach **three of those twenty downs**; the other seventeen
+are invisible, and the pass arm of the distribution above mostly does not exist.
+
+The barrier is wrong for this case and `rosters.js` proves it: `'7'`,
+`'7-nickel'` and `'7-dime'` field the **identical `SEVEN_OFFENSE`**. They differ
+only in the defensive package. For an offense ghost every id in those snapshots
+exists and applies exactly.
+
+**The fix**: compare `baseVariantId(a.variant)` against `baseVariantId(b.variant)`
+— the helper already exists in `rosters.js` and already maps `'7-nickel' → '7'`
+— for a ghost impersonating the **offense** only. A defense ghost keeps the
+strict comparison, because there the personnel package is precisely the thing
+that differs and `applySnapshot` would silently skip ids the package does not
+field.
+
+This is a prerequisite, not a nice-to-have: without it the training distribution
+this design depends on is three downs of passing.
+
+### The committed ghost logs
+
+| log | snapshots | downs | variants (by down) | throws |
+|---|---|---|---|---|
+| `default-offense.json` | 61 | 7 | `7`×7 | 4, three of them turn-1 pitches to `o-rb` |
+| `default-offense2.json` | 198 | 20 | `7`×3, `7-nickel`×17 | 18 across 15 downs, 7 to wide receivers at full power |
+
+Both parse with nothing dropped. Both are entirely offense.
+
+They are committed because `train:vs-ghost`'s `--log` otherwise names a file every
 contributor has to record for themselves, so a genome trained that way cannot be
 reproduced from a clean checkout. `.gitignore` ignores `coaching-logs/*` and
 un-ignores `coaching-logs/default-*.json`: the name is the rule, so a log joins
 the corpus by being named rather than by an edit to the ignore file, and every
 other export the Coaches Menu drops in that folder stays the coach's own.
 
-**What is actually in it**, because it constrains the design:
+**What is in each, because it constrains the design:**
 
-| down | situation | turns | throws |
-|---|---|---|---|
-| 1 | 1st & 10 | 3 | — |
-| 2 | 2nd & 7.2 | 5 | turn 1 → `o-rb` |
-| 3 | 1st & 10 | 12 | turn 1 → `o-rb` |
-| 4 | 1st & 10 | 8 | — |
-| 5 | 1st & 10 | 17 | turn 6 → `o-rb` |
-| 6 | 1st & 10 | 4 | — |
-| 7 | 2nd & 12.7 | 12 | turn 1 → `o-wr1` |
+`default-offense.json` is the **run arm and only the run arm**. Seven downs, no
+turn-0 throw, and three of its four throws are power-1 tosses to `o-rb` on turn
+1 — pitches, not dropbacks. It is better than a synthetic option at being the run
+arm (varied looks, hand-drawn arrows, downs running 3 to 17 turns), and those
+pitches are real examples of "the ball is in the air and it is still a run",
+which is exactly the ambiguity `read:ballAir` exists to price.
 
-Not one turn-0 throw. By `observationFromSnapshot`'s own rule every one of these
-is a *run call*, and three of the four throws are power-1 tosses to `o-rb` on
-turn 1 — pitches, not dropbacks. There is no dropback pass anywhere in the log.
+`default-offense2.json` is the **pass arm**. Twenty downs, fifteen of them
+carrying a throw, seven of those to `o-wr1` or `o-wr2` at full power on turns
+1 through 4, with downs running 12 to 14 turns and heavy `holding` stances. That
+is drop-back-and-throw, and it is what the first log has none of. Its
+down-and-distance spread is wider too — 1&10, 2&2, 2&7, 2&10, 3&1.
 
-So this log is the **run arm and only the run arm**. It is better than the
-synthetic option at being that — varied looks, hand-drawn arrows, downs running
-from 3 to 17 turns — and those pitches to `o-rb` are real examples of "the ball
-is in the air and it is still a run", which is exactly the ambiguity
-`read:ballAir` exists to price. It does not remove the need for the two pass
-scripts.
+**Neither log has a turn-0 throw**, across all 27 downs. That is not a defect in
+the coaching: in this engine a drop-back pass *cannot* put a throw on turn 0,
+because turn 0 is the drop and the routes and the throw is set on turn 1 to 4.
+It matters here only as a warning about what the logs cannot be used for — see
+the note below.
 
-Seven downs is also thin for the ghost's nearest-neighbour lookup, whose
-`SITUATION_WEIGHTS` weight `turnIndex` heaviest and which has exactly one
-recorded down reaching turn 16. A richer log is expected later and drops in by
-name; no code changes when it does.
+Neither log contains a **fake**. That is why the play-action script stays
+synthetic.
+
+Twenty-seven downs is also thin for the ghost's nearest-neighbour lookup, whose
+`SITUATION_WEIGHTS` weight `turnIndex` heaviest and which has few recorded downs
+reaching the high teens. A richer log is expected later and drops in by name; no
+code changes when it does.
+
+### A known bias this design inherits
+
+Because no recorded down carries a turn-0 throw, and because `recordPlanning`
+counts only turn 0 while `observationFromSnapshot` classifies by whether that
+snapshot carries a throw, **the tendency layer records every one of these 27
+downs as a run**. Run through the project's own code, both logs yield
+`targets: {}`, `favorite: null`, and a `passRate` of 0.18–0.31 for a coach who
+threw on fifteen of twenty downs.
+
+The consequences reach this design: `favoriteDiscount` can never fire, and
+`schemeShade` leans the man/zone gate — which this design now calls once, at the
+snap, off `look` — on a `passRate` biased toward run.
+
+**It is not fixed here.** It is a pre-existing defect in `tendencies.js` and
+`app/main.js`, spun out as its own task with the reproduction. This design does
+not touch `tendencies.js`, and the post-snap read it adds is in fact the layer
+that catches what a turn-0 classifier structurally cannot.
 
 ### Fitness is unchanged
 
@@ -381,9 +441,11 @@ and `AIR_YARD_PENALTY` at once. `defenseFitness` already prices this.
 
 ### Deliverable
 
-A regenerated `lib/game/learned/defense-genome.js` from `train:defense`, and a
-README update, since the README explains these training paths in detail and one
-of them is changing.
+The `baseVariantId` relaxation in `situationDistance`, without which the pass arm
+of the distribution is three downs; a regenerated
+`lib/game/learned/defense-genome.js` from `train:defense`; and a README update,
+since the README explains these training paths in detail and one of them is
+changing.
 
 ## Testing
 
@@ -404,6 +466,11 @@ A new `test/game/read.test.js` pins the properties the design rests on:
   harness ever scores.
 - **Scheme and assignments hold** across the turns of one down.
 
+The variant relaxation gets its own coverage in `test/tools/ghost.test.js` (or
+`test/game/train/`, wherever `situationDistance` is currently held): an offense
+situation at `'7'` finds a `'7-nickel'` snapshot, a defense situation at `'7'`
+still does not, and `'7'` against `'11'` stays `Infinity` for both sides.
+
 Existing tests that move: `test/game/ai-learned.test.js` (`schemeFeatures` gains
 its `look` argument), `test/game/learned/defense-policy.test.js`,
 `test/game/learned/offense-policy.test.js` and `test/game/autoplan.test.js` (the
@@ -420,3 +487,6 @@ three-way scenario deal.
   button.
 - **`cover.js`, `zone.js` and the rush/contain rules are unchanged.** Decision 7
   holds.
+- **`tendencies.js` is not fixed here.** The turn-0 pass-blindness described
+  above is a pre-existing defect with its own task. This design inherits the
+  bias and does not widen it.

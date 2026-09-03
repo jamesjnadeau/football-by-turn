@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { snapLook, advanceRead, advancePlay } from '../../lib/game/read.js';
-import { createGame } from '../../lib/game/state.js';
+import { createGame, setMode } from '../../lib/game/state.js';
 import { makeGenome } from '../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -74,4 +74,24 @@ test('confidence is bounded and committed follows read:commit', () => {
   const r = advanceRead({ spread: 0, backs: 0, qbDepth: 6 }, null, null, g);
   assert.ok(r.confidence < 1);
   assert.equal(r.committed, true);
+});
+
+test('a lineman in a pass-protection stance reads the same as one without', () => {
+  const g = { ...inert(), 'read:lineFlow': 1 };
+  const run = createGame({ seed: 1 });
+  const pass = createGame({ seed: 1 });
+  advancePlay(run, g);
+  advancePlay(pass, g);
+  for (const s of [run, pass]) {
+    for (const p of s.players) if (p.team === 'offense') p.vel = { x: 0, y: 2 };
+  }
+  // The only difference: the stance an order would have put them in.
+  for (const p of pass.players) {
+    if (p.team === 'offense' && ['C', 'LG', 'RG', 'LT', 'RT'].includes(p.role)) {
+      setMode(pass, p.id, 'holding');
+    }
+  }
+  advancePlay(run, g);
+  advancePlay(pass, g);
+  assert.equal(pass.playRead.read.pass, run.playRead.read.pass);
 });

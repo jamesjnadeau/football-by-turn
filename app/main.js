@@ -261,7 +261,6 @@ function paint() {
   // and the board has to stay there until the next down re-spots the ball.
   aimCamera(cameraYard());
   drawMessage();
-  paintPlays();
 }
 
 /**
@@ -729,21 +728,31 @@ const boardControls = mountControls(controlsEl, {
  * has to stay off the board for the other four: it is the thing that step is
  * teaching, and a coach who can already see it has nothing left to learn.
  * `showsMenu()` is the fine-grained, per-step gate that used to decide whether
- * the SVG plate was drawn at all; the board's own list is filtered by it here
- * for the same reason, now that the clipboard is a button rather than a
- * plate. The Coaches Menu's own list is left unfiltered — it never renders a
- * `menu` button anyway, so there is nothing there for this gate to touch.
+ * the SVG plate was drawn at all; it is handed to `controlsFor` as an option
+ * for the same reason, now that the clipboard is a button rather than a plate.
+ * The gate itself is stated in lib/game/controls.js with every other rule
+ * about which controls are fielded — this file reads the lesson and passes the
+ * answer, and nothing more. The Coaches Menu's own list leaves the option at
+ * its default — the menu never renders a `menu` button anyway, so there is
+ * nothing there for this gate to touch.
+ *
+ * The plays heading goes up here too. Which five plays these are follows the
+ * side the human is coaching, and the heading says which: a coach who hands
+ * the computer the other team is looking at a different book a moment later,
+ * and five relabelled buttons with nothing to explain them read as five lost
+ * plays. The slot buttons' own text and disabled state come from the same
+ * list as everything else below.
  */
 function paintControls() {
-  const showMenuButton = !lesson || lesson.showsMenu();
   const controls = controlsFor(state, {
     repositioning,
     animating,
     book: myBook(),
     allow: lesson ? lesson.buttons() : null,
+    showsMenu: !lesson || lesson.showsMenu(),
     aiLabel: AI_MODES[aiModeIndex(state)].label,
     highlight: lesson ? lesson.card().highlight : null,
-  }).filter((c) => c.name !== 'menu' || showMenuButton);
+  });
   boardControls.sync(controls);
   // The menu shows every control the game has, not only the ones a lesson
   // fields, so it is painted from an unfiltered list of the same rules.
@@ -758,17 +767,6 @@ function paintControls() {
     btn.textContent = `${c.icon} ${c.label}`;
     btn.disabled = c.disabled;
   }
-}
-
-/**
- * Which five plays these are follows the side the human is coaching, and the
- * heading says which — a coach who hands the computer the other team is
- * looking at a different book a moment later, and five relabelled buttons with
- * nothing to explain them read as five lost plays. The slot buttons' own text
- * and disabled state come from paintControls(); this just keeps the heading
- * above them honest.
- */
-function paintPlays() {
   playsHeading.textContent = playbookHeading(state);
 }
 

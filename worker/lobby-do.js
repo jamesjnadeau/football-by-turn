@@ -7,6 +7,16 @@
  */
 import { createLobby, applyLobbyMessage } from './lobby-engine.js';
 
+/**
+ * A send that cannot take the dispatch down with it. A socket the browser has
+ * already dropped throws on send ("Network connection lost"), and one thrown
+ * send inside dispatch's loop would leave every later message unsent -- the
+ * other coach's included.
+ */
+function safeSend(ws, msg) {
+  try { ws.send(JSON.stringify(msg)); } catch { /* the close event is on its way */ }
+}
+
 export class LobbyDO {
   constructor(state, env) {
     this.state = state;
@@ -75,7 +85,7 @@ export class LobbyDO {
     }
     for (const m of messages) {
       if (m.to === 'broadcast') {
-        for (const ws of this.sockets.values()) ws.send(JSON.stringify(m));
+        for (const ws of this.sockets.values()) safeSend(ws, m);
         continue;
       }
       // lobby-engine's `matched` messages carry the CONNECTION id as `to`
@@ -84,9 +94,9 @@ export class LobbyDO {
       const ws = this.sockets.get(m.to);
       if (!ws) continue;
       if (m.type === 'matched') {
-        ws.send(JSON.stringify({ ...m, matchId, token: tokens[m.side] }));
+        safeSend(ws, { ...m, matchId, token: tokens[m.side] });
       } else {
-        ws.send(JSON.stringify(m));
+        safeSend(ws, m);
       }
     }
   }

@@ -1465,10 +1465,21 @@ function stopClockDisplay() {
  */
 function applyServerTurn({ frames, events, down, deadlineAt, state: serverState }) {
   void down; // carried on the message for app/multiplayer.js's own bookkeeping; state.down is already current
-  state = serverState;
+  // The server has already run nextDown when the whistle ended the down, so a
+  // turn that lands on turnIndex 0 of a planning phase is a fresh down: the
+  // board shell (line of scrimmage, line to gain, camera) is rebuilt for it
+  // the way goToNextDown rebuilds one in single-player, and the down is said.
+  const newDown = serverState.phase === 'planning' && serverState.turnIndex === 0 && frames.length > 0;
+  state = claimSide(serverState);
   netCommitted = false; // a new turn is his to spend again
   layer('game-arrows').clear();
-  const finish = () => finishTurn(events);
+  const finish = () => {
+    if (newDown) rebuildBoard();
+    finishTurn(events);
+    // Added to what the whistle said rather than said over it: single-player
+    // gets a beat between "Tackled!" and "2nd down."; here both land at once.
+    if (newDown) say(`${messageText ? `${messageText} ` : ''}${['1st', '2nd', '3rd', '4th'][state.down - 1]} down.`);
+  };
   if (frames.length > 0) {
     animating = true;
     lockControlsForAnimation();
@@ -1485,12 +1496,25 @@ function applyServerTurn({ frames, events, down, deadlineAt, state: serverState 
  * lobby screen was already the coach's waiting room, so a second wait here
  * is brief.
  */
+/**
+ * Mark a match state as seen from THIS browser: nobody here is the computer,
+ * and the other team is the remote coach's. The server's state carries
+ * neither fact -- it referees both coaches from one record -- so every copy
+ * of it that lands here (the start's deal, and every turn's snapshot) goes
+ * through this before it becomes the board. Skipping it on a turn is how
+ * the offense coach came to be able to draw arrows on the defense from the
+ * second turn on: applyServerTurn had swapped in a state with no remoteTeam.
+ */
+function claimSide(s) {
+  s.aiTeam = null;
+  s.remoteTeam = sideId === 'offense' ? 'defense' : 'offense';
+  return s;
+}
+
 function startMultiplayerGame() {
   net.onStart(({ seed, variant, losYard, side, deadlineAt }) => {
-    state = createGame({ seed, variant, losYard });
-    state.aiTeam = null;
-    state.remoteTeam = side === 'offense' ? 'defense' : 'offense';
     sideId = side;
+    state = claimSide(createGame({ seed, variant, losYard }));
     random = mulberry32(seed); // unused for simulation (the server runs it), kept for anything that reads it defensively
     pendingWarning = false;
     netCommitted = false;
@@ -1517,7 +1541,13 @@ function startMultiplayerGame() {
   net.onOpponentBack(() => say('Your opponent is back.'));
   net.onMatchOver(({ reason }) => {
     stopClockDisplay();
-    say(reason === 'opponent-left' ? 'Your opponent left the match.' : 'The drive is over.');
+    netCommitted = false;
+    paint();
+    // A drive that ended gets the game's own final call, facing this coach;
+    // one that ended some other way says how.
+    say(reason === 'down' ? gameOverMessage(state)
+      : reason === 'opponent-left' ? 'Your opponent left the match.'
+      : 'The match is over.');
     // app/multiplayer.js owns the queue and the home screen; this is the one
     // job left here -- narrate the ending on the board the coach is still
     // looking at. Play again / Back live on app/multiplayer.js's own next
@@ -1553,6 +1583,9 @@ newBtn.addEventListener('click', () => {
 function goHome() {
   cancelAutoAdvance();
   stopRepositioning();
+  // The countdown would otherwise keep repainting a board nobody is looking
+  // at, once a second, for as long as the page lives.
+  stopClockDisplay();
   lesson = null;
   exitToHome();
 }

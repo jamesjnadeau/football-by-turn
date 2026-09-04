@@ -47,15 +47,35 @@ export class MatchDO {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     server.accept();
-    this.sockets[side] = server;
-    server.addEventListener('message', (ev) => this.onMessage(side, ev));
-    server.addEventListener('close', () => this.onClose(side));
 
-    await this.dispatch(applyMatchMessage(this.record, { type: 'connect', side, token }, Date.now()));
+    // A coach whose seat is being held is coming BACK, and the engine's
+    // reconnect is what gives him his board and his clock again; a plain
+    // connect would refuse him as already connected. Everyone else is
+    // connecting for the first time.
+    const returning = this.record.status === 'paused' && this.record.disconnectedAt[side] !== null;
+    const result = applyMatchMessage(
+      this.record, { type: returning ? 'reconnect' : 'connect', side, token }, Date.now(),
+    );
+    // The engine decides who is seated; this shell only seats the socket the
+    // engine accepted. A refused socket -- a wrong token, or a second tab
+    // opening a seat that is already taken -- is answered on itself and
+    // closed, and never takes the seated coach's place in `sockets`: doing
+    // that would have cut a live coach off from every message that followed
+    // on the strength of a token that was wrong.
+    if (result.messages.some((m) => m.to === side && m.type === 'refused')) {
+      try { server.send(JSON.stringify({ type: 'refused' })); } catch { /* already gone */ }
+      server.close(1008, 'refused');
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    this.sockets[side] = server;
+    server.addEventListener('message', (ev) => this.onMessage(side, server, ev));
+    server.addEventListener('close', () => this.onClose(side, server));
+    await this.dispatch(result);
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  onMessage(side, ev) {
+  onMessage(side, server, ev) {
+    if (this.sockets[side] !== server) return; // a socket that is no longer the seated one
     let msg;
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === 'commit') {
@@ -65,7 +85,10 @@ export class MatchDO {
     }
   }
 
-  onClose(side) {
+  onClose(side, server) {
+    // Only the seated socket closing empties the seat: a superseded one
+    // closing late must not unseat the coach who replaced it.
+    if (this.sockets[side] !== server) return;
     this.sockets[side] = null;
     this.dispatch(applyMatchMessage(this.record, { type: 'disconnect', side }, Date.now()));
   }
@@ -100,7 +123,9 @@ export class MatchDO {
     this.record = record;
     for (const m of messages) {
       const ws = this.sockets[m.to];
-      if (ws) ws.send(JSON.stringify(m));
+      // A socket the browser already dropped throws on send; one such throw
+      // must not leave the other coach's message unsent or the alarm unarmed.
+      if (ws) try { ws.send(JSON.stringify(m)); } catch { /* its close event is on its way */ }
     }
     if (record.status === 'over') {
       // Nothing left to referee. Deleting the alarm is enough to let the

@@ -89,6 +89,32 @@ const clearLogBtn = document.getElementById('clear-log');
 const trainBtn = document.getElementById('train');
 const copyGenomeBtn = document.getElementById('copy-genome');
 const discardGenomeBtn = document.getElementById('discard-genome');
+const debugToolsEl = document.getElementById('debug-tools');
+
+/**
+ * The Coaching log and In-browser training tools are for whoever is building
+ * this game, not whoever is playing it, so they stay out of the Coaches Menu
+ * unless `DEBUG` is set. `window.DEBUG` is an accessor rather than a plain
+ * property so that typing `DEBUG = true` into the browser console — a bare
+ * assignment lands on `window` — reveals the tools immediately, with no
+ * reload required.
+ */
+let debugEnabled = false;
+Object.defineProperty(window, 'DEBUG', {
+  configurable: true,
+  get: () => debugEnabled,
+  set: (value) => {
+    debugEnabled = Boolean(value);
+    debugToolsEl.hidden = !debugEnabled;
+  },
+});
+console.log(
+  '%c🏈 DEBUG mode available%c\nSet %cDEBUG = true%c in this console to reveal the Coaching log and In-browser training tools in the Coaches Menu.',
+  'font-weight: bold; font-size: 14px; color: #1a7f37;',
+  'color: inherit; font-size: inherit;',
+  'font-family: monospace; background: #f0f0f0; color: #111; padding: 0 .25rem; border-radius: .2rem;',
+  'color: inherit; font-size: inherit;'
+);
 
 let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
 // Which game this drive is: the id of the home-screen button that started it.

@@ -28,6 +28,12 @@ a different one (`python3 serve.py 8099`).
 
 ## Training the learned AI
 
+The Coaches Menu sections these tools live in — **Coaching log** and
+**In-browser training** — are hidden by default; they're for whoever is
+building the game, not whoever is playing it. Open the browser console and
+run `DEBUG = true` to reveal them (a boot-time console message says the
+same); reload the page, or run `DEBUG = false`, to hide them again.
+
 The two learned levels — `Defense: computer (learned)` and
 `Offense: computer (learned)` — play trained genomes shipped in
 `lib/game/learned/defense-genome.js` and `offense-genome.js`. To retrain

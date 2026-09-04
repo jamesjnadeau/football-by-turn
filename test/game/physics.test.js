@@ -7,7 +7,7 @@ import { maxSpeed, accelMult } from '../../lib/game/modes.js';
 import { applyCutBlockAssist } from '../../lib/game/block.js';
 import { DT, SUBSTEPS_PER_TURN, STANCE_LATERAL_MULT, COVER_GRAB_REACH } from '../../lib/game/constants.js';
 import { len } from '../../lib/game/vec.js';
-import { RELEASE_SPEED } from '../../lib/game/constants.js';
+import { RELEASE_SPEED, FRICTION_BLOCK } from '../../lib/game/constants.js';
 
 function run(state, substeps) {
   for (let i = 0; i < substeps; i++) stepPhysics(state, DT);
@@ -351,4 +351,27 @@ test('an ordinary loose ball still rolls and decays', () => {
   stepPhysics(s, DT);
   assert.ok(s.ball.pos.x > 135, 'rolled');
   assert.ok(len(s.ball.vel) < 10, 'slowed');
+});
+
+/**
+ * A contact is also the report the board draws its friction arcs from: the
+ * renderer needs to know WHICH WAY the two men are leaning on each other, and
+ * the turn loop needs to know that friction was actually applied rather than a
+ * bare overlap being pushed apart. Both come out of the collision solver,
+ * which has already computed them.
+ */
+test('a contact reports the contact normal and the friction actually applied', () => {
+  const s = pair(['d-nt', 'o-rb']);
+  const nt = getPlayer(s, 'd-nt');
+  const rb = getPlayer(s, 'o-rb');
+  nt.pos = { x: 135, y: 100 };
+  rb.pos = { x: 135, y: 104 };  // rb is straight downfield of nt
+  const [contact] = stepPhysics(s, DT);
+  assert.ok(contact, 'the two are in contact');
+  // The normal runs from a to b. `pair` keeps roster order, so a is the back
+  // and b the nose tackle standing four units back up the field from him.
+  assert.equal(contact.a.id, 'o-rb');
+  assert.ok(Math.abs(contact.normal.x) < 1e-9, `normal points up the field, got ${contact.normal.x}`);
+  assert.ok(Math.abs(contact.normal.y + 1) < 1e-9, `unit normal, got ${contact.normal.y}`);
+  assert.equal(contact.mu, FRICTION_BLOCK, 'an ordinary engagement hand-fights');
 });

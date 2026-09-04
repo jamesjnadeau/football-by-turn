@@ -483,3 +483,59 @@ test('a real learned-defense game commits its scheme through runTurn, not by han
   assert.equal(s.playRead.call.defense.scheme, scheme,
     'the same scheme holds a turn later -- a down does not flip man/zone mid-play');
 });
+
+/**
+ * Friction arcs. A frame says where every man is; it must also say where any
+ * of them is being leaned on by an opponent, because that is a thing the board
+ * draws and the board only ever sees frames -- in a match it never runs the
+ * physics at all, it just plays back what the server sent.
+ *
+ * One entry per man per point of friction, each carrying the bearing toward
+ * the opponent doing the leaning: a man squeezed from two sides gets two.
+ */
+function collide(s, ids) {
+  s.players = s.players.filter((p) => ids.includes(p.id));
+  return s;
+}
+
+/** Every friction entry naming this man, across the whole turn's first frame. */
+function frictionsOn(frame, id) {
+  return frame.frictions.filter((f) => f.id === id);
+}
+
+test('two engaged opponents each get a friction bearing toward the other', () => {
+  const s = collide(afterSnap(createGame({ seed: 1 })), ['o-rb', 'd-nt']);
+  const rb = getPlayer(s, 'o-rb'), nt = getPlayer(s, 'd-nt');
+  s.ball = { carrierId: 'o-rb', pos: null, vel: null };
+  rb.pos = { x: 135, y: 100 };
+  nt.pos = { x: 139, y: 100 };   // straight to the rb's right, inside contact
+  const { frames } = runTurn(s, mulberry32(1));
+  const [onRb] = frictionsOn(frames[0], 'o-rb');
+  const [onNt] = frictionsOn(frames[0], 'd-nt');
+  assert.ok(onRb && onNt, 'both men are marked');
+  assert.ok(Math.abs(onRb.angle - 0) < 1e-6, `rb leans right, got ${onRb.angle}`);
+  assert.ok(Math.abs(Math.abs(onNt.angle) - Math.PI) < 1e-6, `nt leans left, got ${onNt.angle}`);
+});
+
+test('teammates leaning on each other are not friction', () => {
+  const s = collide(afterSnap(createGame({ seed: 1 })), ['o-rb', 'o-c']);
+  getPlayer(s, 'o-rb').pos = { x: 135, y: 100 };
+  getPlayer(s, 'o-c').pos = { x: 139, y: 100 };
+  s.ball = { carrierId: 'o-rb', pos: null, vel: null };
+  const { frames } = runTurn(s, mulberry32(1));
+  assert.deepEqual(frames[0].frictions, [], 'a teammate bump is traffic, not a fight');
+});
+
+test('a man squeezed by two opponents gets one friction arc toward each', () => {
+  const s = collide(afterSnap(createGame({ seed: 1 })), ['o-rb', 'd-nt', 'd-lb']);
+  getPlayer(s, 'o-rb').pos = { x: 135, y: 100 };
+  getPlayer(s, 'd-nt').pos = { x: 139, y: 100 };  // to his right
+  getPlayer(s, 'd-lb').pos = { x: 131, y: 100 };  // and to his left
+  s.ball = { carrierId: 'o-rb', pos: null, vel: null };
+  const { frames } = runTurn(s, mulberry32(1));
+  const onRb = frictionsOn(frames[0], 'o-rb');
+  assert.equal(onRb.length, 2, 'one arc per point of friction');
+  const bearings = onRb.map((f) => f.angle);
+  assert.ok(bearings.some((a) => Math.abs(a) < 1e-6), `one toward the man on his right, got ${bearings}`);
+  assert.ok(bearings.some((a) => Math.abs(Math.abs(a) - Math.PI) < 1e-6), `one toward the man on his left, got ${bearings}`);
+});

@@ -12,6 +12,7 @@ import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLoftHandle, renderLooseBall,
   looseBallMark, planMark, coverMark, passArrowMark, passArrowTip, renderMessage, renderPlayClock, destinationMark,
+  frictionArcsMark,
   lineZoneMark, passLandingMark, passLockMark, cameraViewBox, liveLobMark,
   passFlightMark, passShadowMark, loftHandlePoint, unplannedRingsMark,
 } from '../lib/game/render.js';
@@ -820,6 +821,13 @@ function animate(frames, done) {
   const perFrame = (TURN_SECONDS * 1000) / frames.length;
   const playersLayer = layer('game-players');
   const overlay = layer('game-overlay');
+  // Friction is a per-frame report, not a standing order: who is leaning on
+  // whom changes every sub-step, so this layer is rewritten each frame and
+  // emptied when the turn ends. Radii come from state rather than the frame --
+  // a man's size is the one thing about him that never changes mid-turn, so
+  // there is no reason for every frame to carry it.
+  const frictionLayer = layer('game-friction');
+  const radiusOf = (id) => getPlayer(state, id)?.radius;
   // Either the ball comes loose during this turn, or it was already loose when
   // the turn started (the last paint drew it as its own node in game-players).
   const ballComesLoose = frames.some((f) => f.looseBall)
@@ -843,6 +851,7 @@ function animate(frames, done) {
       const g = playersLayer.findOne(`[data-id="${fp.id}"]`);
       if (g) g.transform({ translate: [fp.x, fp.y] });
     }
+    frictionLayer.clear().svg(frictionArcsMark(frame, radiusOf));
     if (ballNode && frame.ball) {
       // Size as well as position: a lob is over everyone's heads in the middle
       // of its flight, and on a board with no z axis that is said by drawing it
@@ -854,6 +863,7 @@ function animate(frames, done) {
     if (i < frames.length) setTimeout(() => requestAnimationFrame(tick), perFrame);
     else {
       if (ballNode) overlay.clear(); // paint() redraws the ball in its resting place
+      frictionLayer.clear();         // the whistle ends the hand-fighting too
       done();
     }
   }

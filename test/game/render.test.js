@@ -5,14 +5,14 @@ import {
   renderLoftHandle, loftHandlePoint,
   facingAngle, arrowMark, STYLE_GAME, wrapWords, renderMessage, renderPlayClock,
   coverMark, coverHaloMark, lineZoneMark, lineToGainMark, passLockMark,
-  liveLobMark, cameraViewBox, passArrowTip,
+  liveLobMark, cameraViewBox, passArrowTip, frictionArcMark, frictionArcsMark,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
 import {
   MAX_ARROW_UNITS, MAX_PASS_ARROW_UNITS, DEBUG_VELOCITY_SECONDS,
   DEBUG_VELOCITY_TRIANGLE_SCALE, COVER_HALO_UNITS, ON_LINE_YARDS,
-  CUT_BLOCK_DRIVE_REACH, LOFT_HANDLE_RADIUS_UNITS,
+  CUT_BLOCK_DRIVE_REACH, LOFT_HANDLE_RADIUS_UNITS, FRICTION_ARC_DEGREES,
 } from '../../lib/game/constants.js';
 import { teamSize } from '../../lib/game/rosters.js';
 import { tackleReach } from '../../lib/game/modes.js';
@@ -813,4 +813,54 @@ test('a waiting coach in his last five seconds is dim, not red', () => {
   const svg = renderPlayClock(3, 20, 20, { waiting: true });
   assert.doesNotMatch(svg, /pc-urgent/);
   assert.match(svg, /pc-dim/);
+});
+
+/**
+ * The friction arc: an orange rim on a man, on the side an opponent is leaning
+ * on him from. Only a slice, because the direction IS the information -- a
+ * full ring would say he is being pushed, but not from where.
+ */
+test('a friction arc spans FRICTION_ARC_DEGREES centred on the bearing given', () => {
+  const mark = frictionArcMark({ x: 100, y: 60 }, 2.5, 0);
+  const half = (FRICTION_ARC_DEGREES / 2) * (Math.PI / 180);
+  const r = 2.5 + COVER_HALO_UNITS;
+  // Centred on bearing 0 (straight to the right), the arc's two ends sit at
+  // -half and +half: same x, mirrored y, and the chord between them is the
+  // arc's whole width.
+  const ends = [-half, half].map((a) => ({ x: 100 + r * Math.cos(a), y: 60 + r * Math.sin(a) }));
+  assert.ok(mark.includes(`M ${num(ends[0].x)} ${num(ends[0].y)}`), `starts at one end: ${mark}`);
+  assert.ok(mark.includes(`${num(ends[1].x)} ${num(ends[1].y)}`), `ends at the other: ${mark}`);
+  assert.ok(mark.includes(`A ${num(r)} ${num(r)}`), 'swept at the halo radius');
+  assert.ok(mark.includes('class="friction-arc"'));
+  assert.ok(FRICTION_ARC_DEGREES > 0 && FRICTION_ARC_DEGREES < 180, 'a slice, not a ring');
+});
+
+test('a friction arc turns to face the bearing it is given', () => {
+  const right = frictionArcMark({ x: 100, y: 60 }, 2.5, 0);
+  const left = frictionArcMark({ x: 100, y: 60 }, 2.5, Math.PI);
+  assert.notEqual(right, left, 'the side of the man it sits on is the whole point');
+});
+
+test('a frame draws one arc per friction entry, on the man it names', () => {
+  const frame = {
+    players: [{ id: 'o-rb', x: 100, y: 60 }, { id: 'd-nt', x: 106, y: 60 }],
+    frictions: [{ id: 'o-rb', angle: 0 }, { id: 'd-nt', angle: Math.PI }],
+  };
+  const radiusOf = (id) => (id === 'o-rb' ? 2.5 : 3.5);
+  const marks = frictionArcsMark(frame, radiusOf);
+  assert.equal(marks.match(/class="friction-arc"/g).length, 2, 'both men marked');
+  assert.ok(marks.includes(frictionArcMark({ x: 100, y: 60 }, 2.5, 0)), 'the back, leaning right');
+  assert.ok(marks.includes(frictionArcMark({ x: 106, y: 60 }, 3.5, Math.PI)), 'the tackle, leaning left');
+});
+
+test('a frame with no friction draws nothing', () => {
+  assert.equal(frictionArcsMark({ players: [{ id: 'o-rb', x: 1, y: 2 }], frictions: [] }, () => 2.5), '');
+});
+
+test('the friction layer sits above the players and below the loose-ball overlay', () => {
+  const { markup } = renderBoardShell(25, 10);
+  const at = (id) => markup.indexOf(`id="${id}"`);
+  assert.ok(at('game-friction') > 0, 'the board has a friction layer');
+  assert.ok(at('game-players') < at('game-friction'), 'a rim on a man is drawn over him, not under');
+  assert.ok(at('game-friction') < at('game-overlay'), 'a loose ball still lands on top of everything');
 });

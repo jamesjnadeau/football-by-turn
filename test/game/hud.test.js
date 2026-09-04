@@ -75,3 +75,20 @@ test('the kickoff line points whichever way you are facing', () => {
   assert.equal(kickoffMessage(h),
     'New game. 1st and 10 from your own 20 — 80 yards to the house.');
 });
+
+test('in a match, humanSide is the side the remote coach does not have', () => {
+  // A match has no computer (aiTeam null) and names the OTHER human's team as
+  // remoteTeam. This coach's own side is the one left, so Autoplan, the
+  // playbook and the coaching log all act on his men rather than reading the
+  // match as hot-seat and acting on the offense for both coaches.
+  const asOffense = createGame({ seed: 1 });
+  asOffense.remoteTeam = 'defense';
+  assert.equal(humanSide(asOffense), 'offense');
+  assert.equal(coachedSide(asOffense), 'offense');
+  const asDefense = createGame({ seed: 1 });
+  asDefense.remoteTeam = 'offense';
+  assert.equal(humanSide(asDefense), 'defense');
+  assert.equal(coachedSide(asDefense), 'defense');
+  asDefense.result = 'touchdown';
+  assert.equal(gameOverMessage(asDefense), 'Touchdown. Game over — you lose.');
+});

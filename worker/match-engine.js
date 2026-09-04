@@ -257,6 +257,14 @@ function runResolvedTurn(record, now) {
     to: side, type: 'turn', frames, events, down: state.down, deadlineAt,
     state: stripForSide(state, side),
   }));
+  // The drive ending is said outright, after the turn that ended it, so the
+  // client hears it the same way it hears an opponent leaving -- through
+  // matchOver -- rather than having to notice a phase in the state. The
+  // spec's "both coaches see the result and are offered Play again" hangs
+  // off this message.
+  if (next.status === 'over') {
+    for (const side of ['offense', 'defense']) messages.push({ to: side, type: 'matchOver', reason: 'down' });
+  }
   return { record: next, messages };
 }
 

@@ -420,3 +420,30 @@ test('sanitising refuses a __proto__ spot', () => {
   Object.defineProperty(raw.spots, '__proto__', { value: { across: 0, down: 0 }, enumerable: true });
   assert.equal(sanitizePlay(raw), null);
 });
+
+test('applyPlay for one team leaves the other team\'s throw alone', () => {
+  // In a match both coaches write into the same state, and the defense's
+  // commit lands after the offense's as often as not. The offense's throw is
+  // not the defense's to clear -- and before this held, the offense could
+  // never complete a pass unless the defense happened to press End Turn first.
+  const s = createGame({ seed: 5 });
+  s.ball.carrierId = 'o-qb';
+  assert.equal(setPass(s, 'o-qb', { x: 0.2, y: 1 }, 0.8), true);
+  applyPlay(s, { name: '', plans: {}, stances: {}, pass: null, spots: {} }, 'defense');
+  assert.equal(s.plannedPass?.from, 'o-qb');
+  // The offense's own commit does still replace its own throw.
+  applyPlay(s, { name: '', plans: {}, stances: {}, pass: null, spots: {} }, 'offense');
+  assert.equal(s.plannedPass, null);
+});
+
+test('applyPlay skips a throw by a man who is not the named team\'s', () => {
+  const s = createGame({ seed: 5 });
+  s.ball.carrierId = 'o-qb';
+  const { skipped } = applyPlay(s, {
+    name: '', plans: {}, stances: {}, spots: {}, pass: { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.8 },
+  }, 'defense');
+  // The offense's throw is untouched (here, the snap createGame aimed), and
+  // the defense's attempt to throw with the offense's quarterback is a skip.
+  assert.equal(s.plannedPass?.auto, true);
+  assert.ok(skipped.includes('o-qb'));
+});

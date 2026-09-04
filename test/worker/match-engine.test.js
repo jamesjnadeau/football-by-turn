@@ -381,16 +381,33 @@ test('a whole drive, start to a dead ball, through nothing but messages', () => 
     name: '', plans: { 'o-qb': { dir: { x: 1, y: 0 }, throttle: 1 } }, stances: {}, pass: null, spots: {},
   };
   let turns = 0;
+  let last = [];
   while (m.status === 'active' && turns < 60) {
     const turnIndex = m.state.turnIndex;
     t += 500;
     ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex, play: offensePlay }, t));
-    ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex, play: emptyPlay }, t));
+    ({ record: m, messages: last } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex, play: emptyPlay }, t));
     turns += 1;
   }
   assert.ok(turns < 60, 'the drive ended on its own -- a tackle, an incompletion, or downs, within 60 turns');
   assert.equal(m.status, 'over');
   assert.equal(m.reason, 'down');
+  // The end is said outright, to both, after the turn that ended it: the
+  // client's one way of hearing a match end is matchOver, and a drive that
+  // ends on downs is a match ending as surely as an opponent leaving is.
+  assert.deepEqual(last.map((x) => x.type), ['turn', 'turn', 'matchOver', 'matchOver']);
+  assert.deepEqual(last.filter((x) => x.type === 'matchOver').map((x) => [x.to, x.reason]),
+    [['offense', 'down'], ['defense', 'down']]);
+  assert.equal(last[0].state.phase, 'gameOver');
+});
+
+test('a turn that does not end the drive says nothing about it ending', () => {
+  const record = started();
+  const { messages } = applyMatchMessage(
+    { ...record, committed: { ...record.committed, offense: emptyPlay } },
+    { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 3000,
+  );
+  assert.deepEqual(messages.map((x) => x.type), ['turn', 'turn']);
 });
 
 test('nextAlarm names the deadline the shell has to arm', () => {

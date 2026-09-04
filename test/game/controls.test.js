@@ -132,6 +132,19 @@ test('the defense label is handed in, not reached for', () => {
   assert.equal(byName(list, 'ai').label, 'Defense: computer (learned)');
 });
 
+test('Play Offense/Play Defense keep the 🤖 button off the board', () => {
+  // The button lets a coach cycle who the computer plays and how well, which
+  // is exactly what those two modes promise NOT to move mid-game. Training
+  // Mode is the free-for-all, so it keeps the button, same as `showsMenu`'s
+  // default leaves the clipboard on for everyone who doesn't say otherwise.
+  const s = createGame({ seed: 1 });
+  assert.ok(byName(controlsFor(s), 'ai'), 'fielded when nobody says otherwise');
+  assert.ok(byName(controlsFor(s, { showsAi: true }), 'ai'), 'and when the gate is open');
+  assert.equal(byName(controlsFor(s, { showsAi: false }), 'ai'), undefined,
+    'and gone, not greyed, once a side is picked');
+  assert.equal(controlsFor(s, { showsAi: false }).length, controlNames().length - 1);
+});
+
 test('a lesson fields only the controls it names', () => {
   const list = controlsFor(createGame({ seed: 1 }), { allow: ['run', 'menu'] });
   assert.deepEqual(list.map((c) => c.name), ['menu', 'run']);

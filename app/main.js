@@ -875,6 +875,7 @@ function paintControls() {
     book: myBook(),
     allow: lesson ? lesson.buttons() : null,
     showsMenu: !lesson || lesson.showsMenu(),
+    showsAi: sideId === 'training',
     aiLabel: AI_MODES[aiModeIndex(state)].label,
     highlight: lesson ? lesson.card().highlight : null,
   });
@@ -883,6 +884,7 @@ function paintControls() {
   // fields, so it is painted from an unfiltered list of the same rules.
   const forMenu = new Map(controlsFor(state, {
     repositioning, animating, book: myBook(),
+    showsAi: sideId === 'training',
     aiLabel: AI_MODES[aiModeIndex(state)].label,
   }).map((c) => [c.name, c]));
   for (const [name, btn] of Object.entries(menuButtons)) {

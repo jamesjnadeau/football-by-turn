@@ -22,7 +22,7 @@ import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
 import {
   receiverAt, lockOnPass, passLanding, backOnPasser, passReach, loftFromDrag,
-  passOrigin, passAim, passShadowSpots,
+  passOrigin, passAim, passShadowSpots, lobLandingAt,
 } from '../lib/game/pass.js';
 import { lobLanded, isLob } from '../lib/game/lob.js';
 import {
@@ -627,19 +627,21 @@ function onGesture(playerId, gesture, point) {
         : passLanding(p, aim.dir, aim.power) ? `${p.role} will lob it deep.`
         : `${p.role} will throw.`);
     } else {
-      const run = planForDrag(p, gesture.travel);
+      const land = lobLandingAt(state, point);
+      const run = planForDrag(p, land ? sub(land, p.pos) : gesture.travel);
       setPlan(state, playerId, run.dir, run.throttle, run.target, run.short);
-      say(`${p.role} doesn't have the ball — running instead.`);
+      say(land ? `${p.role} will go for the ball.` : `${p.role} doesn't have the ball — running instead.`);
     }
     pendingWarning = false;
   } else if (kind === 'drag') {
     const opp = opponentAt(state, point, p.team);
+    const land = !opp && lobLandingAt(state, point);
     if (opp && setCover(state, playerId, opp)) {
       say(`${p.role} will cover ${getPlayer(state, opp).role}.`);
     } else {
-      const run = planForDrag(p, gesture.travel);
+      const run = planForDrag(p, land ? sub(land, p.pos) : gesture.travel);
       setPlan(state, playerId, run.dir, run.throttle, run.target, run.short);
-      say('');
+      say(land ? `${p.role} will go for the ball.` : '');
     }
     pendingWarning = false;
   } else if (kind === 'doubletap') {

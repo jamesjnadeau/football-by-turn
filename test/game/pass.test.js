@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   isForward, passFoul, releasePass,
   passSpeed, passReach, passTravel, powerForTravel, passOrigin, passAim,
-  receiverAt, lockOnPass, passLanding, backOnPasser, loftFromDrag, passShadowSpots,
+  receiverAt, lockOnPass, passLanding, backOnPasser, loftFromDrag, passShadowSpots, lobLandingAt,
 } from '../../lib/game/pass.js';
 import { createGame, getPlayer, setPass, setPlan } from '../../lib/game/state.js';
 import { fieldPos, yardsOfY } from '../../lib/game/view.js';
@@ -436,6 +436,55 @@ test('passShadowSpots walks the aim line, one spot per turn boundary it hangs fo
   assert.ok(Math.abs(two[0].y - (origin.y + (aim.y - origin.y) * (30 / 90))) < 1e-6, 'first turn: 30 of 90 sub-steps in');
   assert.ok(Math.abs(two[1].y - (origin.y + (aim.y - origin.y) * (60 / 90))) < 1e-6, 'second turn: 60 of 90 in');
   assert.deepEqual(two[2], aim, 'third turn: landed, on the aim point exactly');
+});
+
+test('lobLandingAt finds the aim point while a lob is still being aimed this turn', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  const dir = { x: 0, y: 1 };
+  setPass(s, 'o-qb', dir, 1); // full power: a lob
+  const land = passLanding(qb, dir, 1);
+  assert.deepEqual(lobLandingAt(s, { ...land.pos }), land.pos);
+  const outside = { x: land.pos.x + land.radius + PICK_SLOP_UNITS + 1, y: land.pos.y };
+  assert.equal(lobLandingAt(s, outside), null);
+});
+
+test('lobLandingAt gets the same fat-finger margin every other lock does', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  const dir = { x: 0, y: 1 };
+  setPass(s, 'o-qb', dir, 1);
+  const land = passLanding(qb, dir, 1);
+  const edge = { x: land.pos.x + land.radius + PICK_SLOP_UNITS - 0.01, y: land.pos.y };
+  assert.ok(lobLandingAt(s, edge), 'just inside the margin: still a hit');
+  const past = { x: land.pos.x + land.radius + PICK_SLOP_UNITS + 0.01, y: land.pos.y };
+  assert.equal(lobLandingAt(s, past), null, 'just past it: a miss');
+});
+
+test('lobLandingAt is null once the throw is locked onto a man instead of scattered', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  const qb = getPlayer(s, 'o-qb');
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1, 'o-wr1');
+  assert.equal(lobLandingAt(s, passAim(qb, { x: 0, y: 1 }, 1)), null, 'a lock-on has no circle to target');
+});
+
+test('lobLandingAt is null with nothing thrown and nothing hanging in the air', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  assert.equal(lobLandingAt(s, getPlayer(s, 'o-qb').pos), null);
+});
+
+test('lobLandingAt still finds the circle once the ball is thrown and hanging in the air', () => {
+  const s = createGame({ seed: 1 });
+  afterSnap(s);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  releasePass(s, mulberry32(1));
+  const lob = s.ball.lob;
+  assert.ok(lob, 'fixture check: this throw did lob');
+  assert.deepEqual(lobLandingAt(s, { ...lob.aim }), lob.aim);
 });
 
 test('releasePass threads the planned loft into the lob it actually throws', () => {

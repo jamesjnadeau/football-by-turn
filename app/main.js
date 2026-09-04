@@ -13,7 +13,7 @@ import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLoftHandle, renderLooseBall,
   looseBallMark, planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
   lineZoneMark, passLandingMark, passLockMark, cameraViewBox, liveLobMark,
-  passFlightMark, passShadowMark, loftHandlePoint,
+  passFlightMark, passShadowMark, loftHandlePoint, unplannedRingsMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '../lib/game/hud.js';
@@ -263,7 +263,7 @@ function paintArrows() {
       // between the two men most likely to be moved, so it stays on the board:
       // it is the one arrow that answers "what did that just do?".
       repositioning ? lineZoneMark(state) + (state.plannedPass?.auto ? renderPassArrow(state) : '')
-      : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state)
+      : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state) + unplannedRingsMark(state)
       : ''
     ),
   );

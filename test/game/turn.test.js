@@ -340,7 +340,7 @@ test('a lob hangs past the whistle and is ruled where it lands', () => {
   const s = createGame({ seed: 1 });
   afterSnap(s); // the centre starts with it now; this is about the throw
   s.players = s.players.filter((p) => p.id === 'o-qb'); // nobody out there to catch it
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1, null, 1); // full loft: this test is about a throw spanning multiple turns
   const random = mulberry32(1);
   runTurn(s, random);
   assert.equal(s.phase, 'planning', 'the turn ended with the ball still up');
@@ -360,7 +360,7 @@ test('a receiver who gets under a hanging lob catches it on the next turn', () =
   // Deep in his own end, and two thirds power: a lob that comes down SHORT of
   // the goal line, so the catch is a catch rather than a touchdown.
   getPlayer(s, 'o-qb').pos = fieldPos(0, -18);
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.67);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.67, null, 1);
   const random = mulberry32(1);
   runTurn(s, random);
   assert.ok(s.ball.lob && !lobLanded(s.ball.lob), 'still in the air at the whistle');
@@ -456,4 +456,30 @@ test('the other coach\'s men are not this coach\'s to be warned about', () => {
   assert.ok(ids.length > 0, 'his own men still count');
   assert.ok(ids.every((id) => getPlayer(s, id).team === 'offense'),
     'nobody on the other coach\'s side is listed');
+});
+
+/**
+ * The load-bearing line itself: runTurn's own call to advancePlay
+ * (lib/game/turn.js, immediately above coachAi). Every other test in this
+ * suite that touches state.playRead calls advancePlay by hand (see
+ * test/game/read.test.js); this one runs real turns through runTurn instead,
+ * on a learned-defense game, and never calls advancePlay itself. Delete that
+ * line and state.playRead is never built on this path: percept() in
+ * defense-policy.js falls back to a fresh stand-in every turn instead of the
+ * state's own percept, so committedScheme decides the scheme over again off
+ * a picture that has moved -- the exact mid-down man/zone flip this branch
+ * exists to remove.
+ */
+test('a real learned-defense game commits its scheme through runTurn, not by hand', () => {
+  const s = createGame({ seed: 7, ai: 'defense', aiLevel: 'learned' });
+  const random = mulberry32(7);
+  setPlan(s, 'o-qb', { x: 0, y: 1 }, 1); // give the offense something to do
+  runTurn(s, random);
+  assert.ok(s.playRead, 'the real turn built the percept');
+  const scheme = s.playRead.call.defense?.scheme;
+  assert.ok(scheme === 'man' || scheme === 'zone', 'the defense committed to a scheme on turn one');
+  assert.equal(s.phase, 'planning', 'the down is still live for a second turn');
+  runTurn(s, random);
+  assert.equal(s.playRead.call.defense.scheme, scheme,
+    'the same scheme holds a turn later -- a down does not flip man/zone mid-play');
 });

@@ -14,6 +14,7 @@ import { MULTIPLAYER } from './build-config.js';
 
 const home = document.getElementById('home');
 const board = document.getElementById('board');
+const controls = document.getElementById('controls');
 
 // The game module, once it has been asked for. main.js registers its listeners
 // at module scope, so it is imported exactly once however many drives get
@@ -51,6 +52,7 @@ function show(el, visible) {
 
 function showHome() {
   show(board, false);
+  show(controls, false);
   show(home, true);
   showChoices();
 }
@@ -59,6 +61,11 @@ async function startTutorial() {
   show(home, false);
   show(board, true);
   game ??= await import('./main.js');
+  // The bar is shown only once main.js has built its buttons. On a phone it is
+  // a full-width bordered strip, so showing it before the import lands paints
+  // an empty box across the bottom of the screen for as long as the module
+  // takes to arrive.
+  show(controls, true);
   game.startTutorial({ onExit: showHome });
 }
 
@@ -69,6 +76,7 @@ async function start(variantId, side) {
   show(home, false);
   show(board, true);
   game ??= await import('./main.js');
+  show(controls, true); // after the import, for the reason startTutorial() gives
   game.startGame({ variant: variantId, side, onExit: showHome });
 }
 

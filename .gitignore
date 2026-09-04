@@ -1,5 +1,9 @@
 .superpowers/
 .claude/worktrees/
-coaching-logs/
+# Ad-hoc coach-log exports are the coach's own scratch. A log named
+# default-*.json is a committed training corpus -- see docs/superpowers/specs.
+coaching-logs/*
+!coaching-logs/default-*.json
+# Assembled by tools/build-site.js, and wrangler's local state: neither is source.
 _site/
 .wrangler/

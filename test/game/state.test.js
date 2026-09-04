@@ -119,6 +119,33 @@ test('mode legality: tuck = non-lineman carrier only, prepared = defense only, h
   assert.equal(getPlayer(s, 'o-c').charge, 0);
 });
 
+test('untucking drops a planned throw, but tucking in the first place does not', () => {
+  const s = createGame({ seed: 1 });
+  s.ball.carrierId = 'o-rb';
+  setMode(s, 'o-rb', 'tucked');
+  setPass(s, 'o-rb', { x: 0, y: 1 }, 0.5);
+  assert.ok(s.plannedPass, 'a throw can be planned while tucked -- setPass does not gate on mode');
+  setMode(s, 'o-rb', 'normal');
+  assert.equal(s.plannedPass, null, 'untucking cancels it');
+
+  // The other direction leaves a plan alone: only the tucked-to-normal edge
+  // cancels anything.
+  setPass(s, 'o-rb', { x: 0, y: 1 }, 0.5);
+  setMode(s, 'o-rb', 'tucked');
+  assert.ok(s.plannedPass, 'tucking does not itself cancel a throw');
+  setMode(s, 'o-rb', 'normal');
+  assert.equal(s.plannedPass, null, 'and untucking from there still cancels it');
+
+  // Only the carrier's own throw is at risk -- someone else's planned throw
+  // survives another player's stance changing.
+  s.ball.carrierId = 'o-c';
+  setPass(s, 'o-c', { x: 0, y: 1 }, 0.5);
+  s.ball.carrierId = 'o-rb';
+  setMode(s, 'o-rb', 'tucked');
+  setMode(s, 'o-rb', 'normal');
+  assert.ok(s.plannedPass, 'not this player\'s throw to cancel');
+});
+
 test('cut block is offensive linemen only -- every role in the default roster', () => {
   const s = createGame({ seed: 1 });
   for (const id of ['o-c', 'o-lg', 'o-rg']) {
@@ -224,7 +251,7 @@ test('a throw the coach set himself is never re-aimed by the snap', () => {
   assert.equal(s.plannedPass.auto, undefined);
   // ...so re-aiming refuses to touch it, however many times it is asked.
   assert.equal(aimSnap(s), false);
-  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 1, y: 0 }, power: 0.4, target: null });
+  assert.deepEqual(s.plannedPass, { from: 'o-c', dir: { x: 1, y: 0 }, power: 0.4, target: null, loft: 0 });
 });
 
 test('the snap is only planned before the play, and only from the man with the ball', () => {
@@ -243,9 +270,9 @@ test('only the ball carrier can plan a throw, and a second throw replaces the fi
   // Take the snap first: this is about setPass, not about who starts with it.
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   assert.equal(setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5), true);
-  assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.5, target: null });
+  assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.5, target: null, loft: 0 });
   setPass(s, 'o-qb', { x: 1, y: 0 }, 0.9);
-  assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 1, y: 0 }, power: 0.9, target: null });
+  assert.deepEqual(s.plannedPass, { from: 'o-qb', dir: { x: 1, y: 0 }, power: 0.9, target: null, loft: 0 });
   // The bug this signature exists to prevent: a player who is not the carrier
   // must be refused, not silently substituted with whoever is.
   assert.equal(setPass(s, 'o-wr1', { x: 0, y: 1 }, 0.5), false);
@@ -266,6 +293,15 @@ test('a throw can be locked onto a receiver, and the next one clears the lock', 
   assert.equal(s.plannedPass.target, 'o-wr1');
   setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5);
   assert.equal(s.plannedPass.target, null, 'a fresh drag is a fresh order');
+});
+
+test('a throw can be given loft, and a fresh one resets it to none', () => {
+  const s = createGame({ seed: 1 });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1, null, 0.7);
+  assert.equal(s.plannedPass.loft, 0.7);
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1); // a fresh drag, no loft argument
+  assert.equal(s.plannedPass.loft, 0, 'a new throw starts at no loft, not wherever the old one was left');
 });
 
 test('Clear Arrows drops the coach\'s throw and leaves the snap standing', () => {

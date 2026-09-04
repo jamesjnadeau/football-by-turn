@@ -10,6 +10,7 @@ import { createGame, getPlayer } from '../../../lib/game/state.js';
 import { coverAssignments } from '../../../lib/game/defense.js';
 import { fieldPos } from '../../../lib/game/view.js';
 import { zoneAnchorPoint } from '../../../lib/game/zone.js';
+import { advancePlay, snapLook } from '../../../lib/game/read.js';
 
 function afterSnap(s) {
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
@@ -19,12 +20,13 @@ function afterSnap(s) {
 
 test('schemeFeatures normalizes down, distance and formation spread', () => {
   const s = createGame({ seed: 1 });
-  const f = schemeFeatures(s);
+  const look = snapLook(s);
+  const f = schemeFeatures(s, look);
   assert.equal(f.down, 0); // 1st down
   assert.equal(f.toGo, 1); // 10 to go
   assert.ok(f.spread > 0 && f.spread <= 1); // receivers split 30 yards
   s.down = 4;
-  assert.equal(schemeFeatures(s).down, 1);
+  assert.equal(schemeFeatures(s, look).down, 1);
 });
 
 test('the scheme gate is a thresholded logit over those features', () => {
@@ -134,3 +136,54 @@ test('a carrier past the line ends the scheme: everyone converges', () => {
     assert.ok(o.aim, `${o.id} converges`);
   }
 });
+
+test('the scheme is called once and does not flip when men scatter', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  // A gate that answers purely to spread, tuned so the two pictures land on
+  // OPPOSITE sides of it: at the snap spread is 0.5625 and z = -3 + 4(0.5625)
+  // = -0.75, which is man; once they scatter spread is 0.975 and z = +0.9,
+  // which is zone. A genome that read the same class either way would make
+  // this test prove nothing.
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -3, 'scheme:spread': 4 };
+  advancePlay(s);
+  learnedOrders(s, 'defense', g);
+  const called = s.playRead.call.defense.scheme;
+  assert.equal(called, 'man'); // the class the snap look implies
+
+  // Now sweep the offense to both sidelines — a live gate would flip to zone.
+  const half = s.players.filter((p) => p.team === 'offense');
+  half.forEach((p, i) => { p.pos = fieldPos(i % 2 ? 26 : -26, s.losYard - 1); });
+  // Pin the counterfactual: this is the live answer the old code would have
+  // used, which proves the two pictures really do differ.
+  assert.equal(schemeChoice(s, g, null, snapLook(s)), 'zone');
+  advancePlay(s);
+  learnedOrders(s, 'defense', g);
+  assert.equal(s.playRead.call.defense.scheme, called);
+});
+
+test('a defender keeps the man he took, even when somebody nearer appears', () => {
+  const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'learned' });
+  s.ball = { carrierId: 'o-qb', pos: null, vel: null };
+  s.plannedPass = null;
+  const g = { ...makeGenome(DEFENSE_SPEC), 'scheme:bias': -4 }; // firmly man
+  advancePlay(s);
+  const first = learnedOrders(s, 'defense', g);
+  const covers = (orders) => Object.fromEntries(
+    orders.filter((o) => o.cover).map((o) => [o.id, o.cover]),
+  );
+  const before = covers(first);
+  assert.ok(Object.keys(before).length > 0, 'somebody must be covering somebody');
+
+  // Swap the receivers' positions: a greedy re-claim would re-pair them.
+  const wr1 = s.players.find((p) => p.id === 'o-wr1');
+  const wr2 = s.players.find((p) => p.id === 'o-wr2');
+  const held = wr1.pos;
+  wr1.pos = wr2.pos;
+  wr2.pos = held;
+
+  advancePlay(s);
+  assert.deepEqual(covers(learnedOrders(s, 'defense', g)), before);
+});
+

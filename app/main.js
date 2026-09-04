@@ -10,30 +10,39 @@ import { clearAiPlans, AI_MODES, aiModeIndex, nextAiMode, defaultModeForSide } f
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
-  renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
-  planMark, coverMark, passArrowMark, passArrowTip, renderMessage, renderPlayClock, destinationMark,
-  lineZoneMark, renderFieldButtons, passLandingMark, passLockMark, cameraViewBox,
-  menuButtonMark, liveLobMark, fieldButtonAnchor, FIELD_BUTTON_ICONS,
+  renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLoftHandle, renderLooseBall,
+  looseBallMark, planMark, coverMark, passArrowMark, passArrowTip, renderMessage, renderPlayClock, destinationMark,
+  lineZoneMark, passLandingMark, passLockMark, cameraViewBox, liveLobMark,
+  passFlightMark, passShadowMark, loftHandlePoint, unplannedRingsMark,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
-import { downDistanceText, gameOverMessage, kickoffMessage, humanSide, coachedSide } from '../lib/game/hud.js';
+import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '../lib/game/hud.js';
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
-import { receiverAt, lockOnPass, passLanding, backOnPasser } from '../lib/game/pass.js';
-import { lobLanded } from '../lib/game/lob.js';
+import {
+  receiverAt, lockOnPass, passLanding, backOnPasser, passReach, loftFromDrag,
+  passOrigin, passAim, passShadowSpots, lobLandingAt,
+} from '../lib/game/pass.js';
+import { lobLanded, isLob } from '../lib/game/lob.js';
 import {
   TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
+  MIN_ZOOM_SCALE, MAX_ZOOM_SCALE, LOFT_HANDLE_RADIUS_UNITS,
 } from '../lib/game/constants.js';
 import {
-  minOnLine, DEFAULT_VARIANT, OFFENSIVE_LINE_ROLES, PERSONNEL_PACKAGES, personnelId,
+  minOnLine, DEFAULT_VARIANT, OFFENSIVE_LINE_ROLES, PERSONNEL_PACKAGES, personnelId, baseVariantId,
 } from '../lib/game/rosters.js';
-import { followYard, yardsOfY } from '../lib/game/view.js';
+import { followYard, yardsOfY, gameView } from '../lib/game/view.js';
+import { applyZoomPan } from '../lib/game/zoom.js';
+import { VIEWBOX_WIDTH } from '../lib/field/geometry.js';
+import { sub } from '../lib/game/vec.js';
 import { attachInput } from './input.js';
+import { mountControls } from './controls.js';
 import { canUsePlays, capturePlay, applyPlay, isEmptyPlay } from '../lib/game/play.js';
 import {
   PLAY_SLOTS, firstEmptySlot, putPlay, bookFor, putBook, playbookSide, playbookHeading,
 } from '../lib/game/playbook.js';
+import { controlsFor, CONTROL_ICONS } from '../lib/game/controls.js';
 import { loadLibrary, saveLibrary } from './playbook-store.js';
 import {
   captureSnapshot, appendSnapshot, emptyCoachLog, serializeCoachLog,
@@ -80,6 +89,32 @@ const clearLogBtn = document.getElementById('clear-log');
 const trainBtn = document.getElementById('train');
 const copyGenomeBtn = document.getElementById('copy-genome');
 const discardGenomeBtn = document.getElementById('discard-genome');
+const debugToolsEl = document.getElementById('debug-tools');
+
+/**
+ * The Coaching log and In-browser training tools are for whoever is building
+ * this game, not whoever is playing it, so they stay out of the Coaches Menu
+ * unless `DEBUG` is set. `window.DEBUG` is an accessor rather than a plain
+ * property so that typing `DEBUG = true` into the browser console — a bare
+ * assignment lands on `window` — reveals the tools immediately, with no
+ * reload required.
+ */
+let debugEnabled = false;
+Object.defineProperty(window, 'DEBUG', {
+  configurable: true,
+  get: () => debugEnabled,
+  set: (value) => {
+    debugEnabled = Boolean(value);
+    debugToolsEl.hidden = !debugEnabled;
+  },
+});
+console.log(
+  '%c🏈 DEBUG mode available%c\nSet %cDEBUG = true%c in this console to reveal the Coaching log and In-browser training tools in the Coaches Menu.',
+  'font-weight: bold; font-size: 14px; color: #1a7f37;',
+  'color: inherit; font-size: inherit;',
+  'font-family: monospace; background: #f0f0f0; color: #111; padding: 0 .25rem; border-radius: .2rem;',
+  'color: inherit; font-size: inherit;'
+);
 
 let state = createGame({ seed: (Math.random() * 2 ** 31) | 0, ai: 'defense', aiLevel: 'smart' });
 // Which game this drive is: the id of the home-screen button that started it.
@@ -132,7 +167,7 @@ let trainer = null;
  * other team mid-drive, and the menu has to follow it.
  */
 function myBook() {
-  return bookFor(library, playbookSide(state));
+  return bookFor(library, baseVariantId(state.variantId), playbookSide(state));
 }
 // Whether drags are moving players around the line rather than giving them
 // orders. A coaching input mode, like `showVelocity` — the game does not care
@@ -147,8 +182,9 @@ let repositioning = false;
 let lesson = null;
 // The multiplayer handle app/multiplayer.js hands startGame, or null in
 // every single-player mode. Its presence is what turns Run Turn into End
-// Turn (see pressRun) and is read nowhere else that state.aiTeam or
-// state.remoteTeam do not already cover -- see isControllable.
+// Turn (see pressRun and lib/game/controls.js) and is read nowhere else
+// that state.aiTeam or state.remoteTeam do not already cover -- see
+// isControllable.
 let net = null;
 // The deadline (epoch ms) the HUD's countdown is ticking toward in a match,
 // or null outside one. Read by paint()'s hud line and advanced by a
@@ -158,11 +194,17 @@ let netDeadlineAt = null;
 // after he has -- how long his opponent has left is worth knowing -- but it
 // stops being his to spend, which is what the dimmed plate says.
 let netCommitted = false;
+let clockTimer = null;
 // Whether the board has been built for the current match. A match dealt by
 // the server's `start` builds it there; one rejoined after a reload has no
 // `start` coming and builds it off the first snapshot instead.
 let boardDealt = false;
-let clockTimer = null;
+
+// Touch pinch-zoom/drag-pan, live only pre-snap. A pure offset on top of the
+// auto-following camera (see lib/game/zoom.js), reset to identity by
+// rebuildBoard() so every new down/play/game starts unzoomed -- there is no
+// zoom position to carry between downs, same reasoning as cameraYard().
+let zoom = { scale: MIN_ZOOM_SCALE, panX: 0, panY: 0 };
 
 function layer(id) {
   return board.findOne(`#${id}`);
@@ -183,13 +225,9 @@ function cameraYard(ballYard = null) {
 }
 
 function rebuildBoard() {
+  zoom = { scale: MIN_ZOOM_SCALE, panX: 0, panY: 0 };
   const cam = cameraYard();
-  // aimCamera repaints this plate on every frame, so the shell only has to
-  // agree with it — but it has to agree, or the clipboard flashes on for one
-  // paint at the start of every lesson.
-  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard, cam, {
-    menu: !lesson || lesson.showsMenu(),
-  });
+  const { viewBox, markup } = renderBoardShell(state.losYard, state.toGoYard, cam);
   board.attr('viewBox', viewBox);
   board.clear();
   board.svg(markup); // parses the markup string from render.js and inserts it as real SVG nodes
@@ -207,39 +245,40 @@ function rebuildBoard() {
  * Point the board at `cam`: the crop, and everything pinned to the screen
  * rather than to the field.
  *
- * The menu plate is repainted here with its two neighbours rather than left in
- * the board shell where it used to live: the three are one column, and a
- * scrolling run moves the window out from under anything placed once at the
- * snap. animate() calls this every frame for the same reason -- the column
- * and the message would otherwise slide off with the field for half a second
- * and snap back at the whistle.
+ * The controls are not repainted here any more — they left the SVG in this
+ * task, and they are fixed to the viewport in CSS rather than to the crop, so
+ * a scrolling run has nothing to carry them out from under. Only the message
+ * plate and the lesson's own card are still drawn from the camera, for the
+ * same reason they always were: both are pinned to the field's own window,
+ * and would otherwise slide off with a long run and snap back at the whistle.
  */
 function aimCamera(cam) {
-  board.attr('viewBox', cameraViewBox(state.losYard, cam));
-  // The clipboard is hidden for the whole tutorial except its last beat, which
-  // teaches it — and leaving through it is how the tutorial ends.
-  layer('game-menu').clear().svg(
-    !lesson || lesson.showsMenu() ? menuButtonMark(state.losYard, cam) : '',
-  );
-  layer('game-buttons').clear().svg(
-    renderFieldButtons(state, {
-      repositioning, animating, cameraYard: cam, allow: lesson ? lesson.buttons() : null,
-      // The book and the Defense label are both handed over rather than read
-      // there: the renderer draws, and this is the file that already knows
-      // what is in the library and which way the setting is turned.
-      book: myBook(), aiLabel: AI_MODES[aiModeIndex(state)].label,
-    }),
-  );
+  board.attr('viewBox', cameraOrZoomedViewBox(cam));
   layer('game-message').clear()
     .svg(renderMessage(messageText, state.losYard, cam) + playClockMark(cam));
   layer('game-tutorial').clear().svg(lessonMark(cam));
 }
 
 /**
+ * cameraViewBox's base window, cropped further by any live pinch-zoom/pan --
+ * but only pre-snap: once a play is animating, the zoom offset would have to
+ * track a scrolling camera it was never anchored to, so the live play always
+ * shows the plain auto-following window, exactly as before this feature.
+ */
+function cameraOrZoomedViewBox(cam) {
+  if (state.phase !== 'planning' || (zoom.scale === MIN_ZOOM_SCALE && zoom.panX === 0 && zoom.panY === 0)) {
+    return cameraViewBox(state.losYard, cam);
+  }
+  const view = gameView(state.losYard, cam);
+  const box = applyZoomPan(view, VIEWBOX_WIDTH, zoom);
+  return `${box.x} ${box.y} ${box.width} ${box.height}`;
+}
+
+/**
  * The lesson's card and the ring round whatever it wants pressed. Repainted
- * with the camera rather than once at the snap, for the same reason the button
- * column is: a play that scrolls downfield would otherwise slide the card off
- * the bottom of the window and snap it back at the whistle.
+ * with the camera rather than once at the snap, for the same reason the
+ * message plate is: a play that scrolls downfield would otherwise slide the
+ * card off the bottom of the window and snap it back at the whistle.
  */
 function lessonMark(cam) {
   if (!lesson) return '';
@@ -247,16 +286,15 @@ function lessonMark(cam) {
   return coachCardMark(card, state.losYard, cam) + highlightMark(anchorFor(card.highlight, cam));
 }
 
-/** Where the ring goes: a plate in the button column, or a man on the field. */
+/** Where the ring goes. Only a player: a control is ringed on its own button,
+ *  in app/controls.js, because a control is no longer on the field. */
 function anchorFor(highlight, cam) {
-  if (!highlight) return null;
-  if (highlight.kind === 'button') return fieldButtonAnchor(highlight.name, state.losYard, cam);
+  if (!highlight || highlight.kind === 'button') return null;
   const p = state.players.find((pl) => pl.id === highlight.id);
   return p ? { x: p.pos.x, y: p.pos.y, r: p.radius } : null;
 }
 
-function paint() {
-  layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
+function paintArrows() {
   // The band goes in `game-arrows`, beneath the players, so a man standing in
   // it still reads as a man rather than as a man behind glass. While
   // repositioning there are no arrows to draw anyway — that is the mode.
@@ -273,9 +311,29 @@ function paint() {
       // it is the one arrow that answers "what did that just do?".
       repositioning ? lineZoneMark(state) + (state.plannedPass?.auto ? renderPassArrow(state) : '')
       : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state)
+        // Quiet until the coach actually tries to run the turn short-handed —
+        // pendingWarning is exactly that attempt, the same flag pressRun sets
+        // to know a second press means "anyway". Flashing from the first
+        // player drawn on would just be noise; this is the same warning
+        // pressRun's own message gives in words, not a second, earlier one.
+        + (pendingWarning ? unplannedRingsMark(state) : '')
       : ''
     ),
   );
+  // The loft handle goes in `game-overlay`, the topmost layer, so a receiver
+  // standing over it can never hide the one thing on the board the coach
+  // still has to be able to grab. Safe to clear and rewrite here: animate()
+  // is the only other writer, and paintArrows() never runs while it is live
+  // (onLoftDragPreview guards on `animating`, and paint()'s other callers all
+  // run outside the animation loop too).
+  layer('game-overlay').clear().svg(
+    !repositioning && state.phase === 'planning' ? renderLoftHandle(state) : '',
+  );
+}
+
+function paint() {
+  layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
+  paintArrows();
   // In a match, the clock is the other half of the down/distance line — a
   // coach reads them together, the same way he reads down-and-distance
   // itself. Outside a match netDeadlineAt is always null and this is
@@ -283,14 +341,7 @@ function paint() {
   const seconds = clockSeconds();
   const clockText = seconds === null ? '' : ` — ${seconds}s`;
   hud.textContent = `${downDistanceText(state)} — ${state.phase}${clockText}`;
-  aiBtn.textContent = `${FIELD_BUTTON_ICONS.ai} ${AI_MODES[aiModeIndex(state)].label}`;
-  aiBtn.disabled = animating || state.phase !== 'planning';
-  repositionBtn.textContent = `${FIELD_BUTTON_ICONS.reposition} Reposition: ${repositioning ? 'on' : 'off'}`;
-  repositionBtn.disabled = animating || !canReposition(state);
-  personnelBtn.textContent = `${FIELD_BUTTON_ICONS.personnel} Personnel: ${personnelId(state.variantId)}`;
-  // Not the human's to press when the computer is coaching the defense: it
-  // picks its own package now, and the two would fight on every press.
-  personnelBtn.disabled = animating || !canReposition(state) || state.aiTeam === 'defense';
+  paintControls();
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
   copyLogBtn.textContent = `Copy coaching log (${coachLog.length})`;
@@ -302,31 +353,16 @@ function paint() {
     : 'Copy trained genome';
   copyGenomeBtn.disabled = animating || trainedSide === null;
   discardGenomeBtn.disabled = animating || trainedSide === null;
-  // Run, Clear and Save current play are the three menu buttons whose text is
-  // never rewritten, so they take their icon once at startup by being prefixed
-  // in place. Do not give any of them a textContent template here: it would
-  // paint over the prefix and the icon would simply stop appearing, with no
-  // test to catch it — the menu's own labels need a DOM, so none of them is
-  // under `node --test` at all.
-  runBtn.textContent = net ? 'End Turn' : 'Run Turn';
-  runBtn.disabled = animating || state.phase !== 'planning';
-  autoplanBtn.textContent = `${FIELD_BUTTON_ICONS.autoplan} Autoplan ${coachedSide(state)}`;
-  autoplanBtn.disabled = animating || state.phase !== 'planning';
   clearBtn.disabled = animating || state.phase !== 'planning';
   nextBtn.disabled = animating;
   newBtn.disabled = animating;
   homeBtn.disabled = animating;
   nextBtn.hidden = state.phase !== 'playOver';
-  // The board's own quick-press buttons are redrawn every paint rather than
-  // built with the board, which is what lets the shuffle disappear at the
-  // snap and the run button grey out — the menu hit rect beside them never
-  // changes, so it stays in the shell.
   // The crop is re-asserted on every paint, not just on a rebuild: a play that
   // scrolled downfield ends with the camera well past the line of scrimmage,
   // and the board has to stay there until the next down re-spots the ball.
   aimCamera(cameraYard());
   drawMessage();
-  paintPlays();
 }
 
 /**
@@ -444,6 +480,26 @@ function pressMenu() {
   lessonSaw();
 }
 
+/**
+ * Where the loft handle is: the near edge of the dead zone at this throw's
+ * current loft (render.js's loftHandlePoint) — not the real landing spot,
+ * which the flight path and landing circle already mark (spec decision 2).
+ * Checked only when no player answers hitTest first, and only for a throw
+ * that is still live, unlocked, still the passer's own, and long enough to
+ * lob at all — the same four gates renderPassArrow's own new marks check
+ * before drawing anything.
+ */
+function loftHandleHit(p) {
+  const pp = state.plannedPass;
+  if (repositioning || state.phase !== 'planning') return null;
+  if (!pp || pp.target || state.ball.carrierId !== pp.from) return null;
+  if (!isControllable(state, pp.from)) return null;
+  if (!isLob(passReach(pp.power))) return null;
+  const passer = getPlayer(state, pp.from);
+  const point = loftHandlePoint(passOrigin(passer, pp.dir), passAim(passer, pp.dir, pp.power), pp.loft ?? 0);
+  return Math.hypot(point.x - p.x, point.y - p.y) <= LOFT_HANDLE_RADIUS_UNITS ? { loft: pp.from } : null;
+}
+
 function hitTest(p) {
   let best = null;
   let bestD = Infinity;
@@ -455,7 +511,7 @@ function hitTest(p) {
     const d = Math.hypot(pl.pos.x - p.x, pl.pos.y - p.y);
     if (d <= pl.radius + PICK_SLOP_UNITS && d < bestD) { best = pl.id; bestD = d; }
   }
-  return best;
+  return best || loftHandleHit(p);
 }
 
 /**
@@ -483,7 +539,11 @@ function throwMark(player, g, point) {
   const lock = receiverAt(state, point, player.id);
   if (lock) return passLockMark(player, getPlayer(state, lock));
   const land = passLanding(player, g.dir, g.throttle);
-  return (land ? passLandingMark(land.pos, land.radius) : '')
+  return (land
+    ? passLandingMark(land.pos, land.radius)
+      + passFlightMark(passOrigin(player, g.dir), passAim(player, g.dir, g.throttle))
+      + passShadowMark(passShadowSpots(player, g.dir, g.throttle, 0))
+    : '')
     + passArrowMark(player.pos, passArrowTip(player.pos, g.dir, g.throttle));
 }
 
@@ -600,19 +660,21 @@ function onGesture(playerId, gesture, point) {
         : passLanding(p, aim.dir, aim.power) ? `${p.role} will lob it deep.`
         : `${p.role} will throw.`);
     } else {
-      const run = planForDrag(p, gesture.travel);
+      const land = lobLandingAt(state, point);
+      const run = planForDrag(p, land ? sub(land, p.pos) : gesture.travel);
       setPlan(state, playerId, run.dir, run.throttle, run.target, run.short);
-      say(`${p.role} doesn't have the ball — running instead.`);
+      say(land ? `${p.role} will go for the ball.` : `${p.role} doesn't have the ball — running instead.`);
     }
     pendingWarning = false;
   } else if (kind === 'drag') {
     const opp = opponentAt(state, point, p.team);
+    const land = !opp && lobLandingAt(state, point);
     if (opp && setCover(state, playerId, opp)) {
       say(`${p.role} will cover ${getPlayer(state, opp).role}.`);
     } else {
-      const run = planForDrag(p, gesture.travel);
+      const run = planForDrag(p, land ? sub(land, p.pos) : gesture.travel);
       setPlan(state, playerId, run.dir, run.throttle, run.target, run.short);
-      say('');
+      say(land ? `${p.role} will go for the ball.` : '');
     }
     pendingWarning = false;
   } else if (kind === 'doubletap') {
@@ -635,6 +697,27 @@ function onGesture(playerId, gesture, point) {
   // him is a drag, and only in reposition mode — one tap is how you arm the
   // second, and it cannot also be how you move somebody.
   paint();
+  lessonSaw();
+}
+
+/**
+ * Grabbing the committed arrow's tip again, pre-snap: not a new throw, only
+ * how long this one takes to arrive. dir/power/target — the destination —
+ * never change here; only state.plannedPass.loft does, so the shadow balls
+ * and the dead zone move but the landing circle never does. There is nothing
+ * to roll back on release the way a cancelled run or throw drag has, so the
+ * live preview and the committed value are the same write.
+ */
+function onLoftDragPreview(passerId, log) {
+  if (animating || state.phase !== 'planning') return;
+  const pp = state.plannedPass;
+  if (!pp || pp.from !== passerId) return;
+  pp.loft = loftFromDrag(pp, sub(log[log.length - 1], log[0]));
+  paintArrows();
+}
+
+function onLoftDrag(passerId, log) {
+  onLoftDragPreview(passerId, log);
   lessonSaw();
 }
 
@@ -682,6 +765,43 @@ function onDragPreview(playerId, log, prevTapAt) {
     ? throwMark(p, g, tip)
     : runOrCoverMark(p, g.travel, tip);
   layer('game-preview').clear().svg(mark);
+}
+
+/**
+ * One-finger drag on empty field: shift the pan offset by exactly the
+ * pointer's own travel (already in SVG units, from board.point()), so the
+ * field tracks the finger 1:1. Dead once a play is running or the plan is
+ * over -- same guard onDragPreview uses -- because zoom/pan has no meaning
+ * once the camera it rides on top of is no longer sitting still.
+ */
+function onPan(dx, dy) {
+  if (animating || state.phase !== 'planning') return;
+  zoom = { ...zoom, panX: zoom.panX - dx, panY: zoom.panY - dy };
+  paint();
+}
+
+/**
+ * Two-finger pinch: `factor` is this move's distance ratio (>1 apart, <1
+ * together), applied multiplicatively to the running scale and clamped to
+ * the game's zoom range. `anchor` (in SVG units, the fingers' midpoint) is
+ * kept under the fingers: the box shrinks/grows around it by the standard
+ * viewBox zoom-to-point formula (new edge = anchor - (anchor - old edge) *
+ * new_size/old_size), computed against the box actually on screen right now
+ * -- the same displayed box aimCamera would draw -- so a pinch that starts
+ * mid-pan or against a clamped edge still zooms toward the fingers rather
+ * than snapping to wherever an un-clamped pan would have put it.
+ */
+function onPinch(factor, anchor) {
+  if (animating || state.phase !== 'planning') return;
+  const view = gameView(state.losYard, cameraYard());
+  const box = applyZoomPan(view, VIEWBOX_WIDTH, zoom);
+  const scale = Math.min(MAX_ZOOM_SCALE, Math.max(MIN_ZOOM_SCALE, zoom.scale * factor));
+  const width = VIEWBOX_WIDTH / scale;
+  const height = view.height / scale;
+  const x = anchor.x - (anchor.x - box.x) * (width / box.width);
+  const y = anchor.y - (anchor.y - box.y) * (height / box.height);
+  zoom = { scale, panX: x, panY: y - view.windowTopY };
+  paint();
 }
 
 /**
@@ -755,37 +875,93 @@ for (let i = 0; i < PLAY_SLOTS; i++) {
 }
 
 /**
- * The menu's own buttons wear the icons their plates wear. Written from the
- * same table the board reads, so the two can never say different things —
- * which is the whole point of a coach being able to relate one to the other.
- *
- * Only the three whose text is never rewritten need doing here; the rest get
- * their icon from paint()'s templates.
+ * The Coaches Menu's own buttons, by the control name they answer to. Both
+ * this menu and the board's buttons are painted from one controlsFor list, so
+ * a control's label and its enable rule are written once — see
+ * lib/game/controls.js. `menu` has no entry: it is the control that opens this
+ * dialog, so inside the dialog there is nothing for it to be.
  */
-for (const [btn, name] of [[runBtn, 'run'], [clearBtn, 'clear'], [savePlayBtn, 'save']]) {
-  btn.textContent = `${FIELD_BUTTON_ICONS[name]} ${btn.textContent}`;
-}
+const menuButtons = {
+  ai: aiBtn, personnel: personnelBtn, reposition: repositionBtn,
+  autoplan: autoplanBtn, run: runBtn, save: savePlayBtn,
+};
+for (let i = 0; i < PLAY_SLOTS; i++) menuButtons[`play${i + 1}`] = slotBtns[i];
 
 /**
- * A play is what you come to the line with, so both saving and calling one are
- * offered only on the first turn of a down. Off it the buttons go grey rather
- * than disappearing: a grey button explains itself, a vanished one does not.
- *
- * Which five plays these are follows the side the human is coaching, and the
- * heading says which — a coach who hands the computer the other team is
- * looking at a different book a moment later, and five relabelled buttons with
- * nothing to explain them read as five lost plays.
+ * The board's own controls. They call exactly the functions the Coaches Menu's
+ * buttons call — one rule per control, never a second copy — which is why the
+ * handlers are handed over here rather than reached for inside app/controls.js.
  */
-function paintPlays() {
-  const usable = !animating && canUsePlays(state);
-  const book = myBook();
-  playsHeading.textContent = playbookHeading(state);
-  savePlayBtn.disabled = !usable;
-  for (let i = 0; i < PLAY_SLOTS; i++) {
-    const play = book[i];
-    slotBtns[i].textContent = `${FIELD_BUTTON_ICONS[`play${i + 1}`]} ${play ? play.name : '(empty)'}`;
-    slotBtns[i].disabled = !usable || !play;
+const controlsEl = document.getElementById('controls');
+const boardControls = mountControls(controlsEl, {
+  menu: pressMenu,
+  reposition: toggleReposition,
+  ai: pressAi,
+  personnel: pressPersonnel,
+  autoplan: pressAutoplan,
+  run: pressRun,
+  save: savePlay,
+  ...Object.fromEntries(
+    Array.from({ length: PLAY_SLOTS }, (_, i) => [`play${i + 1}`, () => callPlay(i)]),
+  ),
+}, CONTROL_ICONS.playbook);
+
+/**
+ * Both surfaces, painted from the one call: the board's own buttons from a
+ * list the lesson may have filtered, and the Coaches Menu from an unfiltered
+ * one. A control the menu's list leaves out is hidden rather than greyed —
+ * that is how the shuffle disappears once the play is under way, and hiding
+ * rather than disabling keeps the menu's own reading of it identical to the
+ * board's.
+ *
+ * `lesson.buttons()` is a coarse, whole-scenario gate — the last lesson names
+ * `'menu'` in it for all five of its steps, because that is what lets the one
+ * step that teaches the clipboard put a ring on it. But the clipboard itself
+ * has to stay off the board for the other four: it is the thing that step is
+ * teaching, and a coach who can already see it has nothing left to learn.
+ * `showsMenu()` is the fine-grained, per-step gate that used to decide whether
+ * the SVG plate was drawn at all; it is handed to `controlsFor` as an option
+ * for the same reason, now that the clipboard is a button rather than a plate.
+ * The gate itself is stated in lib/game/controls.js with every other rule
+ * about which controls are fielded — this file reads the lesson and passes the
+ * answer, and nothing more. The Coaches Menu's own list leaves the option at
+ * its default — the menu never renders a `menu` button anyway, so there is
+ * nothing there for this gate to touch.
+ *
+ * The plays heading goes up here too. Which five plays these are follows the
+ * side the human is coaching, and the heading says which: a coach who hands
+ * the computer the other team is looking at a different book a moment later,
+ * and five relabelled buttons with nothing to explain them read as five lost
+ * plays. The slot buttons' own text and disabled state come from the same
+ * list as everything else below.
+ */
+function paintControls() {
+  const controls = controlsFor(state, {
+    repositioning,
+    animating,
+    book: myBook(),
+    allow: lesson ? lesson.buttons() : null,
+    showsMenu: !lesson || lesson.showsMenu(),
+    showsAi: sideId === 'training',
+    aiLabel: AI_MODES[aiModeIndex(state)].label,
+    highlight: lesson ? lesson.card().highlight : null,
+  });
+  boardControls.sync(controls);
+  // The menu shows every control the game has, not only the ones a lesson
+  // fields, so it is painted from an unfiltered list of the same rules.
+  const forMenu = new Map(controlsFor(state, {
+    repositioning, animating, book: myBook(),
+    showsAi: sideId === 'training',
+    aiLabel: AI_MODES[aiModeIndex(state)].label,
+  }).map((c) => [c.name, c]));
+  for (const [name, btn] of Object.entries(menuButtons)) {
+    const c = forMenu.get(name);
+    btn.hidden = !c;
+    if (!c) continue;
+    btn.textContent = `${c.icon} ${c.label}`;
+    btn.disabled = c.disabled;
   }
+  playsHeading.textContent = playbookHeading(state);
 }
 
 /**
@@ -804,7 +980,8 @@ function savePlay() {
   if (!name) return; // cancelled, or named nothing
   const play = capturePlay(state, name); // capturePlay is what cuts the name to length
   const side = playbookSide(state);
-  const book = bookFor(library, side);
+  const variant = baseVariantId(state.variantId);
+  const book = bookFor(library, variant, side);
   let slot = firstEmptySlot(book);
   if (slot === -1) {
     const answer = window.prompt(
@@ -815,9 +992,10 @@ function savePlay() {
     if (!Number.isInteger(n) || n < 1 || n > PLAY_SLOTS) return;
     slot = n - 1;
   }
-  // Into this side's book only. putBook copies, so the other side's five are
-  // the same five they were.
-  library = putBook(library, side, putPlay(book, slot, play));
+  // Into this side's book, this variant's library only. putBook copies, so
+  // the other side's five — and the other variant's — are the same five they
+  // were.
+  library = putBook(library, variant, side, putPlay(book, slot, play));
   const kept = saveLibrary(library);
   closeMenu();
   say(kept
@@ -861,43 +1039,18 @@ function closeMenu() {
 }
 
 /**
- * What a press on the board itself does: open the menu, or work whichever
- * quick-press plate the press landed on. Every one of these nodes is
- * re-created — the menu rect by rebuildBoard(), the plates by every paint()
- * — so the listener goes on the board and matches on the way up rather than
- * on the nodes themselves.
- *
- * The plates are shortcuts and nothing more: each one calls the same
- * function the menu's own matching control does, so there is no second copy
- * of any rule to keep in step.
+ * What a press on the board itself does. The quick-press plates are gone —
+ * they are real buttons in app/controls.js now, with their own click
+ * listeners — so the only thing left on the board to press is the tutorial's
+ * own "Next"/"Skip" control, which is still SVG because the coach card it
+ * belongs to is still SVG. That node is re-created every paint, which is why
+ * the listener goes on the board and matches on the way up rather than on the
+ * node itself.
  */
 function pressBoardButton(target) {
   if (!target.closest) return false;
-  if (target.closest('[data-tutorial-next]')) nextLesson();
-  // Openable in an ordinary drive, and on the one lesson step that asks for it
-  // — where opening it is what ends the tutorial. Everywhere else in a lesson
-  // there is no plate to press anyway; this is the second lock on that door.
-  else if (target.closest('[data-menu-button]')) pressMenu();
-  else if (target.closest('[data-reposition-button]')) toggleReposition();
-  else if (target.closest('[data-run-button]')) pressRun();
-  else if (target.closest('[data-autoplan-button]')) pressAutoplan();
-  else if (target.closest('[data-clear-button]')) pressClear();
-  else if (target.closest('[data-ai-button]')) pressAi();
-  else if (target.closest('[data-personnel-button]')) pressPersonnel();
-  else if (target.closest('[data-save-button]')) savePlay();
-  else return callPlayFromBoard(target);
-  return true;
-}
-
-/**
- * The five load plates share one attribute and are told apart by its value, so
- * one line reads the slot straight off the plate that was pressed rather than
- * five branches saying the same thing.
- */
-function callPlayFromBoard(target) {
-  const el = target.closest('[data-play-button]');
-  if (!el) return false;
-  callPlay(Number(el.getAttribute('data-play-button')));
+  if (!target.closest('[data-tutorial-next]')) return false;
+  nextLesson();
   return true;
 }
 
@@ -905,13 +1058,31 @@ board.on('click', (e) => {
   pressBoardButton(e.target);
 });
 
-// These rects are the only controls on the board, and everything the menu
-// holds lives in a closed <dialog> — out of the tab order until it is open.
-// Without this, a keyboard user who tabbed to one could never actually press
-// it. Space is also prevented from scrolling the page, as a native button does.
+// This rect is the only control left on the board, and it is reachable by
+// tabbing to it directly — nothing else on the board is a keyboard stop, so
+// there is no tab order for it to be out of. Space is also prevented from
+// scrolling the page, as a native button does.
 board.on('keydown', (e) => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
   if (pressBoardButton(e.target)) e.preventDefault();
+});
+
+/**
+ * Space runs the turn, same as pressing the board's own Run Turn button --
+ * a keyboard coach on a desktop shouldn't have to reach for the mouse every
+ * half second. Skipped when focus is on a button (or anything else space
+ * already has a job for): the native activation would otherwise fire beside
+ * this one, or this one would steal the press from whatever focus actually
+ * wants it. Skipped too while the Coaches Menu is open, since that dialog's
+ * own buttons cover the same ground and a turn running behind a menu the
+ * coach is still reading would be a surprise, not a shortcut.
+ */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== ' ') return;
+  if (menu.open) return;
+  if (e.target.closest?.('button, [role="button"], input, textarea, select, a[href], [tabindex]')) return;
+  e.preventDefault();
+  pressRun();
 });
 
 // Content is inside .menu-body, so a click whose target IS the dialog landed
@@ -960,17 +1131,21 @@ function recordPlanning() {
  * a match's coach is waiting on his opponent's commit. Pulled out of
  * pressRun so applyServerTurn (the net.onTurn handler) can lock the same
  * buttons from a message handler that never called pressRun at all.
+ *
+ * paintControls() covers every button that has an entry in
+ * lib/game/controls.js — run, autoplan, ai, reposition, personnel, save and
+ * the slot buttons — greying each on both the board and the menu (and, for
+ * reposition, hiding it, since controlsFor() drops that control outright
+ * once animating is true). What is left to disable by hand below is exactly
+ * the menu's buttons that have no control at all: they are rows the menu
+ * draws for itself, so paintControls() has nothing to find for them.
  */
 function lockControlsForAnimation() {
-  runBtn.disabled = true;
-  autoplanBtn.disabled = true;
+  paintControls();
   clearBtn.disabled = true;
   nextBtn.disabled = true;
   newBtn.disabled = true;
   homeBtn.disabled = true;
-  aiBtn.disabled = true;
-  repositionBtn.disabled = true;
-  personnelBtn.disabled = true;
   debugBtn.disabled = true;
   copyLogBtn.disabled = true;
   clearLogBtn.disabled = true;
@@ -986,11 +1161,11 @@ function lockControlsForAnimation() {
  * runTurn called locally — both paths narrate a down through this same code.
  */
 function finishTurn(events) {
-  animating = false;
-  paint();
   // Only ever one throw a turn, so its own event -- if any -- says everything
   // there is to say about what got thrown and by whom.
   const passEvent = events.find((e) => e.type === 'pass');
+  animating = false;
+  paint();
   for (const e of events) {
     if (e.type === 'tackled') say('Tackled!');
     if (e.type === 'fumble') say('FUMBLE! The ball is loose!');
@@ -1036,8 +1211,10 @@ function finishTurn(events) {
   // wipes the score and makes it an ordinary next down.
   //
   // Never during a lesson, and never in a match: the tutorial deals its own
-  // downs and ends its own plays, and the server owns down transitions in a
-  // match (spec) the same way a lesson owns its own.
+  // downs and ends its own plays, and a drive advancing underneath one would
+  // swap the board out from under the step the coach is still being asked to
+  // complete; the server owns down transitions in a match (spec) the same
+  // way a lesson owns its own.
   if (!lesson && !net && state.phase === 'playOver') {
     scheduleAutoAdvance(
       state.deadReason === 'touchdown' && !state.penalty ? startNewGame : goToNextDown,
@@ -1075,6 +1252,7 @@ function pressRun() {
     // Spec: warn when not every player has a direction. Second press runs anyway.
     pendingWarning = true;
     say(`${missing.length} player(s) have no direction set. Press Run Turn again to run anyway.`);
+    paintArrows(); // rings the men the warning is talking about, not just the words
     return;
   }
   pendingWarning = false;
@@ -1442,7 +1620,6 @@ function startNewGame() {
   paint();
 }
 
-/** Advances the HUD's countdown once a second. Stopped when the match ends. */
 /** Seconds left on the play clock, or null when there is no clock running. */
 function clockSeconds() {
   if (!net || netDeadlineAt === null) return null;
@@ -1454,6 +1631,7 @@ function playClockMark(cam) {
   return renderPlayClock(clockSeconds(), state.losYard, cam, { waiting: netCommitted });
 }
 
+/** Advances the HUD's countdown once a second. Stopped when the match ends. */
 function startClockDisplay(deadlineAt) {
   netDeadlineAt = deadlineAt;
   if (!clockTimer) clockTimer = setInterval(paint, 1000);
@@ -1500,14 +1678,6 @@ function applyServerTurn({ frames, events, down, deadlineAt, state: serverState 
 }
 
 /**
- * The multiplayer half of startNewGame: the board is dealt only once the
- * server's `start` message names the seed, because a match's state does not
- * exist anywhere until MatchDO calls createGame itself (spec: "The server
- * runs the game"). Until then the board sits blank -- app/multiplayer.js's
- * lobby screen was already the coach's waiting room, so a second wait here
- * is brief.
- */
-/**
  * Mark a match state as seen from THIS browser: nobody here is the computer,
  * and the other team is the remote coach's. The server's state carries
  * neither fact -- it referees both coaches from one record -- so every copy
@@ -1522,6 +1692,14 @@ function claimSide(s) {
   return s;
 }
 
+/**
+ * The multiplayer half of startNewGame: the board is dealt only once the
+ * server's `start` message names the seed, because a match's state does not
+ * exist anywhere until MatchDO calls createGame itself (spec: "The server
+ * runs the game"). Until then the board sits blank -- app/multiplayer.js's
+ * lobby screen was already the coach's waiting room, so a second wait here
+ * is brief.
+ */
 function startMultiplayerGame() {
   net.onStart(({ seed, variant, losYard, side, deadlineAt }) => {
     sideId = side;
@@ -1559,14 +1737,11 @@ function startMultiplayerGame() {
     netCommitted = false;
     paint();
     // A drive that ended gets the game's own final call, facing this coach;
-    // one that ended some other way says how.
+    // one that ended some other way says how. app/multiplayer.js owns the
+    // queue and the home screen: Play again / Back are its own next screen.
     say(reason === 'down' ? gameOverMessage(state)
       : reason === 'opponent-left' ? 'Your opponent left the match.'
       : 'The match is over.');
-    // app/multiplayer.js owns the queue and the home screen; this is the one
-    // job left here -- narrate the ending on the board the coach is still
-    // looking at. Play again / Back live on app/multiplayer.js's own next
-    // screen, reached the same way the lobby's Back button already is.
   });
 }
 
@@ -1683,7 +1858,9 @@ function nextLesson() {
 export function startTutorial({ onExit = () => {} } = {}) {
   exitToHome = onExit;
   if (!inputAttached) {
-    attachInput(board, { hitTest, onGesture, onDragPreview });
+    attachInput(board, {
+      hitTest, onGesture, onDragPreview, onLoftDragPreview, onLoftDrag, onPan, onPinch,
+    });
     inputAttached = true;
   }
   lesson = createLesson();
@@ -1701,7 +1878,9 @@ export function startGame({
   boardDealt = false;
   stopClockDisplay();
   if (!inputAttached) {
-    attachInput(board, { hitTest, onGesture, onDragPreview });
+    attachInput(board, {
+      hitTest, onGesture, onDragPreview, onLoftDragPreview, onLoftDrag, onPan, onPinch,
+    });
     inputAttached = true;
   }
   startNewGame();

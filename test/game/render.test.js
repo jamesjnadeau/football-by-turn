@@ -1,41 +1,39 @@
 import { test } from 'node:test';
-import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
-  facingAngle, arrowMark, STYLE_GAME, menuButtonMark, wrapWords, renderMessage, renderPlayClock,
-  coverMark, coverHaloMark, lineZoneMark, renderFieldButtons, lineToGainMark, passLockMark,
-  liveLobMark, fieldButtonAnchor, cameraViewBox, FIELD_BUTTON_ICONS, fieldButtonNames,
+  renderLoftHandle, loftHandlePoint,
+  facingAngle, arrowMark, STYLE_GAME, wrapWords, renderMessage, renderPlayClock,
+  coverMark, coverHaloMark, lineZoneMark, lineToGainMark, passLockMark,
+  liveLobMark, cameraViewBox, passArrowTip,
 } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer, setPass } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
 import {
   MAX_ARROW_UNITS, MAX_PASS_ARROW_UNITS, DEBUG_VELOCITY_SECONDS,
   DEBUG_VELOCITY_TRIANGLE_SCALE, COVER_HALO_UNITS, ON_LINE_YARDS,
-  CUT_BLOCK_DRIVE_REACH,
+  CUT_BLOCK_DRIVE_REACH, LOFT_HANDLE_RADIUS_UNITS,
 } from '../../lib/game/constants.js';
 import { teamSize } from '../../lib/game/rosters.js';
 import { tackleReach } from '../../lib/game/modes.js';
 import { num, UNITS_PER_YARD_X } from '../../lib/field/geometry.js';
 import { fieldPos, gameView, GOAL_YARD } from '../../lib/game/view.js';
-import { passLanding } from '../../lib/game/pass.js';
+import { passLanding, passAim, passOrigin } from '../../lib/game/pass.js';
 import { lobPoint } from '../../lib/game/lob.js';
-import { PLAY_SLOTS } from '../../lib/game/playbook.js';
 
 test('the board shell has the field and every game layer', () => {
   const { viewBox, markup } = renderBoardShell(20, 30);
-  assert.match(viewBox, /^0 56\.25 280 170$/);
-  for (const id of ['game-field', 'game-arrows', 'game-preview', 'game-players', 'game-overlay', 'game-menu', 'game-buttons', 'game-message']) {
+  assert.match(viewBox, /^0 56\.25 270 170$/);
+  for (const id of ['game-field', 'game-arrows', 'game-preview', 'game-players', 'game-overlay', 'game-message']) {
     assert.ok(markup.includes(`id="${id}"`), id);
   }
   assert.ok(markup.includes(STYLE_GAME));
 });
 
-test('the game crops wider than the field, to make room for the button columns', () => {
-  const shell = Number(renderBoardShell(20, 30).viewBox.split(' ')[2]);
-  assert.equal(shell, 280, 'the shell leaves room for two columns of plates');
+test('the shell agrees with the live camera on how wide the crop is', () => {
   // animate() writes cameraViewBox on every frame; if the two disagree the
   // board would jump a few units wider or narrower at the snap.
+  const shell = Number(renderBoardShell(20, 30).viewBox.split(' ')[2]);
   for (const cam of [20, 35, 80]) {
     const live = Number(cameraViewBox(20, cam).split(' ')[2]);
     assert.equal(live, shell, `cameraViewBox agrees at camera ${cam}`);
@@ -402,14 +400,16 @@ test('the planned throw draws its own arrow, distinct from a run arrow', () => {
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   s.plannedPass = null;
   assert.equal(renderPassArrow(s), '', 'nothing planned, nothing drawn');
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  // Inside the lock zone, not a lob: the bold arrow is only drawn for the
+  // throw that never leaves anyone's reach.
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4);
   const svg = renderPassArrow(s);
   assert.ok(svg.includes('data-pass="o-qb"'));
   assert.ok(svg.includes('class="pass"'), 'its own class, not the run arrow\'s');
   assert.ok(!svg.includes('class="plan-mv"'), 'not the run arrow\'s class');
   assert.ok(svg.includes('marker-end="url(#ar-r)"'), 'its own red arrowhead');
   const qb = getPlayer(s, 'o-qb');
-  assert.ok(svg.includes(`${qb.pos.y + MAX_PASS_ARROW_UNITS}`), 'full power = full length');
+  assert.ok(svg.includes(`${qb.pos.y + MAX_PASS_ARROW_UNITS * 0.4}`), 'length matches the drag');
 });
 
 test('no throw arrow once the man who planned it no longer has the ball', () => {
@@ -425,51 +425,12 @@ test('the throw arc style is registered in the game stylesheet', () => {
   assert.ok(markup.includes('.pass{'), 'the pass arrow has a style rule');
 });
 
-test('the menu is a clipboard button, not a legend spelled down the sideline', () => {
+test('the Coaches Menu is not spelled down the sideline as a legend', () => {
+  // The clipboard control (app/controls.js) says this now; the field itself
+  // carries neither the words nor the legend that used to draw them.
   const { markup } = renderBoardShell(20, 30);
   assert.ok(!markup.includes('COACHES MENU'), 'the words are gone from the field');
   assert.ok(!markup.includes('class="pb"'), 'and so is the legend that carried them');
-  assert.ok(markup.includes('id="game-menu"'), 'the button still gets a layer of its own');
-  assert.ok(markup.includes('data-menu-button'), 'built into the shell, not repainted');
-  assert.ok(menuButtonMark(20).includes('\u{1F4CB}'), 'a clipboard says it instead');
-  assert.ok(menuButtonMark(20).includes('class="fbtn-plate"'), 'and wears the same plate as its neighbours');
-});
-
-test('the menu button holds the middle of the column, inside the frame', () => {
-  const { viewBox } = renderBoardShell(20, 30);
-  const [minX, minY, w, h] = viewBox.split(' ').map(Number);
-  const menu = rectBox(menuButtonMark(20));
-  const others = renderFieldButtons(createGame({ seed: 1 }));
-  const shuffle = rectBox(buttonGroup(others, 'data-reposition-button'));
-  const autoplan = rectBox(buttonGroup(others, 'data-autoplan-button'));
-  const run = rectBox(buttonGroup(others, 'data-run-button'));
-  const midY = minY + h / 2;
-
-  assert.equal(menu.x, shuffle.x, 'all four share one column');
-  assert.equal(menu.x, autoplan.x);
-  assert.equal(menu.x, run.x);
-  assert.ok(menu.x + menu.w <= minX + w, 'inside the viewBox width');
-  assert.ok(menu.y > minY && menu.y + menu.h <= minY + h, 'inside the viewBox height');
-  assert.ok(menu.y < midY && menu.y + menu.h > midY, 'straddles the middle of the current window');
-  // Evenly stacked, and never overlapping — four separate presses: shuffle,
-  // menu, autoplan, run.
-  const gap1 = menu.y - (shuffle.y + shuffle.h);
-  const gap2 = autoplan.y - (menu.y + menu.h);
-  const gap3 = run.y - (autoplan.y + autoplan.h);
-  assert.equal(gap1, gap2, 'even gaps');
-  assert.equal(gap2, gap3, 'even gaps');
-  assert.ok(gap1 > 0, 'and real ones');
-});
-
-test('the menu button is reachable and labelled without a pointer', () => {
-  // A closed <dialog> is out of the tab order, so this plate is the only
-  // focusable element until the menu is open — it has to carry its own
-  // keyboard affordances rather than relying on the controls inside. The icon
-  // carries no text, so the aria-label is the only thing that names it.
-  const mark = menuButtonMark(20);
-  assert.ok(mark.includes('tabindex="0"'), 'the plate is a keyboard stop');
-  assert.ok(mark.includes('role="button"'), 'the plate reads as a button to assistive tech');
-  assert.ok(mark.includes('aria-label="Open the Coaches Menu"'), 'the plate names itself');
 });
 
 test('wrapWords breaks greedily at the character budget', () => {
@@ -537,7 +498,6 @@ test('the message layer is the topmost layer on the board', () => {
   const at = (id) => markup.indexOf(`id="${id}"`);
   assert.ok(at('game-message') > -1, 'the message has a layer of its own');
   assert.ok(at('game-message') > at('game-overlay'), 'above the loose-ball overlay');
-  assert.ok(at('game-message') > at('game-menu'), 'and above the menu button');
   // Both message rules must be click-through — the plate covers the end zone.
   // Checked per-rule on purpose: `pointer-events:none` is already in STYLE_GAME
   // for .gp-role and .vel, so a bare substring check would pass without them.
@@ -614,345 +574,6 @@ test('renderBoardShell\'s viewBox scrolls with losYard instead of always startin
   assert.notEqual(near, far);
 });
 
-
-/**
- * The x/y/width/height of the one rect in a mark, as numbers. The leading
- * space matters: a bare /x="/ matches inside `tabindex="0"` too.
- */
-function rectBox(markup) {
-  const at = (name) => Number(new RegExp(`\\s${name}="([-\\d.]+)"`).exec(markup)[1]);
-  return { x: at('x'), y: at('y'), w: at('width'), h: at('height') };
-}
-
-/** Just the one <g> whose plate carries this data attribute. */
-function buttonGroup(markup, attr) {
-  for (const g of markup.split('<g ').slice(1)) {
-    if (g.includes(attr)) return `<g ${g}`;
-  }
-  return null;
-}
-
-test('the board carries both quick-press buttons before the snap', () => {
-  const markup = renderFieldButtons(createGame({ seed: 1 }));
-  assert.ok(markup.includes('data-reposition-button'), 'the shuffle is offered');
-  assert.ok(markup.includes('data-run-button'), 'the run button is offered');
-  assert.ok(markup.includes('\u{1F500}'), 'shuffle icon');
-  assert.ok(markup.includes('\u{23E9}'), 'run icon');
-});
-
-test('the shuffle button goes away once the play has started, but Run stays put', () => {
-  const s = createGame({ seed: 1 });
-  const before = rectBox(buttonGroup(renderFieldButtons(s), 'data-run-button'));
-
-  s.turnIndex = 1; // the play is under way, so canReposition() is shut
-  const running = renderFieldButtons(s);
-  assert.ok(!running.includes('data-reposition-button'), 'nobody repositions mid-play');
-  assert.ok(running.includes('data-run-button'), 'the turn can still be run');
-  assert.deepEqual(rectBox(buttonGroup(running, 'data-run-button')), before,
-    'Run does not move up into the space the shuffle left');
-});
-
-test('the run button greys rather than vanishing when there is no turn to run', () => {
-  const s = createGame({ seed: 1 });
-  assert.ok(!buttonGroup(renderFieldButtons(s), 'data-run-button').includes('fbtn-off'));
-
-  s.phase = 'playOver';
-  const dead = buttonGroup(renderFieldButtons(s), 'data-run-button');
-  assert.ok(dead.includes('fbtn-off'), 'greyed');
-  assert.ok(dead.includes('aria-disabled="true"'), 'and says so to a screen reader');
-
-  const drawing = buttonGroup(
-    renderFieldButtons(createGame({ seed: 1 }), { animating: true }), 'data-run-button',
-  );
-  assert.ok(drawing.includes('fbtn-off'), 'dead while the turn is drawn, like every other control');
-});
-
-test('the shuffle button shows which way it is set', () => {
-  const s = createGame({ seed: 1 });
-  const off = buttonGroup(renderFieldButtons(s, { repositioning: false }), 'data-reposition-button');
-  assert.ok(off.includes('aria-pressed="false"'));
-  assert.ok(!off.includes('fbtn-on'));
-
-  const on = buttonGroup(renderFieldButtons(s, { repositioning: true }), 'data-reposition-button');
-  assert.ok(on.includes('aria-pressed="true"'));
-  assert.ok(on.includes('fbtn-on'), 'the plate fills in');
-});
-
-test('all twelve quick-press buttons are reachable by keyboard, like the menu rect', () => {
-  // Six became twelve the moment the playbook took the second column: the
-  // default call (no allow, no book) fields every plate this function draws,
-  // the same way it always has, and a greyed plate keeps its tab stop.
-  const markup = renderFieldButtons(createGame({ seed: 1 }));
-  assert.equal(markup.match(/tabindex="0"/g).length, 12);
-  assert.equal(markup.match(/role="button"/g).length, 12);
-  assert.equal(markup.match(/aria-label="/g).length, 12);
-});
-
-test('the first column carries the three controls that used to be menu-only', () => {
-  const markup = renderFieldButtons(createGame({ seed: 1 }));
-  for (const attr of ['data-clear-button', 'data-ai-button', 'data-personnel-button']) {
-    assert.ok(markup.includes(attr), `${attr} is on the board`);
-  }
-});
-
-test('the new controls stack in the column the four old ones are in', () => {
-  const pitch = fieldButtonAnchor('run', 20).y - fieldButtonAnchor('autoplan', 20).y;
-  for (const name of ['ai', 'personnel', 'clear']) {
-    assert.equal(fieldButtonAnchor(name, 20).x, fieldButtonAnchor('menu', 20).x,
-      `${name} is in the first column`);
-  }
-  // Slots -3, -2, 3 against the menu's 0.
-  assert.equal(fieldButtonAnchor('ai', 20).y, fieldButtonAnchor('menu', 20).y - 3 * pitch);
-  assert.equal(fieldButtonAnchor('personnel', 20).y, fieldButtonAnchor('menu', 20).y - 2 * pitch);
-  assert.equal(fieldButtonAnchor('clear', 20).y, fieldButtonAnchor('menu', 20).y + 3 * pitch);
-});
-
-test('a lesson fields none of the new controls unless it names them', () => {
-  const markup = renderFieldButtons(createGame({ seed: 1 }), { allow: ['run', 'menu'] });
-  for (const attr of ['data-clear-button', 'data-ai-button', 'data-personnel-button']) {
-    assert.ok(!markup.includes(attr), `${attr} stays off a lesson's board`);
-  }
-});
-
-test('the new controls grey on the same conditions their menu buttons do', () => {
-  const s = createGame({ seed: 1 });
-  const live = renderFieldButtons(s);
-  assert.ok(!buttonGroup(live, 'data-clear-button').includes('fbtn-off'), 'clear is live before the snap');
-  assert.ok(!buttonGroup(live, 'data-ai-button').includes('fbtn-off'), 'defense is live before the snap');
-  assert.ok(!buttonGroup(live, 'data-personnel-button').includes('fbtn-off'), 'personnel is live before the snap');
-
-  const drawing = renderFieldButtons(s, { animating: true });
-  for (const attr of ['data-clear-button', 'data-ai-button', 'data-personnel-button']) {
-    assert.ok(buttonGroup(drawing, attr).includes('fbtn-off'),
-      `${attr} is dead while the turn is drawn`);
-  }
-
-  // The computer's own package to pick: not the human's to press.
-  const aiDef = createGame({ seed: 1 });
-  aiDef.aiTeam = 'defense';
-  assert.ok(buttonGroup(renderFieldButtons(aiDef), 'data-personnel-button').includes('fbtn-off'),
-    'personnel is dead when the computer coaches the defense');
-});
-
-test('clear and defense grey once the down is over, with nothing being drawn', () => {
-  // The animation flag is only half of each of these rules. Pinned without it
-  // so that dropping the phase leg leaves a test failing rather than a board
-  // offering a broom on a play that is already over.
-  const s = createGame({ seed: 1 });
-  s.phase = 'playOver';
-  const still = renderFieldButtons(s, { animating: false });
-  for (const attr of ['data-clear-button', 'data-ai-button']) {
-    const dead = buttonGroup(still, attr);
-    assert.ok(dead.includes('fbtn-off'), `${attr} is greyed off the planning phase`);
-    assert.ok(dead.includes('aria-disabled="true"'), `${attr} says so to a screen reader`);
-  }
-});
-
-test('personnel greys once the play is under way, with nothing being drawn', () => {
-  // canReposition() is the other leg of personnel's rule, and the one the
-  // animation flag hides: a package cannot be changed mid-down.
-  const s = createGame({ seed: 1 });
-  s.turnIndex = 1;
-  const dead = buttonGroup(renderFieldButtons(s, { animating: false }), 'data-personnel-button');
-  assert.ok(dead.includes('fbtn-off'), 'no new package once the first turn has run');
-  assert.ok(dead.includes('aria-disabled="true"'), 'and it says so to a screen reader');
-});
-
-test('the quick-press buttons sit on the board, above and below the menu plate', () => {
-  const [, boardTop, , boardHeight] = renderBoardShell(20, 30).viewBox.split(' ').map(Number);
-  const menu = rectBox(menuButtonMark(20));
-  const markup = renderFieldButtons(createGame({ seed: 1 }));
-  const shuffle = rectBox(buttonGroup(markup, 'data-reposition-button'));
-  const run = rectBox(buttonGroup(markup, 'data-run-button'));
-
-  assert.ok(shuffle.y + shuffle.h <= menu.y, 'the shuffle is above the label');
-  assert.ok(run.y >= menu.y + menu.h, 'and the run button below it');
-  assert.ok(shuffle.y >= boardTop && run.y + run.h <= boardTop + boardHeight, 'both are on the board');
-  assert.equal(shuffle.x, run.x, 'they share the label\'s column');
-  const frameWidth = Number(renderBoardShell(20, 30).viewBox.split(' ')[2]);
-  assert.ok(shuffle.x + shuffle.w <= frameWidth, 'and stay inside the viewBox');
-});
-
-test('the board furniture follows the camera, not the line of scrimmage', () => {
-  // Everything anchored to the SCREEN rather than to the field has to be
-  // placed from the camera's window. Position it from losYard instead and a
-  // long run scrolls the message and both quick-press buttons off the board,
-  // where they stay until the next down re-spots the ball.
-  const s2 = createGame({ seed: 1 });
-  const camera = s2.losYard + 30; // a thirty-yard run, camera well downfield
-  const [, top, , height] = renderBoardShell(s2.losYard, s2.toGoYard, camera)
-    .viewBox.split(' ').map(Number);
-
-  const menu = rectBox(menuButtonMark(s2.losYard, camera));
-  assert.ok(menu.y >= top && menu.y + menu.h <= top + height, 'the menu plate is on screen');
-
-  const btns = renderFieldButtons(s2, { cameraYard: camera });
-  for (const attr of ['data-reposition-button', 'data-run-button']) {
-    const b = rectBox(buttonGroup(btns, attr));
-    assert.ok(b.y >= top && b.y + b.h <= top + height, `${attr} is on screen`);
-  }
-
-  const plateY = Number(/<rect[^>]*\sy="([-\d.]+)"/.exec(renderMessage('Tackled!', s2.losYard, camera))[1]);
-  assert.ok(plateY >= top && plateY <= top + height, 'and so is the message plate');
-});
-
-test('all four plates keep one column when the camera has scrolled away', () => {
-  // The menu plate used to be built once into the board shell and never
-  // repainted, so a scrolling run left it stranded at the top of the field
-  // while the quick-press buttons followed the ball. They are one column of
-  // four; they have to be placed from one camera.
-  const s2 = createGame({ seed: 1 });
-  const camera = s2.losYard + 30;
-  const menu = rectBox(menuButtonMark(s2.losYard, camera));
-  const btns = renderFieldButtons(s2, { cameraYard: camera });
-  const shuffle = rectBox(buttonGroup(btns, 'data-reposition-button'));
-  const autoplan = rectBox(buttonGroup(btns, 'data-autoplan-button'));
-  const run = rectBox(buttonGroup(btns, 'data-run-button'));
-
-  assert.equal(menu.x, shuffle.x, 'one column');
-  assert.equal(menu.x, autoplan.x);
-  assert.equal(menu.x, run.x);
-  assert.ok(shuffle.y + shuffle.h <= menu.y, 'the shuffle sits above the menu plate');
-  assert.ok(autoplan.y >= menu.y + menu.h, 'the autoplan icon sits below it');
-  assert.ok(run.y >= autoplan.y + autoplan.h, 'and the run button below that');
-  // Adjacent, not merely ordered: a plate placed from a different camera would
-  // still be above or below, just a long way off.
-  assert.ok(menu.y - (shuffle.y + shuffle.h) < menu.h, 'the shuffle is next to it');
-  assert.ok(autoplan.y - (menu.y + menu.h) < menu.h, 'and so is the autoplan icon');
-  assert.ok(run.y - (autoplan.y + autoplan.h) < menu.h, 'and so is the run button');
-});
-
-test('the button column clears the yard numbers and the edge of the frame', () => {
-  // The right-hand yard numbers start at YARD_LABEL_RIGHT_X and are a shade
-  // over ten units wide (browser-measured), so they end about x 251.2. A
-  // button centred on the old legend's baseline came within 1.3 of that —
-  // close enough to read as a field marking, which is what moved the column.
-  const YARD_NUMBERS_RIGHT = 251.23;
-  const boardWidth = Number(renderBoardShell(20, 30).viewBox.split(' ')[2]);
-  const marks = [
-    menuButtonMark(20),
-    ...['data-reposition-button', 'data-run-button']
-      .map((a) => buttonGroup(renderFieldButtons(createGame({ seed: 1 })), a)),
-  ];
-
-  for (const mark of marks) {
-    const box = rectBox(mark);
-    assert.ok(box.x - YARD_NUMBERS_RIGHT >= 3,
-      `clears the yard numbers by ${(box.x - YARD_NUMBERS_RIGHT).toFixed(2)}`);
-    assert.ok(boardWidth - (box.x + box.w) >= 3,
-      `clears the edge of the frame by ${(boardWidth - (box.x + box.w)).toFixed(2)}`);
-  }
-});
-
-test('the autoplan plate is always on the board, and names the side it draws for', () => {
-  const mine = renderFieldButtons(createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' }));
-  assert.match(buttonGroup(mine, 'data-autoplan-button'), /aria-label="Autoplan offense"/);
-
-  // Coaching the defense used to hide this plate entirely — now it draws up
-  // the defense instead.
-  const theirs = renderFieldButtons(createGame({ seed: 1, ai: 'offense', aiLevel: 'learned' }));
-  assert.match(buttonGroup(theirs, 'data-autoplan-button'), /aria-label="Autoplan defense"/);
-});
-
-test('the playbook is a second column, one pitch right and row-aligned', () => {
-  const pitch = fieldButtonAnchor('run', 20).y - fieldButtonAnchor('autoplan', 20).y;
-  assert.equal(fieldButtonAnchor('save', 20).x, fieldButtonAnchor('menu', 20).x + pitch,
-    'one pitch to the right of the first column');
-  // play3 holds slot 0, the row the menu plate holds.
-  assert.equal(fieldButtonAnchor('play3', 20).y, fieldButtonAnchor('menu', 20).y,
-    'and its rows line up with the first column');
-});
-
-test('the board offers a plate per playbook slot', () => {
-  const markup = renderFieldButtons(createGame({ seed: 1 }), { book: [] });
-  assert.ok(markup.includes('data-save-button'), 'save is offered');
-  for (let i = 0; i < PLAY_SLOTS; i++) {
-    assert.ok(markup.includes(`data-play-button="${i}"`), `slot ${i} is offered`);
-  }
-  assert.ok(!markup.includes(`data-play-button="${PLAY_SLOTS}"`), 'and no more than five');
-});
-
-test('an empty slot is greyed and a filled one is live', () => {
-  const s = createGame({ seed: 1 });
-  const book = [{ name: 'Fly sweep' }];
-  const markup = renderFieldButtons(s, { book });
-  assert.ok(!buttonGroup(markup, 'data-play-button="0"').includes('fbtn-off'), 'a saved play can be called');
-  assert.ok(buttonGroup(markup, 'data-play-button="1"').includes('fbtn-off'), 'an empty slot cannot');
-  assert.match(buttonGroup(markup, 'data-play-button="0"'), /aria-label="[^"]*Fly sweep/,
-    'and the label names the play, since the plate cannot');
-});
-
-test('the whole playbook is dead while the turn is being drawn', () => {
-  const s = createGame({ seed: 1 });
-  const drawing = renderFieldButtons(s, { book: [{ name: 'Fly sweep' }], animating: true });
-  assert.ok(buttonGroup(drawing, 'data-save-button').includes('fbtn-off'));
-  assert.ok(buttonGroup(drawing, 'data-play-button="0"').includes('fbtn-off'));
-});
-
-test('the whole playbook is dead once the down is under way', () => {
-  // Which is turnIndex, not the animation flag: a play is what you come to the
-  // line with, so once the first turn has run there is neither one to save nor
-  // one to call, and the plates say so while the board sits perfectly still.
-  const s = createGame({ seed: 1 });
-  s.turnIndex = 1;
-  const under = renderFieldButtons(s, { book: [{ name: 'Fly sweep' }], animating: false });
-  assert.ok(buttonGroup(under, 'data-save-button').includes('fbtn-off'),
-    'there is no coming-to-the-line play left to save');
-  for (let i = 0; i < PLAY_SLOTS; i++) {
-    assert.ok(buttonGroup(under, `data-play-button="${i}"`).includes('fbtn-off'),
-      `slot ${i} cannot be called mid-down, saved play or not`);
-  }
-});
-
-test('a lesson fields no playbook plates unless it names them', () => {
-  const markup = renderFieldButtons(createGame({ seed: 1 }), { allow: ['run', 'menu'], book: [] });
-  assert.ok(!markup.includes('data-save-button'));
-  assert.ok(!markup.includes('data-play-button'));
-});
-
-test('no two plates overlap, and every one is inside the crop', () => {
-  const s = createGame({ seed: 1 });
-  const frame = Number(renderBoardShell(20, 30).viewBox.split(' ')[2]);
-  const markup = menuButtonMark(20) + renderFieldButtons(s, { book: [] });
-  const boxes = markup.split('<g ').slice(1).map((g) => rectBox(`<g ${g}`));
-  assert.equal(boxes.length, fieldButtonNames().length, 'one plate per table entry');
-  for (const b of boxes) {
-    assert.ok(b.x >= 0 && b.x + b.w <= frame, 'inside the crop');
-  }
-  for (let i = 0; i < boxes.length; i++) {
-    for (let j = i + 1; j < boxes.length; j++) {
-      const a = boxes[i];
-      const c = boxes[j];
-      const apart = a.x + a.w <= c.x || c.x + c.w <= a.x
-        || a.y + a.h <= c.y || c.y + c.h <= a.y;
-      assert.ok(apart, `plates ${i} and ${j} do not overlap`);
-    }
-  }
-});
-
-test('every plate the table names is drawn, and no plate wears an off-table icon', () => {
-  const s = createGame({ seed: 1 });
-  const drawn = menuButtonMark(20) + renderFieldButtons(s, { book: [] });
-  for (const name of fieldButtonNames()) {
-    assert.ok(drawn.includes(FIELD_BUTTON_ICONS[name]), `${name}'s icon is on the board`);
-  }
-  // Every icon in the markup came from the table — the check that keeps the
-  // board and the menu from ever wearing different marks.
-  const icons = Object.values(FIELD_BUTTON_ICONS);
-  for (const m of drawn.matchAll(/class="fbtn-icon"[^>]*>([^<]+)</g)) {
-    assert.ok(icons.includes(m[1]), `${m[1]} is written down in the table`);
-  }
-});
-
-test('the menu dialog wears the same clipboard its plate wears', () => {
-  // index.html holds the one emoji literal in the codebase — static markup,
-  // with no script to compose it from the table. So the table checks the
-  // markup instead, which is the same guarantee by the other end.
-  const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes(`${FIELD_BUTTON_ICONS.menu} Coaches Menu`),
-    'the heading carries the clipboard the board carries');
-});
-
 test('the snap draws exactly like any other lock-on: a halo under the quarterback and an arrow to his edge', () => {
   const s = createGame({ seed: 1 });
   const c = getPlayer(s, 'o-c');
@@ -972,10 +593,12 @@ test('a throw the coach drew is still drawn at the length he dragged', () => {
   const s = createGame({ seed: 1 });
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   s.plannedPass = null;
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  // Inside the lock zone, not a lob: this is the one throw that still gets
+  // the bold power arrow at all, so it is the one this assertion still fits.
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4);
   const qb = getPlayer(s, 'o-qb');
-  assert.ok(renderPassArrow(s).includes(`${num(qb.pos.y + MAX_PASS_ARROW_UNITS)}`),
-    'full power still means a full-length arrow');
+  assert.ok(renderPassArrow(s).includes(`${num(qb.pos.y + MAX_PASS_ARROW_UNITS * 0.4)}`),
+    'the arrow is drawn at the dragged length');
 });
 
 /** The coach's own throw, with the snap out of the way: he has to hold the ball first. */
@@ -985,12 +608,12 @@ function coachHasBall(s) {
   return s;
 }
 
-test('a lob draws a landing circle as well as its arrow', () => {
+test('a lob draws a landing circle, not the bold power arrow', () => {
   const s = coachHasBall(createGame({ seed: 1 }));
   setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
   const svg = renderPassArrow(s);
-  assert.ok(svg.includes('class="pass"'), 'the arrow is still drawn');
-  assert.ok(svg.includes('class="pass-land"'), 'and the landing circle with it');
+  assert.ok(!svg.includes('class="pass"'), 'the flight-path preview already shows where this throw is going');
+  assert.ok(svg.includes('class="pass-land"'), 'the landing circle is still drawn');
   const land = passLanding(getPlayer(s, 'o-qb'), { x: 0, y: 1 }, 1);
   assert.ok(svg.includes(`r="${num(land.radius)}"`), 'as big as the guess is');
   assert.ok(svg.includes(`cy="${num(land.pos.y)}"`), 'centred where it is aimed');
@@ -1011,18 +634,99 @@ test('a locked-on throw draws a halo under the receiver and an arrow to his edge
   const svg = renderPassArrow(s);
   assert.ok(svg.includes('class="pass-halo"'), 'the lock reads like a cover halo, in red');
   assert.ok(svg.includes(`r="${num(wr.radius + COVER_HALO_UNITS)}"`), 'and is sized like one');
-  assert.ok(svg.includes('class="pass"'), 'with the throw arrow on top of it');
+  assert.ok(svg.includes('class="pass-flight"'), 'the thin line, not the bold throw arrow');
   assert.ok(svg.includes(`L ${num(qb.pos.x)} ${num(wr.pos.y - wr.radius)}`), 'stopping at his edge');
   assert.ok(!svg.includes('pass-land'), 'a locked throw never lobs, so there is no circle');
-  assert.ok(svg.indexOf('pass-halo') < svg.indexOf('class="pass"'), 'halo first, line on top');
+  assert.ok(svg.indexOf('pass-halo') < svg.indexOf('class="pass-flight"'), 'halo first, line on top');
 });
 
 test('a lock on a man who is no longer on the field falls back to the plain arrow', () => {
   const s = coachHasBall(createGame({ seed: 1 }));
-  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5, 'o-nobody');
+  // Inside the lock zone: the fallback throw is not a lob, so it still gets
+  // the bold arrow rather than the flight-path preview.
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4, 'o-nobody');
   const svg = renderPassArrow(s);
   assert.ok(svg.includes('class="pass"'));
   assert.ok(!svg.includes('pass-halo'));
+});
+
+test('a lob previews a flight path, with the dead zone drawn apart from the two catchable ends', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  const svg = renderPassArrow(s);
+  assert.ok(svg.includes('class="pass-flight"'), 'the line from hand to aim point');
+  assert.ok(svg.includes('class="pass-flight pass-flight-dead"'), 'the stretch nobody can touch');
+});
+
+test('a throw inside the lock zone previews no flight path and no shadow balls', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4);
+  const svg = renderPassArrow(s);
+  assert.ok(!svg.includes('pass-flight'), 'nothing pending to preview on a throw that resolves this turn');
+  assert.ok(!svg.includes('pass-shadow'));
+});
+
+test('a locked-on throw previews no dead zone and no shadow balls either', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + 30 };
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5, 'o-wr1');
+  const svg = renderPassArrow(s);
+  assert.ok(!svg.includes('pass-flight-dead'), 'a throw aimed at a man never arcs, so there is no dead zone to preview');
+  assert.ok(!svg.includes('pass-shadow'));
+});
+
+test('a lob previews a loft handle, a bar across the throw at the near edge of the dead zone', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1);
+  const svg = renderLoftHandle(s);
+  const qb = getPlayer(s, 'o-qb');
+  const dir = { x: 0, y: 1 };
+  const point = loftHandlePoint(passOrigin(qb, dir), passAim(qb, dir, 1), 0);
+  const half = LOFT_HANDLE_RADIUS_UNITS / 2;
+  const a = { x: point.x - half, y: point.y };
+  const b = { x: point.x + half, y: point.y };
+  assert.equal(
+    svg.includes(`<path d="M ${num(a.x)} ${num(a.y)} L ${num(b.x)} ${num(b.y)}" class="pass-loft-handle"/>`)
+      || svg.includes(`<path d="M ${num(b.x)} ${num(b.y)} L ${num(a.x)} ${num(a.y)}" class="pass-loft-handle"/>`),
+    true,
+    'a bar straight across the throw\'s own line (thrown due north), centred on the dead zone\'s near edge',
+  );
+});
+
+test('a throw inside the lock zone previews no loft handle', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.4);
+  assert.equal(renderLoftHandle(s), '', 'nothing to grab for loft on a throw that never lobs');
+});
+
+test('a locked-on throw previews no loft handle either', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  const qb = getPlayer(s, 'o-qb');
+  const wr = getPlayer(s, 'o-wr1');
+  wr.pos = { x: qb.pos.x, y: qb.pos.y + 30 };
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 0.5, 'o-wr1');
+  assert.equal(renderLoftHandle(s), '', 'a locked throw has no loft to drag in');
+});
+
+test('a lob previews two shadow balls, one per turn it hangs, at no loft', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1); // full power, no loft: two turns, at the slowed-down speed
+  const svg = renderPassArrow(s);
+  const count = (svg.match(/class="pass-shadow"/g) || []).length;
+  assert.equal(count, 2, 'no loft dragged in, but the bomb still spans two turns');
+});
+
+test('a fully lofted bomb previews three shadow balls, one per turn it hangs', () => {
+  const s = coachHasBall(createGame({ seed: 1 }));
+  setPass(s, 'o-qb', { x: 0, y: 1 }, 1, null, 1); // full power, full loft
+  const svg = renderPassArrow(s);
+  const count = (svg.match(/class="pass-shadow"/g) || []).length;
+  assert.equal(count, 3, 'full loft on the longest throw hangs three turns now');
+  const qb = getPlayer(s, 'o-qb');
+  const aim = passAim(qb, { x: 0, y: 1 }, 1);
+  assert.ok(svg.includes(`translate(${num(aim.x)}, ${num(aim.y)})`), 'the last shadow sits on the aim point');
 });
 
 test('the loose ball is drawn bigger while it is over everyone\'s heads', () => {
@@ -1063,80 +767,16 @@ test('the lob\'s two marks are styled in the game stylesheet', () => {
   assert.ok(markup.includes('.pass-halo{'), 'and so does the lock halo');
 });
 
-test('the column can be asked where each of its plates sits', () => {
-  const run = fieldButtonAnchor('run', 20);
-  const shuffle = fieldButtonAnchor('reposition', 20);
-  const gift = fieldButtonAnchor('autoplan', 20);
-  assert.equal(run.x, shuffle.x, 'one column');
-  assert.equal(run.x, gift.x);
-  assert.ok(shuffle.y < gift.y, 'shuffle above the gift');
-  assert.ok(gift.y < run.y, 'gift above fast-forward');
-  assert.ok(run.r > 0);
-  assert.equal(fieldButtonAnchor('nonesuch', 20), null);
+test('the flight path and the shadow ball are styled in the game stylesheet', () => {
+  const { markup } = renderBoardShell(20, 30);
+  assert.ok(markup.includes('.pass-flight{'));
+  assert.ok(markup.includes('.pass-flight-dead{'));
+  assert.ok(markup.includes('.pass-shadow'));
 });
 
-test('plates in one column share an x and are told apart by their row', () => {
-  // Every entry is col 0 until Task 4, so this pins what must NOT change: the
-  // refactor threads col and cx through without moving a single plate. The
-  // two-column assertion lands in Task 4, with the plates that need it.
-  const a = fieldButtonAnchor('run', 20);
-  const b = fieldButtonAnchor('menu', 20);
-  assert.equal(a.x, b.x, 'two plates in one column share an x');
-  assert.notEqual(a.y, b.y, 'and are told apart by their row');
-});
-
-test('the anchor still refuses a name there is no button for', () => {
-  assert.equal(fieldButtonAnchor('nonesuch', 20), null);
-});
-
-test('the clipboard is the middle of the column, and still draws where it always did', () => {
-  const menuAnchor = fieldButtonAnchor('menu', 20);
-  assert.ok(fieldButtonAnchor('reposition', 20).y < menuAnchor.y);
-  assert.ok(menuAnchor.y < fieldButtonAnchor('run', 20).y);
-  assert.ok(menuButtonMark(20, 20).includes(`y="${num(menuAnchor.y - menuAnchor.r)}"`),
-    'the ring a lesson pins to it lands on the plate a paint draws');
-});
-
-test('naming the menu in allow does not conjure a second clipboard', () => {
-  const s = createGame({ seed: 1, ai: null });
-  const m = renderFieldButtons(s, {
-    repositioning: false, animating: false, cameraYard: 20, allow: ['run', 'menu'],
-  });
-  assert.ok(m.includes('data-run-button'));
-  assert.equal((m.match(/data-menu-button/g) ?? []).length, 0,
-    'menuButtonMark owns that plate, and only it draws one');
-});
-
-test('an anchor lands on the plate the same paint actually draws', () => {
-  const s = createGame({ seed: 1, ai: null });
-  const markup = renderFieldButtons(s, { repositioning: false, animating: false, cameraYard: 20 });
-  const anchor = fieldButtonAnchor('run', s.losYard, 20);
-  // fieldButtonMark centres the plate on cy, so its y attribute is cy - size/2.
-  assert.ok(markup.includes(`y="${num(anchor.y - anchor.r)}"`),
-    'the ring and the plate are worked out from one number, not two');
-});
-
-test('a lesson fields only the buttons it names', () => {
-  const s = createGame({ seed: 1, ai: null });
-  const opts = { repositioning: false, animating: false, cameraYard: 20 };
-  const all = renderFieldButtons(s, opts);
-  assert.ok(all.includes('data-run-button'));
-  assert.ok(all.includes('data-autoplan-button'));
-
-  const only = renderFieldButtons(s, { ...opts, allow: ['run'] });
-  assert.ok(only.includes('data-run-button'));
-  assert.ok(!only.includes('data-autoplan-button'), 'no gift button in a lesson');
-  assert.ok(!only.includes('data-reposition-button'));
-});
-
-test('the board can be built without a Coaches Menu, and always has a lesson layer', () => {
-  const withMenu = renderBoardShell(20, 30, 20);
-  assert.ok(withMenu.markup.includes('data-menu-button'));
-  assert.ok(withMenu.markup.includes('id="game-tutorial"'));
-
-  const without = renderBoardShell(20, 30, 20, { menu: false });
-  assert.ok(!without.markup.includes('data-menu-button'), 'no way into the menu during a lesson');
-  assert.ok(without.markup.includes('id="game-tutorial"'));
+test('the board always has a lesson layer', () => {
+  const { markup } = renderBoardShell(20, 30, 20);
+  assert.ok(markup.includes('id="game-tutorial"'));
 });
 
 test('the play clock counts down in the left margin, clear of the field', () => {

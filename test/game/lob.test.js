@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {
   LOCK_UNITS, CATCH_UNITS, isLob, scatterRadius, scatterPoint, lobSubsteps,
   planLob, lobProgress, lobPoint, lobLanded, lobCatchable, lobBallScale,
-  stepLob, ballScale,
+  stepLob, ballScale, deadZoneSpan,
 } from '../../lib/game/lob.js';
 import {
   LOB_LOCK_YARDS, LOB_CATCH_YARDS, LOB_SCATTER_PER_YARD, LOB_TIME_MULT,
-  LOB_BALL_SCALE, SUBSTEPS_PER_TURN,
+  LOB_BALL_SCALE, SUBSTEPS_PER_TURN, LOB_MIN_TIME_MULT,
 } from '../../lib/game/constants.js';
 import { PASS_REACH_MAX } from '../../lib/game/flight.js';
 import { UNITS_PER_YARD_X } from '../../lib/field/geometry.js';
@@ -55,11 +55,57 @@ test('the ball lands somewhere inside that circle, and nowhere else', () => {
   assert.ok(Math.abs(dist(middle, aim) - 5) < 1e-9, 'a quarter of the area is half the radius');
 });
 
-test('hang time is measured against the deepest throw in the game', () => {
-  assert.equal(lobSubsteps(PASS_REACH_MAX), LOB_TIME_MULT * SUBSTEPS_PER_TURN);
-  assert.equal(lobSubsteps(PASS_REACH_MAX), 60, 'the bomb hangs for two whole turns');
-  assert.equal(lobSubsteps(LOCK_UNITS), 30, 'and the shortest lob for exactly one');
-  assert.equal(lobSubsteps(0), 1, 'never zero: a flight has to take some time');
+test('hang time is measured against the deepest throw in the game, and loft stretches it', () => {
+  const bombAt = (loft) => lobSubsteps(PASS_REACH_MAX, loft);
+  const lockAt = (loft) => lobSubsteps(LOCK_UNITS, loft);
+  assert.equal(bombAt(0), Math.round(LOB_MIN_TIME_MULT * SUBSTEPS_PER_TURN),
+    'the fastest this throw can arrive, at no loft at all');
+  assert.equal(bombAt(1), LOB_TIME_MULT * SUBSTEPS_PER_TURN, 'full loft: exactly how a lob has always hung');
+  assert.equal(bombAt(1), 90, 'three whole turns, one and a half times the old two');
+  assert.equal(lockAt(1), Math.round(LOB_TIME_MULT * SUBSTEPS_PER_TURN * (LOCK_UNITS / PASS_REACH_MAX)),
+    'the shortest lob, at the same formula, one and a half times as long as it used to hang');
+  const half = LOB_MIN_TIME_MULT + 0.5 * (LOB_TIME_MULT - LOB_MIN_TIME_MULT);
+  assert.equal(bombAt(0.5), Math.round(half * SUBSTEPS_PER_TURN), 'loft interpolates between the two');
+  assert.equal(lobSubsteps(0, 0), 1, 'never zero, at any loft');
+  assert.equal(lobSubsteps(0, 1), 1);
+  assert.equal(lobSubsteps(PASS_REACH_MAX), bombAt(0), 'no loft argument means no loft at all');
+});
+
+test('deadZoneSpan widens by a third at no loft, and further as loft climbs, all of it pulled earlier', () => {
+  // Comfortably short of PASS_REACH_MAX so full loft's widening (below) still
+  // has room to land above zero — the clamp gets its own test, separately.
+  const total = 90;
+  const start0 = LOCK_UNITS;
+  const end0 = total - CATCH_UNITS;
+  const span0 = deadZoneSpan(total);
+  assert.equal(span0.end, end0, 'the catch window at the bottom never moves');
+  assert.ok(Math.abs(span0.start - (start0 - (end0 - start0) / 3)) < 1e-9,
+    'a third longer at no loft at all, all of it pulled off the start');
+
+  const span1 = deadZoneSpan(total, 1);
+  const want1 = (4 / 3) * (LOB_TIME_MULT / LOB_MIN_TIME_MULT);
+  assert.equal(span1.end, end0, 'the catch window still never moves, at any loft');
+  assert.ok(
+    Math.abs((span1.end - span1.start) - want1 * (end0 - start0)) < 1e-9,
+    'at full loft, the same ratio the hang time itself stretches by',
+  );
+  assert.ok((span1.end - span1.start) > (span0.end - span0.start), 'wider still than at no loft');
+
+  // Proven against a real lob's own lobCatchable, at the same boundaries.
+  const lob = { from: { x: 100, y: 0 }, to: { x: 100, y: total }, substeps: 60, elapsed: 0 };
+  const catchableAt = (units) => { lob.elapsed = (units / total) * lob.substeps; return lobCatchable(lob); };
+  assert.equal(catchableAt(span0.start - 1), true);
+  assert.equal(catchableAt(span0.start + 1), false);
+  assert.equal(catchableAt(span0.end - 1), false);
+  assert.equal(catchableAt(span0.end + 1), true);
+});
+
+test('deadZoneSpan clamps the widened start at the hand, never past it', () => {
+  // A throw long enough that full loft's widening would unclamped pull the
+  // start behind the passer's own hand (negative distance).
+  const total = 100;
+  const span = deadZoneSpan(total, 1);
+  assert.equal(span.start, 0);
 });
 
 test('a planned lob starts at the hand, lands inside the circle, and knows how long it hangs', () => {
@@ -70,6 +116,7 @@ test('a planned lob starts at the hand, lands inside the circle, and knows how l
   assert.equal(lob.elapsed, 0);
   assert.ok(dist(lob.to, aim) <= scatterRadius(PASS_REACH_MAX) + 1e-9);
   assert.equal(lob.substeps, lobSubsteps(dist(lob.from, lob.to)));
+  assert.equal(lob.loft, 0, 'and the loft it was thrown with, so deadZone can widen by the same amount later');
   assert.deepEqual(lob.aim, aim, 'the raw aim rides along too, not just where it landed');
   assert.equal(lob.radius, scatterRadius(dist(from, aim)), 'and the guess it was thrown into');
   const same = planLob(from, aim, mulberry32(3));
@@ -100,15 +147,16 @@ test('stepLob advances the flight one sub-step', () => {
   assert.ok(Math.abs(p.y - PASS_REACH_MAX / 60) < 1e-9);
 });
 
-test('a lob is live for its first fifteen yards, dead over the middle, live again as it comes down', () => {
+test('a lob is live out of the hand, dead over the middle, live again as it comes down', () => {
   const lob = bomb();
   const total = PASS_REACH_MAX;
+  const { start, end } = deadZoneSpan(total);
   const at = (units) => { lob.elapsed = (units / total) * lob.substeps; return lobCatchable(lob); };
   assert.equal(at(0), true, 'out of the hand');
-  assert.equal(at(LOCK_UNITS - 1), true, 'still inside the lock zone');
-  assert.equal(at(LOCK_UNITS + 1), false, 'up over everyone');
-  assert.equal(at(total - CATCH_UNITS - 1), false, 'still up there');
-  assert.equal(at(total - CATCH_UNITS + 1), true, 'come down into the catch window');
+  assert.equal(at(start - 1), true, 'still inside the lock zone');
+  assert.equal(at(start + 1), false, 'up over everyone');
+  assert.equal(at(end - 1), false, 'still up there');
+  assert.equal(at(end + 1), true, 'come down into the catch window');
   assert.equal(at(total), true, 'and on the ground');
 });
 
@@ -130,14 +178,15 @@ test('a lob too short to have a dead zone is catchable the whole way', () => {
 test('the ball swells to its biggest at the top of the arc and comes back to size', () => {
   const lob = bomb();
   const total = PASS_REACH_MAX;
+  const { start, end } = deadZoneSpan(total);
   lob.elapsed = 0;
   assert.equal(lobBallScale(lob), 1, 'normal size in the hand');
   lob.elapsed = lob.substeps;
   assert.equal(lobBallScale(lob), 1, 'and normal size on the ground');
-  const mid = (LOCK_UNITS + (total - CATCH_UNITS)) / 2;
+  const mid = (start + end) / 2;
   lob.elapsed = (mid / total) * lob.substeps;
   assert.ok(Math.abs(lobBallScale(lob) - LOB_BALL_SCALE) < 1e-9, 'biggest at the apex');
-  lob.elapsed = ((LOCK_UNITS + mid) / 2 / total) * lob.substeps;
+  lob.elapsed = ((start + mid) / 2 / total) * lob.substeps;
   const rising = lobBallScale(lob);
   assert.ok(rising > 1 && rising < LOB_BALL_SCALE, 'and on the way up, in between');
 });

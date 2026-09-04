@@ -51,6 +51,12 @@ stands. Past twenty seconds the seat is given up and the opponent is told.
 
 ## Training the learned AI
 
+The Coaches Menu sections these tools live in — **Coaching log** and
+**In-browser training** — are hidden by default; they're for whoever is
+building the game, not whoever is playing it. Open the browser console and
+run `DEBUG = true` to reveal them (a boot-time console message says the
+same); reload the page, or run `DEBUG = false`, to hide them again.
+
 The two learned levels — `Defense: computer (learned)` and
 `Offense: computer (learned)` — play trained genomes shipped in
 `lib/game/learned/defense-genome.js` and `offense-genome.js`. To retrain
@@ -78,6 +84,20 @@ shipped "learned offense vs. trained-adaptive learned defense" matchup.
 `defense-genome.js` is generated — retrain it with `train:defense` rather
 than hand-editing it.
 
+`train:defense` no longer scores against the scripted run option alone. It
+deals one of three offenses per down: a recorded human run
+(`coaching-logs/default-offense.json`), a recorded human pass
+(`coaching-logs/default-offense2.json`), and a written play-action fake. The
+first two are real coaching, exported from the Coaches Menu and committed so
+that a genome trained this way can be rebuilt from a clean checkout; the third
+is written because no recorded down sells one play and throws another, and a
+defense that only ever sees straight runs and straight dropbacks is not
+practising against the one situation a fake creates.
+
+A log named `coaching-logs/default-*.json` is part of that corpus and is
+committed; every other export the Coaches Menu drops in that folder is
+ignored, and stays yours.
+
 To train the defense against a ghost of **you** — the coach the game has
 actually been recording:
 
@@ -94,11 +114,12 @@ half its scenarios from the down-and-distances you actually played. Pass
 `--side offense` to train the computer's offense against a ghost of your
 defense instead. **Forget my tendencies** in the same menu clears the record.
 
-Training is a seeded evolutionary search over each side's ~30 parameters
-(starting spots, play-calling, coverage scheme and matchups, routes and
-reads), simulating whole plays headlessly through the same engine the
-browser runs. It is fully deterministic for a seed and writes the champions
-back into the genome modules, which are committed like any other source.
+Training is a seeded evolutionary search over each side's several dozen
+parameters (starting spots, play-calling, coverage scheme and matchups,
+routes and throws), simulating whole plays headlessly through the same
+engine the browser runs. It is fully deterministic for a seed and writes the
+champions back into the genome modules, which are committed like any other
+source.
 
 ## Contributing a trained genome
 
@@ -205,35 +226,57 @@ because the computer does not decide until you press **Run Turn**. The
 Either computer breaks a defender down into the tackling stance once he is
 within range to make the hit.
 
-- **Four buttons run down the right-hand margin of the field**, clear of the
-  yard numbers. The middle one opens the menu; the three either side are
-  shortcuts to buttons already in it, not extra features — each calls exactly
-  what its twin in the menu calls, so the two can never say different things.
-  - 📋 **Coaches Menu**, in the middle, where the vertical `COACHES MENU`
-    legend used to be spelled down the sideline. Press Esc, click outside the
-    menu, or press **Close** to dismiss it. Every button in it closes the menu
-    as it acts, so you can watch the board.
-  - 🔀 **above** it is **Reposition** (see below). It shows green and
-    pressed-in while the mode is on, and is only there while you are setting
-    up: it disappears at the snap, which is also your cue that the play has
-    started.
-  - 🎁 **below** it is **Autoplan** — one press draws up a whole play for the
-    side you are coaching, using the same trained brain the computer plays:
-    the learned offense's run/pass call, option read, routes and throws when
-    the offense is yours, and the learned defense's man/zone call, coverage
-    matchups and rush when you have taken the defense. It plans from wherever
-    your men are actually standing — where they line up is still your call —
-    and everything it draws is an ordinary order you can redraw, so it is a
-    starting point and not a decision. Press it again on a later turn and it
-    reads the board again. If you have trained a genome in this browser
-    (**Train against your ghost**), that is the brain it draws with.
-  - ⏩ **below that** is **Run Turn** — the same warning if someone has no
-    direction set, and the same second press to run anyway. It greys out rather
-    than vanishing when there is no turn to run, so it never moves.
+- **The controls are ordinary buttons now, off the field.** They used to be
+  plates drawn into the board in field units, which welded their size to the
+  board's scale — on a phone a plate came out about 12.5 pixels against the 44
+  a thumb needs, and the mis-taps that produced are why they moved. None of
+  them is an extra feature: every one is a shortcut to a button already in the
+  Coaches Menu, and each calls exactly what its twin in the menu calls, so the
+  two can never say different things.
+  - **On a wide screen** they are two columns down the right-hand margin, clear
+    of the playing surface and of the yard numbers — the board gives up the
+    strip they stand in rather than letterboxing under them. The first column
+    is the six game controls, top to bottom: 🤖 **Defense**, 👥 **Personnel**, 🔀
+    **Reposition**, 📋 **Coaches Menu**, 🎁 **Autoplan** and ⏩ **Run Turn**. The
+    second column is the playbook: 💾 **Save current play**, then 1️⃣ to 5️⃣ for
+    the five slots of the side you are coaching.
+  - **On a phone** they are one row across the bottom, in the thumb zone: the
+    same six game controls, and a 📓 that opens the playbook as a sheet above
+    the bar. The playbook sits behind that toggle rather than out on the bar
+    because calling a play replaces your whole formation with no undo, and that
+    is not a thing to leave where a thumb rests. The sheet closes on the toggle
+    again or on Esc. The board gives up the bar's height rather than let it
+    cover the field: the bottom of the window is behind the offense at the
+    snap, which is exactly where you are dragging.
+  - 📋 **Coaches Menu**, where the vertical `COACHES MENU` legend used to be
+    spelled down the sideline. Press Esc, click outside the menu, or press
+    **Close** to dismiss it. Every button in it closes the menu as it acts, so
+    you can watch the board.
+  - 🔀 **Reposition** (see below). It shows green and pressed-in while the mode
+    is on, and is only there while you are setting up: it disappears at the
+    snap, which is also your cue that the play has started. It is the only one
+    that goes rather than greying — everything else stays where it is, so no
+    button you are reaching for ever moves under your hand.
+  - 🎁 **Autoplan** — one press draws up a whole play for the side you are
+    coaching, using the same trained brain the computer plays: the learned
+    offense's run/pass call, option read, routes and throws when the offense is
+    yours, and the learned defense's man/zone call, coverage matchups and rush
+    when you have taken the defense. It plans from wherever your men are
+    actually standing — where they line up is still your call — and everything
+    it draws is an ordinary order you can redraw, so it is a starting point and
+    not a decision. Press it again on a later turn and it reads the board
+    again. If you have trained a genome in this browser (**Train against your
+    ghost**), that is the brain it draws with.
+  - ⏩ **Run Turn** — the same warning if someone has no direction set, and the
+    same second press to run anyway. It greys out rather than vanishing when
+    there is no turn to run, so it never moves.
 
-  All four are ordinary buttons to a keyboard: tab to one and press Enter or
-  Space. The clipboard is the first tab stop on the page, which matters because
-  everything the menu holds is out of the tab order until it is open.
+  All of them are ordinary buttons to a keyboard: tab to one and press Enter or
+  Space. With a game up they are the first tab stops on the page — 🤖
+  **Defense** on a wide screen, the 📓 toggle on a phone, which leads the bar
+  there — and that matters because everything the Coaches Menu holds is out of
+  the tab order until it is open. A greyed one is genuinely inert: it takes
+  neither a tap nor the keyboard's focus, rather than quietly swallowing both.
 - Nearly all the controls live in the **Coaches Menu**. The play's status — the
   warning about unplanned players, `TOUCHDOWN!`, `FUMBLE!` — is drawn on the
   field itself, in the end zone, so it stays readable with the menu shut.
@@ -315,7 +358,7 @@ within range to make the hit.
   a defender gets within reach of the ball carrier. If any player doesn't have
   an arrow set yet, you'll get a warning naming how many; press **Run Turn**
   again to run the turn anyway.
-- **Reposition** — the 🔀 button on the board, or **Reposition** in the Coaches
+- **Reposition** — the 🔀 button in the controls, or **Reposition** in the Coaches
   Menu — switches between drawing arrows and moving players around before the
   snap. With it on, dragging one of your
   players *moves* him rather than ordering him about — no arrows, no cover

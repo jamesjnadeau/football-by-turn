@@ -16,6 +16,9 @@ import { createNet, bindWhileOpen } from './net.js';
 
 const home = document.getElementById('home');
 const board = document.getElementById('board');
+// The control bar is DOM beside the board (app/controls.js), so it is shown
+// and hidden with it: a lobby or end screen has no turn to run.
+const controls = document.getElementById('controls');
 
 function show(el, visible) {
   el.toggleAttribute('hidden', !visible);
@@ -125,6 +128,7 @@ async function enterMatch(variant, match, onExit, { resuming = false } = {}) {
     // No board yet: the rejoin screen holds the section until the first
     // snapshot, and Give up is the way out of a server that never answers.
     show(board, false);
+    show(controls, false);
     show(home, true);
     home.innerHTML = rejoinMarkup({ variant, side: match.side });
     home.addEventListener('click', function onGiveUp(e) {
@@ -135,6 +139,7 @@ async function enterMatch(variant, match, onExit, { resuming = false } = {}) {
   } else {
     show(home, false);
     show(board, true);
+    show(controls, true);
   }
 
   const stop = () => {
@@ -178,6 +183,7 @@ async function enterMatch(variant, match, onExit, { resuming = false } = {}) {
         dealt = true;
         show(home, false);
         show(board, true);
+        show(controls, true);
       }
     } else if (msg.type === 'start') {
       dealt = true;
@@ -247,6 +253,7 @@ export function resumeSavedMatch({ onExit = () => {} } = {}) {
  */
 function showMatchOver(variant, side, result, { leave, again }) {
   show(board, false);
+  show(controls, false);
   show(home, true);
   home.innerHTML = matchOverMarkup({ variant, side, result });
   home.addEventListener('click', function onEndClick(e) {
@@ -269,6 +276,7 @@ function showMatchOver(variant, side, result, { leave, again }) {
  */
 function showSidePicker(variant, onExit) {
   show(board, false);
+  show(controls, false);
   show(home, true);
   home.innerHTML = sideMarkup(variant, MULTIPLAYER_SIDES);
   home.addEventListener('click', function onSideClick(e) {

@@ -62,15 +62,8 @@ test('the spec inits reproduce the roster alignment', () => {
 test('the shipped genome loads, matches the variant, and is already clamped', () => {
   assert.equal(DEFENSE_GENOME.meta.variant, DEFENSE_VARIANT);
   const g = clampGenome(DEFENSE_SPEC, DEFENSE_GENOME.values);
-  const specKeys = new Set(DEFENSE_SPEC.map((p) => p.key));
-  // Every number the file carries for a key the spec still names comes back
-  // untouched. read:ballAir is the one key this file carries that the spec no
-  // longer names -- clampGenome drops it, by the same discipline documented
-  // above for a key a genome predates -- so it is excluded here rather than
-  // asserted equal to a value nothing reads any more.
-  for (const [k, v] of Object.entries(DEFENSE_GENOME.values)) {
-    if (specKeys.has(k)) assert.equal(g[k], v, k);
-  }
+  // Every number the file carries comes back untouched...
+  for (const [k, v] of Object.entries(DEFENSE_GENOME.values)) assert.equal(g[k], v, k);
   // ...and a key added after that genome was trained comes back at its init,
   // which is the whole reason a genome trained before the defense could adapt
   // still plays the formation it was trained to play.
@@ -101,4 +94,3 @@ test('the sub-package newcomers start on their own roster spots', () => {
   assert.equal(g['pos:d-cb3:across'], 2.5);
   assert.equal(g['pos:d-cb3:down'], 2);
 });
-

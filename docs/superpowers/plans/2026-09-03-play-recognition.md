@@ -1,6 +1,44 @@
 # Play Recognition Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **OUTCOME: this plan was executed. The read it builds was measured and
+> removed. Everything below is history — do not implement from it.**
+>
+> Every task in this document was carried out task-by-task, checkbox by
+> checkbox, exactly as written. The result was a fallible run/pass read built
+> on nine `read:*` genome keys, and it did not work: seven attempts across
+> three model shapes and six retrains could not make it tell a run from a
+> pass better than chance. It was measured, found to fail, and removed —
+> the accumulator, its cues, the genome keys, the coverage shade it drove,
+> and the read-accuracy fitness term. See
+> `docs/superpowers/specs/2026-09-03-play-recognition-design.md` for the
+> full account of why the read failed.
+>
+> **What survived** — the infrastructure the read was built on, kept because
+> it independently measured better than what it replaced:
+>
+> - The percept itself, `state.playRead`, holding the frozen snap look and
+>   the call the defense committed to.
+> - The scheme freeze — the defense decides man/zone once at the snap
+>   instead of re-deciding it every turn off a picture that has moved.
+> - The assignment hold — coverage assignments are held for the down
+>   instead of being re-claimed greedily every turn.
+> - The three-arm training distribution — recorded human runs, recorded
+>   human passes, and a scripted play-action fake — replacing an offense
+>   that never threw a forward pass.
+> - The ghost's base-variant relaxation, widening `train:vs-ghost` from 3
+>   of 20 recorded passing downs to all 20.
+> - The harness correctness fixes uncovered along the way.
+>
+> Every step below still reads as an unchecked `- [ ]` box and every
+> instruction below — including the one immediately following this banner —
+> describes building the run/pass read that was already built, measured, and
+> removed. Do not run this plan. It is kept as the record of what was tried
+> and why.
+>
+> ~~**For agentic workers:** REQUIRED SUB-SKILL: Use
+> superpowers:subagent-driven-development (recommended) or
+> superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.~~
 
 **Goal:** Give the computer one object per down — the look it snapped against, a fallible run/pass read, and the call it committed to — and let the learned defense act on that read, including when the read is wrong.
 

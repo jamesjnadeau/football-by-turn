@@ -1,5 +1,50 @@
 # The defense reads the play
 
+> **OUTCOME: the read was built, measured, and removed. The infrastructure it
+> was built on was kept.**
+>
+> Seven attempts across three model shapes and six retrains could not make the
+> read tell a run from a pass. The decisive test was hand-building the optimal
+> classifier the measured data implied, rather than trusting training to find
+> it: it scored **46.5% accuracy — worse than chance**, against the trained
+> genome's 49.7%. That is a signal failure, not a search failure. No training
+> schedule, model shape, intercept or fitness weighting recovers information a
+> cue does not carry.
+>
+> The aggregate means separated 5:1 — a covered man moves downfield 2.70 units/s
+> on a run against 14.18 on a pass — but the per-turn distributions overlap
+> almost entirely. Comparing means without checking overlap is the mistake that
+> cost most of this work.
+>
+> In football terms: in this engine, against this training data, a pre-throw run
+> and a pre-throw pass look alike. The recorded coach sends his receivers
+> downfield on runs too, and the arms differ in what the quarterback does with
+> the ball rather than in how the covered men move. The information does not
+> exist in a covered man's motion until the ball is already gone.
+>
+> **What was kept** — all of it independently reviewed and measurably better than
+> what it replaced:
+>
+> - `state.playRead`, holding the frozen snap look and the call the defense
+>   committed to. The scheme is decided once at the snap instead of re-decided
+>   every turn off a picture that has moved, so the mid-down man/zone flip is
+>   gone; and coverage assignments are held for the down instead of re-claimed
+>   greedily every turn, so defenders no longer hand men off silently.
+> - The three-arm training distribution — recorded human runs, recorded human
+>   passes, and a scripted play-action fake — replacing an offense that never
+>   threw a forward pass.
+> - The ghost's base-variant relaxation, which took `train:vs-ghost` from 3 of
+>   the 20 recorded passing downs to all 20.
+> - Three harness correctness fixes: the candidate genome never reached the
+>   engine, the read was scored a turn stale, and the scheme was claimed off a
+>   post-snap picture.
+>
+> **What was removed**: the accumulator, its cues, its genome keys, the coverage
+> shade it drove, and the read-accuracy term added to try to train it.
+>
+> Everything below is the design as it stood, kept as the record of what was
+> tried and why. Read it as history, not as a description of the code.
+
 ## Motivation
 
 The computer does not know what a down is. It knows what a turn is.
@@ -36,16 +81,43 @@ on that read, including when the read is wrong.
 
 ## Why the parameters start at zero
 
-Every parameter this design adds inits to `0`, except `read:commit`, which inits
-at its maximum. At those values the accumulator is identically zero, confidence
-is zero, `committed` is never true, and the defense plays **byte for byte** the
-defense it plays today.
+Every parameter this design adds inits to `0`, `read:commit` included. At those
+values the accumulator is identically zero, confidence is zero, `committed` is
+never true, and the defense plays **byte for byte** the defense it plays today.
 
-This is the codebase's own idiom, not a new one. `clampGenome` fills keys a
-genome file does not carry from their spec `init` and drops keys the spec does
-not name, so the shipped `defense-genome.js` stays valid the day this lands —
-exactly as it did for `adapt:*`. Training is a walk away from a known-good
-posture, not from noise.
+**`read:commit` must init at its minimum, not its maximum, and the reason is
+worth stating because the opposite is the intuitive choice and it is a trap.**
+What makes the read inert is the zero *weights*: `z` is identically `0` at init
+whatever the threshold is, so `|0| > 0` is false exactly as surely as `|0| > 8`.
+A maximum init buys no extra safety — and it costs the feature its trainability.
+From a threshold the accumulator cannot reach, the read never commits, so the
+trigger never fires, so no `read:*` weight can change any outcome, so evolution
+has no gradient by which to lower the threshold. It is a local optimum the search
+cannot escape, and it is not hypothetical: a full retrain from a max init
+reproduced its starting genome byte for byte, with a threshold of 6.477 against a
+maximum achievable `|z|` of 5.62.
+
+Start permissive and let selection add caution.
+
+This is the codebase's own idiom, not a new one, and `adapt:*` did it first.
+Training is a walk away from a known-good posture, not from noise.
+
+**How the shipped genome stays valid is worth stating precisely, because the
+obvious answer is wrong.** `clampGenome` does fill missing keys from their spec
+`init` — but the callers that use it are all on the formation path (`formation.js:224`,
+`formation.js:490`, `learned/formation.js:54`), and none is on the one that
+matters here:
+`turn.js` and `ai.js:118` both hand `activeGenome(...)` to the policy **raw**. A
+shipped genome missing a key its policy dereferences yields `undefined`, and
+`undefined + undefined * x` is `NaN` for the whole game.
+
+What actually holds the line is an invariant this repository already asserts as
+a test — `test/game/learned/active.test.js:16`, *"the shipped genome holds every
+key its spec names"*. So adding a key to `DEFENSE_SPEC` obliges you to add it to
+`lib/game/learned/defense-genome.js` at its spec init in the same change. That
+file's header forbids hand-editing in favour of retraining, and this is the
+narrow exception the invariant creates: a mechanical key addition at init values,
+with every trained float preserved, is not a hand-tuned genome.
 
 The cost is stated plainly in **Training** below: the retrain is part of this
 work, not a follow-up, because without it the feature is invisible.
@@ -151,70 +223,94 @@ slides zone anchors by recorded tendency. A learned side read would double the
 genome surface to re-derive what the rule layer does well. Run-versus-pass is
 the axis nothing in the codebase currently answers.
 
-## The read
+## The read is per defender, and his key is his own man
 
-One signed accumulator and two derived numbers. Positive is pass.
+One belief for the whole defense was the original design and it failed four
+times, for four different-looking reasons that were all the same reason: a
+single scalar built from team aggregates is too weak to act on, and acting on it
+displaces the whole second level at once, so being wrong is expensive enough
+that training switches the mechanic off. Measured, the global read scored
+**28.1% correct** over a thousand post-snap turns — worse than a coin flip, and
+anti-correlated on runs.
+
+**Each covering defender now reads his own man.** That is how the position is
+coached, and it fixes both halves of the failure: the signal is far stronger,
+and a wrong read costs one man being out of position rather than a unit being
+displaced.
 
 ```
-z₀ = read:prior + read:spread·look.spread + read:backs·look.backs
-zₜ = read:inertia·zₜ₋₁ + Σ read:<cue>·cueₜ
-
-read = { pass: z, confidence: tanh(|z|), committed: |z| > read:commit }
+state.playRead.reads = { [defenderId]: { pass, confidence, committed } }
 ```
 
-`tanh` bounds confidence into `[0,1)` with no extra parameter to tune.
-`read:inertia` in `[0,1]` is what makes the defense fallible in a way it can
-learn out of: at 1 it never forgets and stays wrong for turns, at 0 it is
-jumpy and never commits to anything.
+A defender gets a read only if he has been given somebody to cover. The rushing
+line, the deep free man, and every defender in a zone scheme have no man to read
+and therefore no read.
 
-Fallibility is deterministic. Nothing here rolls a die; the defense is fooled
-because the evidence in front of it genuinely says the wrong thing for a turn,
-which is both honest football and a property the training harness requires.
+### The cues, both measured off his own man
 
-### The cues
+Both are independent of where the defender himself stands — a cue that moved
+when he moved would be reading his own position, not the offense.
 
-All three are physical, all three are read at the top of turn `t ≥ 1`, off the
-result of turn `t-1`'s physics.
+- **`downfield`** — his man's velocity along the field, over that man's own
+  mode-free top speed. Measured across 300 downs: **2.70 units/s on a run
+  against 14.18 on a pass.** A man who is not getting downfield is not running a
+  route. That the cover map puts somebody on the back is what makes this work:
+  covering a man means his job tells you the play.
+- **`lateral`** — the absolute sideways component of the same velocity, over the
+  same speed. It separates the fake from a real pass (`d = 0.79`), which
+  downfield velocity alone does not.
 
-Every cue is normalized into roughly `[-1, 1]` before its weight is applied, so
-that one `−4…4` range serves all three and a genome cannot be handed a raw yard
-count large enough to swamp the accumulator on its own.
+```
+z_d(t) = read:man:bias
+       + read:man:inertia · z_d(t-1)
+       + read:man:downfield · downfield_d
+       + read:man:lateral   · lateral_d
 
-- **`qbDepth`** — the quarterback's depth behind the line in yards, signed by
-  `defendDir` so that dropping back is positive, divided by a full drop's depth
-  and clamped. The loudest pass key in football, and it separates cleanly here:
-  a real drop is `setPlan(qb, {x:0,y:-1}, genome['qb:drop'])`, while the option's
-  fake boots him *forward* at `OPTION_FAKE_FORWARD`.
-- **`lineFlow`** — the offensive line's mean velocity component downfield, over
-  a lineman's own `maxSpeed`, and negated so that driving downfield reads as a
-  run. Run blocking drives; pass protection sets and holds. Velocity, never the
-  plan.
-- **`ballAir`** — `1` when `state.ball.carrierId === null`, `0` otherwise.
-  Usefully *not* conclusive: `planLearnedRun`'s give is a `setPass` from the
-  centre to the back, so a direct snap looks like a throw for exactly one turn.
-  That is the mesh point, and it falls out for free rather than being modelled.
+reads[d] = { pass: z_d, confidence: tanh(|z_d|), committed: |z_d| > read:man:commit }
+```
 
-Turn 0 has no cues, because nothing has moved yet. The read at the snap is the
-prior and the look, which is the order a defense actually gets its information
-in.
+There are no cues at the snap: nothing has moved, and the cover assignments are
+not made until `learnedOrders` first runs. Every read starts at zero and first
+advances on turn 1.
+
+**`read:man:bias` is not decoration, it is what makes the read a classifier at
+all.** `lateral` is an absolute value and so is never negative, and `downfield`
+is positive on nearly every turn. Without an intercept the sign of `z_d` is fixed
+by the weights alone, so the model can answer only one class for every input it
+will ever see — and a read that always says "run" is what six training runs
+produced. The decision boundary has to be able to sit at a non-zero cue value;
+the bias is what puts it there.
+
+### What he does about it
+
+Exactly one thing: he plays his man from leverage. A committed read shades his
+cover order by `read:trigger x confidence` yards — toward the line when the read
+says run, deeper when it says pass — through the `shade` that cover.js already
+carries. **He never leaves his man.** Abandoning coverage is what made the first
+trigger a bad play, measured at nearly twice the yards allowed.
+
+On play-action his man blocks, he shades downhill, and when the man releases he
+is late. That is the mechanic, and it is local: one defender beaten, not a
+defense out of position.
+
 ## New genome keys
 
-Nine, appended to `DEFENSE_SPEC` in `learned/defense-spec.js`.
+Six, appended to `DEFENSE_SPEC` in `learned/defense-spec.js`.
 
 | key | range | init | what it weighs |
 |---|---|---|---|
-| `read:prior` | −4…4 | 0 | belief before any evidence |
-| `read:spread` | −4…4 | 0 | how wide they lined up |
-| `read:backs` | −4…4 | 0 | how many are in the backfield |
-| `read:inertia` | 0…1 | 0 | how much of last turn's belief carries |
-| `read:qbDepth` | −4…4 | 0 | the quarterback's depth |
-| `read:lineFlow` | −4…4 | 0 | the line driving downfield |
-| `read:ballAir` | −4…4 | 0 | the ball loose |
-| `read:commit` | 0…8 | 8 | evidence needed before acting on the read |
-| `read:trigger` | 0…10 | 0 | yards the second level bails on a pass read |
+| `read:man:bias` | -4...4 | 0 | where the decision boundary sits |
+| `read:man:downfield` | -4...4 | 0 | his man getting downfield |
+| `read:man:lateral` | -4...4 | 0 | his man working sideways |
+| `read:man:inertia` | 0...1 | 0 | how much of last turn's belief carries |
+| `read:man:commit` | 0...4 | 0 | evidence needed before he plays leverage |
+| `read:trigger` | 0...10 | 0 | yards of leverage at full confidence |
 
-At these inits `z ≡ 0`, `committed` is never true, `read:trigger` is zero, and
-the defense is unchanged.
+At these inits every `z_d` is identically `0`, so `|0| > 0` is false, nobody
+commits, no shade is applied, and the defense plays byte for byte what it plays
+today. `read:man:commit`'s ceiling is **4**, not 8: a threshold no attainable
+evidence can cross is the trap this design fell into twice, and a tight range is
+the cheapest guard against it.
 
 ## How the defense uses it
 
@@ -249,23 +345,17 @@ is untouched: `applyOrders` still issues through `setCover`, exactly as today.
 
 ### The trigger
 
-Where the read bites. Both halves reuse helpers that already exist.
+A defender whose own read has committed plays his man from leverage: his cover
+order carries a `shade` of `read:trigger x confidence` yards, applied by
+`coverAim`, toward the line on a run read and deeper on a pass read. Nothing
+else changes — no aim is rewritten, no assignment is dropped, and a defender
+without a cover order is never triggered at all.
 
-**Committed to run** — backers, and covering backs who are not the deep free
-man, *drop their coverage* and take an aim at the carrier through
-`leverageAim(p, interceptPoint(p, car), car)`, the same call guard three already
-makes.
-
-This is the whole mechanic. He leaves his man, and on play-action the throw goes
-exactly where he was standing. It needs no new parameter: `read:commit` decides
-how sure he must be, and that is the only question worth learning.
-
-**Committed to pass** — second-level aims that are *not* coverage orders
-(`deepAim`, `flowLinebacker`) move `read:trigger × confidence` yards *away* from
-the line of scrimmage, along `defendDir`. He gives ground rather than filling.
-
-The rushing line and the deep free man are excluded from both. Their jobs do not
-change with the read, and decision 7 keeps them rule-based.
+That is the whole of it, and the narrowness is the point. Two earlier versions
+moved more and were measured worse: dropping coverage cost nearly twice the
+yards, and sliding every second-level aim cost the same at every magnitude
+tested. The rule layer's geometry is good; the read's job is to lean on it, not
+to override it.
 
 ### The read is said out loud
 
@@ -286,6 +376,32 @@ that move are `learned/offense-policy.js` (the write and the read),
 
 The offense does **not** read the defense. Diagnosing coverage and pressure is a
 symmetric feature roughly doubling this one, and it is a non-goal here.
+
+## What the first build got wrong
+
+Three defects survived task-level review and were only visible once the whole
+branch ran. All three are recorded here because each was a design error in this
+document, not a slip in the code that implemented it.
+
+**The trigger was a bad play, so training switched it off.** Abandoning coverage
+on a run read risked a free receiver to gain something guard three already
+provided. Selection raised `read:commit` above the evidence's reach rather than
+use it. Fixed by making the trigger a symmetric slide that never breaks
+coverage — see *The trigger*.
+
+**`ballAir` could never inform an action.** `learnedOrders` returns early on
+`!carrier`, the same condition that made the cue `1`. Removed — see *The cues*.
+
+**`read:commit` inited at its maximum.** What makes an untrained genome inert is
+the zero weights, not the threshold; a maximum init bought nothing and made the
+feature untrainable from its own starting point. Now inits at `0` — see *Why the
+parameters start at zero*.
+
+The common thread: each was a property of the *whole loop* — cue, threshold,
+consumer, and fitness together — and none was visible from any single task's
+diff. A feature whose parts are individually correct can still be collectively
+inert, and the check for that is behavioural, not structural. Hence the
+reachability test named in **Testing**.
 
 ## Training
 
@@ -393,7 +509,7 @@ turn-0 throw, and three of its four throws are power-1 tosses to `o-rb` on turn
 1 — pitches, not dropbacks. It is better than a synthetic option at being the run
 arm (varied looks, hand-drawn arrows, downs running 3 to 17 turns), and those
 pitches are real examples of "the ball is in the air and it is still a run",
-which is exactly the ambiguity `read:ballAir` exists to price.
+which was the ambiguity the since-removed `ballAir` cue was meant to price.
 
 `default-offense2.json` is the **pass arm**. Twenty downs, fifteen of them
 carrying a throw, seven of those to `o-wr1` or `o-wr2` at full power on turns
@@ -464,6 +580,12 @@ A new `test/game/read.test.js` pins the properties the design rests on:
   inertia, and the read is still on run. The mechanic as a scenario.
 - **It runs hot-seat.** `advancePlay` with `aiTeam` null, which is every play the
   harness ever scores.
+- **The shipped genome's read is reachable.** With the committed
+  `defense-genome.js`, some attainable combination of cues on a turn where
+  `learnedOrders` actually consults the read must exceed `read:commit`. This is
+  the invariant whose absence let the feature ship inert, and it belongs with
+  `active.test.js:16`'s "the shipped genome holds every key its spec names" as a
+  property of the shipped artefact rather than of the code.
 - **Scheme and assignments hold** across the turns of one down.
 
 The variant relaxation gets its own coverage in `test/tools/ghost.test.js` (or

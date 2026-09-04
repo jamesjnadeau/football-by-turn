@@ -444,3 +444,29 @@ test('a receiver running flat across in front of the passer is still found', () 
   const { events } = runTurn(s, mulberry32(1));
   assert.ok(events.some((e) => e.type === 'pickup' && e.by === 'o-wr1'), 'he was met, not led past');
 });
+
+/**
+ * The load-bearing line itself: runTurn's own call to advancePlay
+ * (lib/game/turn.js, immediately above coachAi). Every other test in this
+ * suite that touches state.playRead calls advancePlay by hand (see
+ * test/game/read.test.js); this one runs real turns through runTurn instead,
+ * on a learned-defense game, and never calls advancePlay itself. Delete that
+ * line and state.playRead is never built on this path: percept() in
+ * defense-policy.js falls back to a fresh stand-in every turn instead of the
+ * state's own percept, so committedScheme decides the scheme over again off
+ * a picture that has moved -- the exact mid-down man/zone flip this branch
+ * exists to remove.
+ */
+test('a real learned-defense game commits its scheme through runTurn, not by hand', () => {
+  const s = createGame({ seed: 7, ai: 'defense', aiLevel: 'learned' });
+  const random = mulberry32(7);
+  setPlan(s, 'o-qb', { x: 0, y: 1 }, 1); // give the offense something to do
+  runTurn(s, random);
+  assert.ok(s.playRead, 'the real turn built the percept');
+  const scheme = s.playRead.call.defense?.scheme;
+  assert.ok(scheme === 'man' || scheme === 'zone', 'the defense committed to a scheme on turn one');
+  assert.equal(s.phase, 'planning', 'the down is still live for a second turn');
+  runTurn(s, random);
+  assert.equal(s.playRead.call.defense.scheme, scheme,
+    'the same scheme holds a turn later -- a down does not flip man/zone mid-play');
+});

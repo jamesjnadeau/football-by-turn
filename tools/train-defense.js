@@ -1,13 +1,14 @@
 /**
- * Train the defense genome against the scripted offense and write the result
- * into lib/game/learned/defense-genome.js, where the game imports it.
+ * Train the defense genome against a dealt offense — recorded human runs,
+ * recorded human passes, and a written play-action fake — and write the
+ * result into lib/game/learned/defense-genome.js, where the game imports it.
  *
  * Usage:
  *   node tools/train-defense.js --generations 30 --pop 16 --plays 24 --seed 1
  *
- * The opponent here is offense.js's scripted autoplan — a bootstrap, not the
- * end state. tools/train-coevolve.js retrains this genome against the LEARNED
- * offense, population against population; keep using that.
+ * The opponent here is a bootstrap, not the end state: tools/train-coevolve.js
+ * retrains this genome against the LEARNED offense, population against
+ * population; keep using that.
  *
  * The fitness function moved to lib/game/train/fitness.js with the rest of the
  * training core (the browser trains too); it is re-exported here so that every
@@ -19,12 +20,28 @@ import { DEFENSE_SPEC } from '../lib/game/learned/defense-spec.js';
 import { DEFENSE_GENOME } from '../lib/game/learned/defense-genome.js';
 import { genomeModuleSource } from '../lib/game/learned/genome.js';
 import { evolve } from '../lib/game/train/evolve.js';
-import { evaluateDefense } from '../lib/game/train/harness.js';
+import { evaluateDefense, dealtOffenseCoach } from '../lib/game/train/harness.js';
+import { mulberry32 } from '../lib/game/rng.js';
+import { loadGhostLog } from './ghost.js';
 import {
   defenseFitness, TURNOVER_BONUS_YARDS, TOUCHDOWN_PENALTY_YARDS,
 } from '../lib/game/train/fitness.js';
 
 export { defenseFitness, TURNOVER_BONUS_YARDS, TOUCHDOWN_PENALTY_YARDS };
+
+/**
+ * The recorded football this genome is scored against. Committed to the
+ * repository (see coaching-logs/ and .gitignore) so that a genome trained here
+ * can be rebuilt from a clean checkout rather than from a log only one
+ * contributor happens to have.
+ */
+const RUN_LOG = new URL('../coaching-logs/default-offense.json', import.meta.url);
+const PASS_LOG = new URL('../coaching-logs/default-offense2.json', import.meta.url);
+// Read and parsed once, not once per candidate per generation: the fitness
+// lambda below runs hundreds of times a training run and the JSON underneath
+// these two logs does not change between calls.
+const RUN_LOG_DATA = loadGhostLog(RUN_LOG);
+const PASS_LOG_DATA = loadGhostLog(PASS_LOG);
 
 export function trainDefense({ generations, popSize, plays, seed, sigma }) {
   return evolve({
@@ -35,9 +52,20 @@ export function trainDefense({ generations, popSize, plays, seed, sigma }) {
     sigma,
     seed,
     // Common random numbers: every candidate in generation g sees the same
-    // downs and the same dice, so their scores actually compare.
-    fitness: (genome, gen) =>
-      defenseFitness(evaluateDefense(genome, { plays, seed: seed * 1000003 + gen })),
+    // downs, the same dice and the same dealt offense, so their scores
+    // actually compare.
+    fitness: (genome, gen) => {
+      const seedForGen = seed * 1000003 + gen;
+      return defenseFitness(evaluateDefense(genome, {
+        plays,
+        seed: seedForGen,
+        offenseCoach: dealtOffenseCoach({
+          runLog: RUN_LOG_DATA,
+          passLog: PASS_LOG_DATA,
+          rand: mulberry32(seedForGen),
+        }),
+      }));
+    },
     onGeneration: (gen, scored) =>
       console.log(`gen ${gen}: champion ${scored[0].score.toFixed(3)}`),
   });
@@ -58,7 +86,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     seed: arg('seed', 1),
     sigma: arg('sigma', 0.08),
   };
-  console.log('training defense vs the scripted offense:', opts);
+  console.log('training defense vs recorded runs, recorded passes and a fake:', opts);
   const { best, score } = trainDefense(opts);
   console.log(`champion fitness ${score.toFixed(3)} — writing defense-genome.js`);
   writeFileSync(
@@ -66,7 +94,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     genomeModuleSource('DEFENSE_GENOME', best, {
       variant: '7',
       trainedBy: 'tools/train-defense.js',
-      opponent: 'scripted autoplanOffense',
+      opponent: 'dealt: default-offense.json, default-offense2.json, play-action',
       options: opts,
       fitness: score,
     }),

@@ -10,10 +10,10 @@ import { clearAiPlans, AI_MODES, aiModeIndex, nextAiMode, defaultModeForSide } f
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
-  renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLooseBall, looseBallMark,
-  planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
+  renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLoftHandle, renderLooseBall,
+  looseBallMark, planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
   lineZoneMark, passLandingMark, passLockMark, cameraViewBox, liveLobMark,
-  passFlightMark, passShadowMark,
+  passFlightMark, passShadowMark, loftHandlePoint,
 } from '../lib/game/render.js';
 import { classifyGesture } from '../lib/game/gesture.js';
 import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '../lib/game/hud.js';
@@ -267,6 +267,15 @@ function paintArrows() {
       : ''
     ),
   );
+  // The loft handle goes in `game-overlay`, the topmost layer, so a receiver
+  // standing over it can never hide the one thing on the board the coach
+  // still has to be able to grab. Safe to clear and rewrite here: animate()
+  // is the only other writer, and paintArrows() never runs while it is live
+  // (onLoftDragPreview guards on `animating`, and paint()'s other callers all
+  // run outside the animation loop too).
+  layer('game-overlay').clear().svg(
+    !repositioning && state.phase === 'planning' ? renderLoftHandle(state) : '',
+  );
 }
 
 function paint() {
@@ -407,13 +416,13 @@ function pressMenu() {
 }
 
 /**
- * Where the loft handle is: the same short, cosmetically-capped tip the
- * arrow itself draws to (passArrowTip in render.js) — not the real landing
- * spot, which the flight path and landing circle already mark (spec decision
- * 2). Checked only when no player answers hitTest first, and only for a
- * throw that is still live, unlocked, still the passer's own, and long
- * enough to lob at all — the same four gates renderPassArrow's own new marks
- * check before drawing anything.
+ * Where the loft handle is: the near edge of the dead zone at this throw's
+ * current loft (render.js's loftHandlePoint) — not the real landing spot,
+ * which the flight path and landing circle already mark (spec decision 2).
+ * Checked only when no player answers hitTest first, and only for a throw
+ * that is still live, unlocked, still the passer's own, and long enough to
+ * lob at all — the same four gates renderPassArrow's own new marks check
+ * before drawing anything.
  */
 function loftHandleHit(p) {
   const pp = state.plannedPass;
@@ -422,8 +431,8 @@ function loftHandleHit(p) {
   if (!isControllable(state, pp.from)) return null;
   if (!isLob(passReach(pp.power))) return null;
   const passer = getPlayer(state, pp.from);
-  const tip = passArrowTip(passer.pos, pp.dir, pp.power);
-  return Math.hypot(tip.x - p.x, tip.y - p.y) <= LOFT_HANDLE_RADIUS_UNITS ? { loft: pp.from } : null;
+  const point = loftHandlePoint(passOrigin(passer, pp.dir), passAim(passer, pp.dir, pp.power), pp.loft ?? 0);
+  return Math.hypot(point.x - p.x, point.y - p.y) <= LOFT_HANDLE_RADIUS_UNITS ? { loft: pp.from } : null;
 }
 
 function hitTest(p) {

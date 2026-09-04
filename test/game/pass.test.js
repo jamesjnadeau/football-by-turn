@@ -408,10 +408,10 @@ test('a throw drag that ends on the passer himself is a cancel', () => {
 test('loftFromDrag reads loft straight off this grab\'s own displacement', () => {
   const pp = { dir: { x: 0, y: 1 } };
   assert.equal(loftFromDrag(pp, { x: 0, y: 0 }), 0, 'no travel, no loft');
-  assert.equal(loftFromDrag(pp, { x: 0, y: LOFT_DRAG_UNITS }), 1, 'the whole span, away from the passer');
-  assert.ok(Math.abs(loftFromDrag(pp, { x: 0, y: LOFT_DRAG_UNITS / 2 }) - 0.5) < 1e-9, 'halfway is half');
-  assert.equal(loftFromDrag(pp, { x: 0, y: LOFT_DRAG_UNITS * 3 }), 1, 'clamped at the top');
-  assert.equal(loftFromDrag(pp, { x: 0, y: -5 }), 0, 'toward the passer floors at zero, never negative');
+  assert.equal(loftFromDrag(pp, { x: 0, y: -LOFT_DRAG_UNITS }), 1, 'the whole span, toward the passer');
+  assert.ok(Math.abs(loftFromDrag(pp, { x: 0, y: -LOFT_DRAG_UNITS / 2 }) - 0.5) < 1e-9, 'halfway is half');
+  assert.equal(loftFromDrag(pp, { x: 0, y: -LOFT_DRAG_UNITS * 3 }), 1, 'clamped at the top');
+  assert.equal(loftFromDrag(pp, { x: 0, y: 5 }), 0, 'away from the passer floors at zero, never negative');
   assert.equal(loftFromDrag(pp, { x: LOFT_DRAG_UNITS, y: 0 }), 0, 'sideways travel is not loft');
 });
 
@@ -425,15 +425,17 @@ test('passShadowSpots walks the aim line, one spot per turn boundary it hangs fo
   const s = createGame({ seed: 1 });
   const qb = getPlayer(s, 'o-qb');
   const dir = { x: 0, y: 1 };
-  const one = passShadowSpots(qb, dir, 1, 0);
-  assert.equal(one.length, 1, 'no loft: the bomb covers the board inside its own turn');
-  assert.deepEqual(one[0], passAim(qb, dir, 1));
-  const two = passShadowSpots(qb, dir, 1, 1);
-  assert.equal(two.length, 2, 'full loft: the same throw now takes two turns');
   const origin = passOrigin(qb, dir);
   const aim = passAim(qb, dir, 1);
-  assert.ok(Math.abs(two[0].y - (origin.y + (aim.y - origin.y) * 0.5)) < 1e-6, 'first turn: halfway there');
-  assert.deepEqual(two[1], aim, 'second turn: landed, on the aim point exactly');
+  const one = passShadowSpots(qb, dir, 1, 0);
+  assert.equal(one.length, 2, 'no loft: the bomb now takes two turns to cover the board');
+  assert.ok(Math.abs(one[0].y - (origin.y + (aim.y - origin.y) * (30 / 45))) < 1e-6, 'first turn: 30 of 45 sub-steps in');
+  assert.deepEqual(one[1], aim, 'second turn: landed, on the aim point exactly');
+  const two = passShadowSpots(qb, dir, 1, 1);
+  assert.equal(two.length, 3, 'full loft: the same throw now takes three turns');
+  assert.ok(Math.abs(two[0].y - (origin.y + (aim.y - origin.y) * (30 / 90))) < 1e-6, 'first turn: 30 of 90 sub-steps in');
+  assert.ok(Math.abs(two[1].y - (origin.y + (aim.y - origin.y) * (60 / 90))) < 1e-6, 'second turn: 60 of 90 in');
+  assert.deepEqual(two[2], aim, 'third turn: landed, on the aim point exactly');
 });
 
 test('releasePass threads the planned loft into the lob it actually throws', () => {

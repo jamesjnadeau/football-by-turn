@@ -445,6 +445,19 @@ test('a receiver running flat across in front of the passer is still found', () 
   assert.ok(events.some((e) => e.type === 'pickup' && e.by === 'o-wr1'), 'he was met, not led past');
 });
 
+test('the other coach\'s men are not this coach\'s to be warned about', () => {
+  // The warning feed skips the team the computer coaches. A match has no
+  // computer -- it has another human, named by remoteTeam -- and counting
+  // his men told a coach that 13 players had no direction when 7 of them
+  // were never his to order.
+  const s = createGame({ seed: 1, ai: null });
+  s.remoteTeam = 'defense';
+  const ids = unplannedPlayers(s);
+  assert.ok(ids.length > 0, 'his own men still count');
+  assert.ok(ids.every((id) => getPlayer(s, id).team === 'offense'),
+    'nobody on the other coach\'s side is listed');
+});
+
 /**
  * The load-bearing line itself: runTurn's own call to advancePlay
  * (lib/game/turn.js, immediately above coachAi). Every other test in this

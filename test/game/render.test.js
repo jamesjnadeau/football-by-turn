@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   renderBoardShell, renderPlayers, renderPlans, destinationMark, renderLooseBall, renderPassArrow,
   renderLoftHandle, loftHandlePoint,
-  facingAngle, arrowMark, STYLE_GAME, wrapWords, renderMessage,
+  facingAngle, arrowMark, STYLE_GAME, wrapWords, renderMessage, renderPlayClock,
   coverMark, coverHaloMark, lineZoneMark, lineToGainMark, passLockMark,
   liveLobMark, cameraViewBox, passArrowTip,
 } from '../../lib/game/render.js';
@@ -777,4 +777,40 @@ test('the flight path and the shadow ball are styled in the game stylesheet', ()
 test('the board always has a lesson layer', () => {
   const { markup } = renderBoardShell(20, 30, 20);
   assert.ok(markup.includes('id="game-tutorial"'));
+});
+
+test('the play clock counts down in the left margin, clear of the field', () => {
+  const svg = renderPlayClock(27, 20);
+  assert.match(svg, /<text class="pc"[^>]*>27<\/text>/);
+  // The margin the right-hand button column mirrors: everything it draws has
+  // to sit left of the yard numbers, which start at 18.77.
+  for (const x of [...svg.matchAll(/ x="([\d.]+)"/g)].map((m) => Number(m[1]))) {
+    assert.ok(x < 18.77, `${x} would sit on the yard numbers or the field`);
+  }
+});
+
+test('there is no clock when there is no deadline', () => {
+  assert.equal(renderPlayClock(null, 20), '');
+});
+
+test('the last five seconds are red', () => {
+  assert.doesNotMatch(renderPlayClock(6, 20), /pc-urgent/);
+  assert.match(renderPlayClock(5, 20), /pc-urgent/);
+  assert.match(renderPlayClock(0, 20), /pc-urgent/);
+});
+
+test('a committed coach is waiting on his opponent, and the clock says so', () => {
+  const mine = renderPlayClock(9, 20);
+  const waiting = renderPlayClock(9, 20, 20, { waiting: true });
+  assert.doesNotMatch(mine, /waiting/);
+  assert.match(waiting, /<text class="pc-note"[^>]*>waiting<\/text>/);
+  assert.match(waiting, /class="pc pc-dim"/, 'dimmed: the clock is his now, not yours');
+});
+
+test('a waiting coach in his last five seconds is dim, not red', () => {
+  // Red is "you are about to lose your turn". A coach who has already
+  // committed cannot lose anything, so the urgency is not his to feel.
+  const svg = renderPlayClock(3, 20, 20, { waiting: true });
+  assert.doesNotMatch(svg, /pc-urgent/);
+  assert.match(svg, /pc-dim/);
 });

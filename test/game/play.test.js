@@ -8,6 +8,49 @@ import {
 } from '../../lib/game/play.js';
 import { fieldPos } from '../../lib/game/view.js';
 
+test('applyPlay writes only the named team, even in a hot-seat game with no aiTeam', () => {
+  const s = createGame({ seed: 1 }); // aiTeam null: both sides are "the human's" today
+  const play = {
+    name: 'x',
+    plans: { 'd-lb': { dir: { x: 0, y: -1 }, throttle: 1 } },
+    stances: {},
+    pass: null,
+    spots: {},
+  };
+  const result = applyPlay(s, play, 'defense');
+  assert.deepEqual(getPlayer(s, 'd-lb').plan, {
+    dir: { x: 0, y: -1 }, throttle: 1, target: null, short: false,
+  });
+  assert.deepEqual(result.applied, ['d-lb']);
+});
+
+test('applyPlay refuses to write the other team\'s players, and skips them', () => {
+  const s = createGame({ seed: 1 });
+  const play = {
+    name: 'x',
+    plans: { 'o-rb': { dir: { x: 0, y: 1 }, throttle: 1 } }, // an offense id, called for defense
+    stances: {},
+    pass: null,
+    spots: {},
+  };
+  const result = applyPlay(s, play, 'defense');
+  assert.equal(getPlayer(s, 'o-rb').plan, null);
+  assert.deepEqual(result.skipped, ['o-rb']);
+});
+
+test('applyPlay still defaults to the human\'s team when aiTeam is set, with no team argument', () => {
+  const s = createGame({ seed: 1, ai: 'defense' });
+  const play = {
+    name: 'x',
+    plans: { 'o-rb': { dir: { x: 1, y: 0 }, throttle: 0.5 } },
+    stances: {},
+    pass: null,
+    spots: {},
+  };
+  applyPlay(s, play); // no team: single-player call sites pass none
+  assert.notEqual(getPlayer(s, 'o-rb').plan, null);
+});
+
 /**
  * The snap taken: the ball in the quarterback's hands and nothing pending.
  * A down now opens with the ball on the CENTRE and a lateral to the
@@ -376,4 +419,31 @@ test('sanitising refuses a __proto__ spot', () => {
   const raw = { ...goodPlay(), spots: {} };
   Object.defineProperty(raw.spots, '__proto__', { value: { across: 0, down: 0 }, enumerable: true });
   assert.equal(sanitizePlay(raw), null);
+});
+
+test('applyPlay for one team leaves the other team\'s throw alone', () => {
+  // In a match both coaches write into the same state, and the defense's
+  // commit lands after the offense's as often as not. The offense's throw is
+  // not the defense's to clear -- and before this held, the offense could
+  // never complete a pass unless the defense happened to press End Turn first.
+  const s = createGame({ seed: 5 });
+  s.ball.carrierId = 'o-qb';
+  assert.equal(setPass(s, 'o-qb', { x: 0.2, y: 1 }, 0.8), true);
+  applyPlay(s, { name: '', plans: {}, stances: {}, pass: null, spots: {} }, 'defense');
+  assert.equal(s.plannedPass?.from, 'o-qb');
+  // The offense's own commit does still replace its own throw.
+  applyPlay(s, { name: '', plans: {}, stances: {}, pass: null, spots: {} }, 'offense');
+  assert.equal(s.plannedPass, null);
+});
+
+test('applyPlay skips a throw by a man who is not the named team\'s', () => {
+  const s = createGame({ seed: 5 });
+  s.ball.carrierId = 'o-qb';
+  const { skipped } = applyPlay(s, {
+    name: '', plans: {}, stances: {}, spots: {}, pass: { from: 'o-qb', dir: { x: 0, y: 1 }, power: 0.8 },
+  }, 'defense');
+  // The offense's throw is untouched (here, the snap createGame aimed), and
+  // the defense's attempt to throw with the offense's quarterback is a skip.
+  assert.equal(s.plannedPass?.auto, true);
+  assert.ok(skipped.includes('o-qb'));
 });

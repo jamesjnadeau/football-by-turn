@@ -221,3 +221,11 @@ test('no lesson rings a control that a phone keeps behind the playbook sheet', (
     }
   }
 });
+
+test('in a match the run control says End Turn, because the press ends a turn rather than running one', () => {
+  const single = createGame({ seed: 1, ai: 'defense' });
+  assert.equal(byName(controlsFor(single), 'run').label, 'Run Turn');
+  const match = createGame({ seed: 1 });
+  match.remoteTeam = 'defense';
+  assert.equal(byName(controlsFor(match), 'run').label, 'End Turn');
+});

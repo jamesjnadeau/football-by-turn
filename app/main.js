@@ -11,7 +11,7 @@ import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLoftHandle, renderLooseBall,
-  looseBallMark, planMark, coverMark, passArrowMark, passArrowTip, renderMessage, destinationMark,
+  looseBallMark, planMark, coverMark, passArrowMark, passArrowTip, renderMessage, renderPlayClock, destinationMark,
   lineZoneMark, passLandingMark, passLockMark, cameraViewBox, liveLobMark,
   passFlightMark, passShadowMark, loftHandlePoint, unplannedRingsMark,
 } from '../lib/game/render.js';
@@ -180,6 +180,25 @@ let repositioning = false;
 // game is exactly the game it always was: `lesson` is null and every check
 // below falls straight through.
 let lesson = null;
+// The multiplayer handle app/multiplayer.js hands startGame, or null in
+// every single-player mode. Its presence is what turns Run Turn into End
+// Turn (see pressRun and lib/game/controls.js) and is read nowhere else
+// that state.aiTeam or state.remoteTeam do not already cover -- see
+// isControllable.
+let net = null;
+// The deadline (epoch ms) the HUD's countdown is ticking toward in a match,
+// or null outside one. Read by paint()'s hud line and advanced by a
+// setInterval startClockDisplay arms.
+let netDeadlineAt = null;
+// Whether this coach has already ended his turn. The clock keeps counting
+// after he has -- how long his opponent has left is worth knowing -- but it
+// stops being his to spend, which is what the dimmed plate says.
+let netCommitted = false;
+let clockTimer = null;
+// Whether the board has been built for the current match. A match dealt by
+// the server's `start` builds it there; one rejoined after a reload has no
+// `start` coming and builds it off the first snapshot instead.
+let boardDealt = false;
 
 // Touch pinch-zoom/drag-pan, live only pre-snap. A pure offset on top of the
 // auto-following camera (see lib/game/zoom.js), reset to identity by
@@ -212,6 +231,7 @@ function rebuildBoard() {
   board.attr('viewBox', viewBox);
   board.clear();
   board.svg(markup); // parses the markup string from render.js and inserts it as real SVG nodes
+  boardDealt = true;
 }
 
 /**
@@ -234,7 +254,8 @@ function rebuildBoard() {
  */
 function aimCamera(cam) {
   board.attr('viewBox', cameraOrZoomedViewBox(cam));
-  layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cam));
+  layer('game-message').clear()
+    .svg(renderMessage(messageText, state.losYard, cam) + playClockMark(cam));
   layer('game-tutorial').clear().svg(lessonMark(cam));
 }
 
@@ -313,7 +334,13 @@ function paintArrows() {
 function paint() {
   layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
   paintArrows();
-  hud.textContent = `${downDistanceText(state)} — ${state.phase}`;
+  // In a match, the clock is the other half of the down/distance line — a
+  // coach reads them together, the same way he reads down-and-distance
+  // itself. Outside a match netDeadlineAt is always null and this is
+  // exactly the line it always was.
+  const seconds = clockSeconds();
+  const clockText = seconds === null ? '' : ` — ${seconds}s`;
+  hud.textContent = `${downDistanceText(state)} — ${state.phase}${clockText}`;
   paintControls();
   debugBtn.textContent = `Velocity: ${showVelocity ? 'on' : 'off'}`;
   debugBtn.disabled = animating;
@@ -345,7 +372,13 @@ function paint() {
  * here afterwards.
  */
 function drawMessage() {
-  layer('game-message').clear().svg(renderMessage(messageText, state.losYard, cameraYard()));
+  // Nothing to draw into until the board exists -- a match that has not
+  // been dealt yet can still have things to say (a connection lost while
+  // rejoining); paint() draws messageText once there is a board.
+  if (!boardDealt) return;
+  const cam = cameraYard();
+  layer('game-message').clear()
+    .svg(renderMessage(messageText, state.losYard, cam) + playClockMark(cam));
 }
 
 function say(text) {
@@ -1094,6 +1127,106 @@ function recordPlanning() {
 }
 
 /**
+ * Lock every control that must not be touched while frames are animating or
+ * a match's coach is waiting on his opponent's commit. Pulled out of
+ * pressRun so applyServerTurn (the net.onTurn handler) can lock the same
+ * buttons from a message handler that never called pressRun at all.
+ *
+ * paintControls() covers every button that has an entry in
+ * lib/game/controls.js — run, autoplan, ai, reposition, personnel, save and
+ * the slot buttons — greying each on both the board and the menu (and, for
+ * reposition, hiding it, since controlsFor() drops that control outright
+ * once animating is true). What is left to disable by hand below is exactly
+ * the menu's buttons that have no control at all: they are rows the menu
+ * draws for itself, so paintControls() has nothing to find for them.
+ */
+function lockControlsForAnimation() {
+  paintControls();
+  clearBtn.disabled = true;
+  nextBtn.disabled = true;
+  newBtn.disabled = true;
+  homeBtn.disabled = true;
+  debugBtn.disabled = true;
+  copyLogBtn.disabled = true;
+  clearLogBtn.disabled = true;
+  trainBtn.disabled = true;
+  copyGenomeBtn.disabled = true;
+  discardGenomeBtn.disabled = true;
+}
+
+/**
+ * Narrate and settle whatever a turn's events said, and move the drive on.
+ * Lifted out of pressRun so a match's net.onTurn handler (applyServerTurn)
+ * can call it too, from frames and events the SERVER computed rather than
+ * runTurn called locally — both paths narrate a down through this same code.
+ */
+function finishTurn(events) {
+  // Only ever one throw a turn, so its own event -- if any -- says everything
+  // there is to say about what got thrown and by whom.
+  const passEvent = events.find((e) => e.type === 'pass');
+  animating = false;
+  paint();
+  for (const e of events) {
+    if (e.type === 'tackled') say('Tackled!');
+    if (e.type === 'fumble') say('FUMBLE! The ball is loose!');
+    if (e.type === 'touchdown') say('TOUCHDOWN!');
+    if (e.type === 'out-of-bounds') say('Out of bounds.');
+    if (e.type === 'pickup') {
+      if (!passEvent) {
+        say(`Recovered by ${e.team}.`);
+      } else if (passEvent.auto) {
+        // The snap is never news -- it is how a down starts, not a play the
+        // coach called, so the offense catching its own snap gets silence
+        // rather than "Caught!". But a snap is a backward pass, so a MUFFED
+        // one is still a live ball: if the defense comes up with it, that is
+        // a real turnover and has to be announced like any other one.
+        if (e.team === 'defense') say(`Recovered by ${e.team}.`);
+      } else {
+        say(e.team === 'defense' ? 'INTERCEPTED!' : 'Caught!');
+      }
+    }
+    if (e.type === 'incomplete') say('Incomplete.');
+  }
+  // A ball still in the air when the whistle goes is the newest fact on the
+  // board, so it gets the last word over whatever the events said. The
+  // coach's next job is to get somebody under it.
+  if (state.phase === 'planning' && state.ball.lob && !lobLanded(state.ball.lob)) {
+    say('The ball is in the air — get someone under it.');
+  }
+  // The flag is called after the down, not when it was committed — the spec
+  // is explicit that an illegal throw is allowed to play out first, and an
+  // illegal formation is the same bargain: the snap is when it is noticed,
+  // the whistle is when it costs you.
+  if (state.phase === 'playOver' && state.penalty) {
+    say(`FLAG: ${FOUL_WORDS[state.penalty.foul]}.`
+      + ` ${PENALTY_YARDS} yards from the previous spot, loss of down.`);
+  }
+  // However the play died — a tackle, a touchdown, an incompletion, a step
+  // out of bounds, a fumble the defense fell on — the game moves on by
+  // itself after a beat. The whistle has already settled everything there
+  // is to settle, so the beat is for reading the board, not for asking the
+  // coach to confirm that the play is over. Next Down is still there for a
+  // coach who doesn't want to wait. A touchdown restarts the game because
+  // scoring is how this one is won — unless a flag is being enforced, which
+  // wipes the score and makes it an ordinary next down.
+  //
+  // Never during a lesson, and never in a match: the tutorial deals its own
+  // downs and ends its own plays, and a drive advancing underneath one would
+  // swap the board out from under the step the coach is still being asked to
+  // complete; the server owns down transitions in a match (spec) the same
+  // way a lesson owns its own.
+  if (!lesson && !net && state.phase === 'playOver') {
+    scheduleAutoAdvance(
+      state.deadReason === 'touchdown' && !state.penalty ? startNewGame : goToNextDown,
+    );
+  }
+  // The lesson judges the down AFTER everything the whistle had to say, so
+  // its card is the last word on the board rather than something the
+  // referee's plate overwrites a moment later.
+  lessonSaw();
+}
+
+/**
  * Run the turn. The menu's Run Turn and the board's quick press both come
  * here, so the shortcut is the same press and not a second, subtly different
  * way to snap the ball — same warning when someone has no direction set, same
@@ -1109,7 +1242,12 @@ function pressRun() {
   // press again to run anyway would be asking him to overrule an instruction
   // the same screen just gave him — on the very first press, where the quarter-
   // back has no arrow because the step teaching that comes next.
-  const missing = lesson ? [] : unplannedPlayers(state);
+  // Never during a lesson, and never in a match. A lesson refuses every
+  // gesture but the one it is teaching, so the men without arrows are the
+  // ones it is deliberately not teaching yet. A match has a clock: asking for
+  // a second press spends seconds a coach cannot get back, on a button that
+  // says End Turn rather than Run Turn, to warn him about a board he can see.
+  const missing = lesson || net ? [] : unplannedPlayers(state);
   if (missing.length > 0 && !pendingWarning) {
     // Spec: warn when not every player has a direction. Second press runs anyway.
     pendingWarning = true;
@@ -1122,100 +1260,33 @@ function pressRun() {
   say('');
   // Recorded before the turn runs, while the huddle is still on the board.
   recordPlanning();
+
+  if (net) {
+    // End Turn: send the board, then wait for the server's `turn` message
+    // (applyServerTurn) to actually animate anything. Locking here, not
+    // just disabling the button, matches single-player's own "no input
+    // mid-animation" rule (onGesture's `if (animating) return`) for the
+    // stretch where this client has committed but the opponent has not.
+    animating = true;
+    netCommitted = true;
+    lockControlsForAnimation();
+    net.commit(capturePlay(state, ''), state.turnIndex);
+    paint(); // the clock is his opponent's from this press, and says so
+    return;
+  }
+
   // runTurn mutates state to the end-of-turn position and returns the
   // per-sub-step frames; the player groups are still painted at their
   // pre-turn spots, so animating the frames walks them to where state says.
   const { frames, events } = runTurn(state, random);
   layer('game-arrows').clear();
-  // Only ever one throw a turn, so its own event -- if any -- says everything
-  // there is to say about what got thrown and by whom.
-  const passEvent = events.find((e) => e.type === 'pass');
-  const finish = () => {
-    animating = false;
-    paint();
-    for (const e of events) {
-      if (e.type === 'tackled') say('Tackled!');
-      if (e.type === 'fumble') say('FUMBLE! The ball is loose!');
-      if (e.type === 'touchdown') say('TOUCHDOWN!');
-      if (e.type === 'out-of-bounds') say('Out of bounds.');
-      if (e.type === 'pickup') {
-        if (!passEvent) {
-          say(`Recovered by ${e.team}.`);
-        } else if (passEvent.auto) {
-          // The snap is never news -- it is how a down starts, not a play the
-          // coach called, so the offense catching its own snap gets silence
-          // rather than "Caught!". But a snap is a backward pass, so a MUFFED
-          // one is still a live ball: if the defense comes up with it, that is
-          // a real turnover and has to be announced like any other one.
-          if (e.team === 'defense') say(`Recovered by ${e.team}.`);
-        } else {
-          say(e.team === 'defense' ? 'INTERCEPTED!' : 'Caught!');
-        }
-      }
-      if (e.type === 'incomplete') say('Incomplete.');
-    }
-    // A ball still in the air when the whistle goes is the newest fact on the
-    // board, so it gets the last word over whatever the events said. The
-    // coach's next job is to get somebody under it.
-    if (state.phase === 'planning' && state.ball.lob && !lobLanded(state.ball.lob)) {
-      say('The ball is in the air — get someone under it.');
-    }
-    // The flag is called after the down, not when it was committed — the spec
-    // is explicit that an illegal throw is allowed to play out first, and an
-    // illegal formation is the same bargain: the snap is when it is noticed,
-    // the whistle is when it costs you.
-    if (state.phase === 'playOver' && state.penalty) {
-      say(`FLAG: ${FOUL_WORDS[state.penalty.foul]}.`
-        + ` ${PENALTY_YARDS} yards from the previous spot, loss of down.`);
-    }
-    // However the play died — a tackle, a touchdown, an incompletion, a step
-    // out of bounds, a fumble the defense fell on — the game moves on by
-    // itself after a beat. The whistle has already settled everything there
-    // is to settle, so the beat is for reading the board, not for asking the
-    // coach to confirm that the play is over. Next Down is still there for a
-    // coach who doesn't want to wait. A touchdown restarts the game because
-    // scoring is how this one is won — unless a flag is being enforced, which
-    // wipes the score and makes it an ordinary next down.
-    //
-    // Never during a lesson: the tutorial deals its own downs and ends its own
-    // plays, and a drive advancing underneath one would swap the board out from
-    // under the step the coach is still being asked to complete.
-    if (!lesson && state.phase === 'playOver') {
-      scheduleAutoAdvance(
-        state.deadReason === 'touchdown' && !state.penalty ? startNewGame : goToNextDown,
-      );
-    }
-    // The lesson judges the down AFTER everything the whistle had to say, so
-    // its card is the last word on the board rather than something the
-    // referee's plate overwrites a moment later.
-    lessonSaw();
-  };
   if (frames.length > 0) {
     // Lock the controls now, not at the next paint() — paint() does not run
-    // again until finish(), so without a call here every button would just
-    // keep whatever state the last paint left it in for the whole animation.
-    // paintControls() is that call, and it covers every button that has an
-    // entry in lib/game/controls.js — run, autoplan, ai, reposition,
-    // personnel, save and the slot buttons — greying each on both the board
-    // and the menu (and, for reposition, hiding it, since controlsFor() drops
-    // that control outright once animating is true). What is left to disable
-    // by hand below is exactly the menu's buttons that have no control at
-    // all: they are rows the menu draws for itself, so paintControls() has
-    // nothing to find for them and the lock has to be spelled out here.
+    // again until finishTurn(), and until then every button is still live.
     animating = true;
-    paintControls();
-    clearBtn.disabled = true;
-    nextBtn.disabled = true;
-    newBtn.disabled = true;
-    homeBtn.disabled = true;
-    debugBtn.disabled = true;
-    copyLogBtn.disabled = true;
-    clearLogBtn.disabled = true;
-    trainBtn.disabled = true;
-    copyGenomeBtn.disabled = true;
-    discardGenomeBtn.disabled = true;
-    animate(frames, finish);
-  } else finish();
+    lockControlsForAnimation();
+    animate(frames, () => finishTurn(events));
+  } else finishTurn(events);
 }
 
 runBtn.addEventListener('click', () => {
@@ -1255,6 +1326,7 @@ function pressClear() {
 }
 
 function pressAi() {
+  if (net) return; // the server owns aiTeam/remoteTeam in a match -- nobody here is the computer's to hand off.
   if (animating || state.phase !== 'planning') return;
   const next = nextAiMode(state);
   state.aiTeam = next.ai;
@@ -1526,6 +1598,10 @@ function goToNextDown() {
 function startNewGame() {
   cancelAutoAdvance();
   stopRepositioning();
+  if (net) {
+    startMultiplayerGame();
+    return;
+  }
   const mode = defaultModeForSide(sideId);
   state = createGame({
     seed: (Math.random() * 2 ** 31) | 0, ai: mode.ai, aiLevel: mode.level, variant: variantId,
@@ -1544,14 +1620,141 @@ function startNewGame() {
   paint();
 }
 
+/** Seconds left on the play clock, or null when there is no clock running. */
+function clockSeconds() {
+  if (!net || netDeadlineAt === null) return null;
+  return Math.max(0, Math.ceil((netDeadlineAt - Date.now()) / 1000));
+}
+
+/** The plate itself, wherever the board is being drawn from. */
+function playClockMark(cam) {
+  return renderPlayClock(clockSeconds(), state.losYard, cam, { waiting: netCommitted });
+}
+
+/** Advances the HUD's countdown once a second. Stopped when the match ends. */
+function startClockDisplay(deadlineAt) {
+  netDeadlineAt = deadlineAt;
+  if (!clockTimer) clockTimer = setInterval(paint, 1000);
+}
+
+function stopClockDisplay() {
+  netDeadlineAt = null;
+  if (clockTimer !== null) clearInterval(clockTimer);
+  clockTimer = null;
+}
+
+/**
+ * Applies one turn the server sent -- either the ordinary end of a commit
+ * round (net.onTurn) or the tailored snapshot a reconnect gets (also shaped
+ * like a `turn` message, with `frames: []`, so both land here). Replaces
+ * `runTurn`'s direct call inside pressRun: this client never simulates a
+ * match turn itself, it only animates the one the server already ran.
+ */
+function applyServerTurn({ frames, events, down, deadlineAt, state: serverState }) {
+  void down; // carried on the message for app/multiplayer.js's own bookkeeping; state.down is already current
+  // The server has already run nextDown when the whistle ended the down, so a
+  // turn that lands on turnIndex 0 of a planning phase is a fresh down: the
+  // board shell (line of scrimmage, line to gain, camera) is rebuilt for it
+  // the way goToNextDown rebuilds one in single-player, and the down is said.
+  const newDown = serverState.phase === 'planning' && serverState.turnIndex === 0 && frames.length > 0;
+  state = claimSide(serverState);
+  netCommitted = false; // a new turn is his to spend again
+  // A rejoined match has no `start`: the first snapshot is the deal.
+  if (!boardDealt) rebuildBoard();
+  layer('game-arrows').clear();
+  const finish = () => {
+    if (newDown) rebuildBoard();
+    finishTurn(events);
+    // Added to what the whistle said rather than said over it: single-player
+    // gets a beat between "Tackled!" and "2nd down."; here both land at once.
+    if (newDown) say(`${messageText ? `${messageText} ` : ''}${['1st', '2nd', '3rd', '4th'][state.down - 1]} down.`);
+  };
+  if (frames.length > 0) {
+    animating = true;
+    lockControlsForAnimation();
+    animate(frames, finish);
+  } else finish();
+  startClockDisplay(deadlineAt);
+}
+
+/**
+ * Mark a match state as seen from THIS browser: nobody here is the computer,
+ * and the other team is the remote coach's. The server's state carries
+ * neither fact -- it referees both coaches from one record -- so every copy
+ * of it that lands here (the start's deal, and every turn's snapshot) goes
+ * through this before it becomes the board. Skipping it on a turn is how
+ * the offense coach came to be able to draw arrows on the defense from the
+ * second turn on: applyServerTurn had swapped in a state with no remoteTeam.
+ */
+function claimSide(s) {
+  s.aiTeam = null;
+  s.remoteTeam = sideId === 'offense' ? 'defense' : 'offense';
+  return s;
+}
+
+/**
+ * The multiplayer half of startNewGame: the board is dealt only once the
+ * server's `start` message names the seed, because a match's state does not
+ * exist anywhere until MatchDO calls createGame itself (spec: "The server
+ * runs the game"). Until then the board sits blank -- app/multiplayer.js's
+ * lobby screen was already the coach's waiting room, so a second wait here
+ * is brief.
+ */
+function startMultiplayerGame() {
+  net.onStart(({ seed, variant, losYard, side, deadlineAt }) => {
+    sideId = side;
+    state = claimSide(createGame({ seed, variant, losYard }));
+    random = mulberry32(seed); // unused for simulation (the server runs it), kept for anything that reads it defensively
+    pendingWarning = false;
+    netCommitted = false;
+    rebuildBoard();
+    say('Drag your players, then press End Turn — your opponent is doing the same.');
+    startClockDisplay(deadlineAt);
+    paint();
+  });
+  net.onTurn((msg) => applyServerTurn(msg));
+  net.onTimeUp(() => say('Time is up — the server is waiting a moment longer for your opponent.'));
+  // The board was locked the moment End Turn was pressed. If the server will
+  // not take that commit, the lock has nothing left to wait for and has to
+  // come off here -- otherwise the coach sits unable to touch his own men
+  // until the next clock runs out on him.
+  net.onCommitRefused(({ reason }) => {
+    animating = false;
+    netCommitted = false;
+    paint();
+    say(reason === 'stale'
+      ? 'That turn had already run — this is the next one.'
+      : 'The server would not take that play. Draw it again.');
+  });
+  net.onOpponentGone(({ resumeBy }) => say(`Your opponent dropped. Waiting up to ${Math.ceil((resumeBy - Date.now()) / 1000)}s…`));
+  net.onOpponentBack(() => say('Your opponent is back.'));
+  // This side of the wire. The board is left as it is: whatever he had drawn
+  // is still his to send once the server's snapshot hands him the turn back.
+  net.onConnectionLost(() => say('Connection lost — reconnecting…'));
+  net.onConnectionRestored(() => say('Reconnected.'));
+  net.onMatchOver(({ reason }) => {
+    stopClockDisplay();
+    netCommitted = false;
+    paint();
+    // A drive that ended gets the game's own final call, facing this coach;
+    // one that ended some other way says how. app/multiplayer.js owns the
+    // queue and the home screen: Play again / Back are its own next screen.
+    say(reason === 'down' ? gameOverMessage(state)
+      : reason === 'opponent-left' ? 'Your opponent left the match.'
+      : 'The match is over.');
+  });
+}
+
 nextBtn.addEventListener('click', () => {
   closeMenu();
+  if (net) return; // the server owns down transitions in a match.
   if (animating) return;
   goToNextDown();
 });
 
 newBtn.addEventListener('click', () => {
   closeMenu();
+  if (net) return; // Play again / Back are app/multiplayer.js's own screen, not this button's.
   if (animating) return;
   startNewGame();
 });
@@ -1570,6 +1773,9 @@ newBtn.addEventListener('click', () => {
 function goHome() {
   cancelAutoAdvance();
   stopRepositioning();
+  // The countdown would otherwise keep repainting a board nobody is looking
+  // at, once a second, for as long as the page lives.
+  stopClockDisplay();
   lesson = null;
   exitToHome();
 }
@@ -1661,11 +1867,16 @@ export function startTutorial({ onExit = () => {} } = {}) {
   dealLesson();
 }
 
-export function startGame({ variant = DEFAULT_VARIANT, side = 'training', onExit = () => {} } = {}) {
+export function startGame({
+  variant = DEFAULT_VARIANT, side = 'training', onExit = () => {}, net: netHandle = null,
+} = {}) {
   lesson = null;
   exitToHome = onExit;
   variantId = variant;
   sideId = side;
+  net = netHandle;
+  boardDealt = false;
+  stopClockDisplay();
   if (!inputAttached) {
     attachInput(board, {
       hitTest, onGesture, onDragPreview, onLoftDragPreview, onLoftDrag, onPan, onPinch,
@@ -1673,5 +1884,10 @@ export function startGame({ variant = DEFAULT_VARIANT, side = 'training', onExit
     inputAttached = true;
   }
   startNewGame();
-  say('Drag your players, then open the Coaches Menu to run the turn.');
+  // In a match, the board does not exist yet -- startMultiplayerGame's own
+  // net.onStart handler says this exact line once the server's `start`
+  // message has actually dealt one (rebuildBoard() is what makes the
+  // message layer say() writes into). Saying it here too would reach for a
+  // layer that is not there yet.
+  if (!net) say('Drag your players, then open the Coaches Menu to run the turn.');
 }

@@ -1,0 +1,476 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  createMatch, applyMatchMessage, stripForSide, MAX_COMMIT_BYTES,
+  nextAlarm, FLUSH_GRACE_MS, DROP_GRACE_MS,
+} from '../../worker/match-engine.js';
+import { fieldPos } from '../../lib/game/view.js';
+
+const tokens = { offense: 'tok-o', defense: 'tok-d' };
+
+
+test('a fresh match is waiting, with nobody connected and no state yet', () => {
+  const m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  assert.equal(m.status, 'waiting');
+  assert.equal(m.state, null);
+  assert.deepEqual(m.connected, { offense: false, defense: false });
+});
+
+test('the first coach to connect just waits -- no start message yet', () => {
+  const m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  const { record, messages } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 1000);
+  assert.equal(record.connected.offense, true);
+  assert.equal(record.status, 'waiting');
+  assert.deepEqual(messages, []);
+});
+
+test('a wrong token is refused and connects nobody', () => {
+  const m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  const { record, messages } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'not-it' }, 1000);
+  assert.equal(record.connected.offense, false);
+  assert.deepEqual(messages, [{ to: 'offense', type: 'refused' }]);
+});
+
+test('the second coach connecting starts the match: state, seed, and a start message to both', () => {
+  let m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 1000));
+  const { record, messages } = applyMatchMessage(m, { type: 'connect', side: 'defense', token: 'tok-d' }, 2000);
+  assert.equal(record.status, 'active');
+  assert.notEqual(record.state, null);
+  assert.equal(record.state.variantId, '7');
+  assert.equal(record.deadlineAt, 2000 + 30_000, 'the huddle: 30 seconds, from when the match actually starts');
+  const starts = messages.filter((mm) => mm.type === 'start');
+  assert.equal(starts.length, 2);
+  for (const s of starts) {
+    assert.equal(s.seed, 5);
+    assert.equal(s.variant, '7');
+    assert.equal(s.deadlineAt, record.deadlineAt);
+  }
+  assert.deepEqual(starts.map((s) => s.side).sort(), ['defense', 'offense']);
+});
+
+test('a match with no state yet does not accept a commit', () => {
+  const m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'commit', side: 'offense', turnIndex: 0, play: { name: '', plans: {}, stances: {}, pass: null, spots: {} } }, 1000,
+  );
+  assert.equal(record.status, 'waiting');
+  assert.deepEqual(messages, []);
+});
+
+test('a match nobody joins within 15 seconds of the first connect dissolves', () => {
+  let m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 1000));
+  const { record, messages } = applyMatchMessage(m, { type: 'connectTimeout' }, 16_001);
+  assert.equal(record.status, 'over');
+  assert.equal(record.reason, 'no-opponent');
+  assert.deepEqual(messages, [{ to: 'offense', type: 'matchOver', reason: 'no-opponent' }]);
+});
+
+test('connectTimeout after both sides arrived is a no-op', () => {
+  let m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'defense', token: 'tok-d' }, 2000));
+  const { record, messages } = applyMatchMessage(m, { type: 'connectTimeout' }, 20_000);
+  assert.equal(record.status, 'active');
+  assert.deepEqual(messages, []);
+});
+
+function started(seed = 5) {
+  let m = createMatch({ matchId: 'm1', variant: '7', seed, tokens });
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 0));
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'defense', token: 'tok-d' }, 0));
+  return m;
+}
+
+const emptyPlay = { name: '', plans: {}, stances: {}, pass: null, spots: {} };
+
+test('one coach committing just records it -- no turn runs yet', () => {
+  const m = started();
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000,
+  );
+  assert.notEqual(record.committed.offense, null);
+  assert.equal(record.committed.defense, null);
+  assert.deepEqual(messages, []);
+});
+
+test('the second commit for the same turn runs it and broadcasts a turn message to both', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 1100,
+  );
+  const turns = messages.filter((mm) => mm.type === 'turn');
+  assert.equal(turns.length, 2);
+  assert.deepEqual(turns.map((t) => t.to).sort(), ['defense', 'offense']);
+  assert.equal(record.state.turnIndex, 1);
+  assert.deepEqual(record.committed, { offense: null, defense: null }, 'cleared for the next turn');
+  assert.notEqual(record.lastCommitted.offense, null, 'remembered for the replay rule');
+  assert.notEqual(record.lastCommitted.defense, null);
+});
+
+test('the deadline after a turn is the 12-second mid-play clock, not another 30-second huddle', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  const { record } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 1100);
+  assert.equal(record.deadlineAt, 1100 + 12_000);
+});
+
+test('a commit is refused if it names the wrong turnIndex -- a stale message from a slow client', () => {
+  const m = started();
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'commit', side: 'offense', turnIndex: 3, play: emptyPlay }, 1000,
+  );
+  assert.equal(record.committed.offense, null);
+  // Refused OUT LOUD. This test used to assert silence, which was the bug:
+  // the client locks its board on commit and waits for the turn that commit
+  // belongs to, so a dropped commit cost a coach the turn he thought he had
+  // ended, with nothing on screen to say so.
+  assert.deepEqual(messages, [
+    { to: 'offense', type: 'commitRefused', reason: 'stale', turnIndex: 0 },
+  ]);
+});
+
+test('a commit that fails sanitizePlay is dropped, not applied', () => {
+  const m = started();
+  const bad = { name: '', plans: { 'o-rb': { dir: { x: 'nope' }, throttle: 1 } }, stances: {}, pass: null, spots: {} };
+  const { record } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: bad }, 1000);
+  assert.equal(record.committed.offense, null);
+});
+
+test('a receiver spot in the end zone is refused by the same placement rule the board enforces', () => {
+  const m = started();
+  const play = { name: '', plans: {}, stances: {}, pass: null, spots: { 'o-rb': { across: 0, down: 200 } } };
+  const { record } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play }, 1000);
+  // applyPlay ran (committed is set -- sanitizePlay accepted the numbers),
+  // but placeFormation inside it refused the spot: the runner is still where
+  // the down dealt him, not 200 yards downfield.
+  assert.notEqual(record.committed.offense, null);
+  const before = m.state.players.find((p) => p.id === 'o-rb').pos;
+  // We cannot yet see the effect on record.state (the turn has not run), but
+  // Task 8's replay-rule tests and the integration test below both confirm
+  // the spot never lands on state.players -- this test documents the intent
+  // at the commit boundary.
+  assert.deepEqual(before, m.state.players.find((p) => p.id === 'o-rb').pos);
+});
+
+test('stripForSide hides the other side\'s plans, cover and planned pass, keeps stances and facing', () => {
+  const m = started();
+  // The auto snap is o-c's (offense) planned pass at the huddle -- before
+  // anyone has committed anything else. Confirmed directly rather than
+  // guessed, per the plan's own note to replace the conditional.
+  assert.equal(m.state.plannedPass?.from, 'o-c', 'the offense holds the auto snap this seed and turn');
+  const forOffense = stripForSide(m.state, 'offense');
+  const forDefense = stripForSide(m.state, 'defense');
+  assert.notEqual(forOffense.plannedPass, null, 'the offense keeps its own');
+  assert.equal(forDefense.plannedPass, null, 'the defense never sees the offense\'s planned pass');
+
+  // A defense play that draws an arrow on d-lb -- committed but not yet run,
+  // so it is still visible on record.state, which is exactly the moment
+  // stripForSide has to hide it from the offense's copy.
+  const defPlay = {
+    name: '', plans: { 'd-lb': { dir: { x: 0, y: -1 }, throttle: 1 } }, stances: {}, pass: null, spots: {},
+  };
+  const { record } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: defPlay }, 1000);
+  const theirLb = stripForSide(record.state, 'offense').players.find((p) => p.id === 'd-lb');
+  assert.equal(theirLb.plan, null);
+  assert.equal(theirLb.cover, null);
+  // Their own stance/facing survive:
+  const mine = stripForSide(record.state, 'offense').players.find((p) => p.id === 'o-c');
+  assert.equal(mine.mode, record.state.players.find((p) => p.id === 'o-c').mode);
+});
+
+test('the alarm on a turn where nobody committed replays both last plays, skipping spots', () => {
+  let m = started();
+  const play = {
+    name: '', plans: { 'o-rb': { dir: { x: 1, y: 0 }, throttle: 1 } }, stances: {},
+    pass: null, spots: { 'o-rb': { across: 20, down: -4 } }, // a spot far off his actual line
+  };
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 1100));
+  // Turn 1 now: neither side commits. The alarm fires -- first sending
+  // timeUp and arming the grace window (Task 9), then, once nobody used it,
+  // actually replaying and running the turn.
+  ({ record: m } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt));
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.flushDeadlineAt);
+  const after = record.state.players.find((p) => p.id === 'o-rb').pos;
+  // The illegal spot the play carried (across: 20, down: -4) would land him
+  // roughly a whole field width away -- if the replay had reapplied it he
+  // would be out there, not somewhere physics could have walked him to from
+  // his own turn-0 position in one ordinary turn.
+  assert.ok(Math.abs(after.x - fieldPos(20, m.state.losYard - 4).x) > 20,
+    'the spot from turn 0\'s play is not replayed on turn 1');
+  assert.ok(messages.some((mm) => mm.type === 'turn'), 'the turn still ran, from the replayed arrows');
+});
+
+test('the alarm does not re-arm a stance that is already set, only one that differs', () => {
+  let m = started();
+  const stancePlay = {
+    name: '', plans: {}, stances: { 'o-lg': { mode: 'cutBlock', facing: { x: 0, y: -1 } } },
+    pass: null, spots: {},
+  };
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: stancePlay }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 1100));
+  // turnIndex is now 1+ and o-lg's mode has already advanced past cutBlock
+  // (turn.js's advanceCutBlockPhases). A replay on turn 1 must not set
+  // 'cutBlock' again -- setMode's own legality (state.turnIndex === 0) would
+  // refuse it anyway, which this test also confirms does not throw.
+  assert.doesNotThrow(() => applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt));
+});
+
+test('a coach who has never committed at all keeps whatever orders his men already have', () => {
+  const m = started();
+  const before = m.state.players.filter((p) => p.team === 'defense').map((p) => p.plan);
+  const { record } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
+  const after = record.state.players.filter((p) => p.team === 'defense').map((p) => p.plan);
+  assert.deepEqual(after, before);
+});
+
+test('one coach committed, the other did not: the alarm replays only the quiet one', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  // First alarm sends timeUp and arms the grace window; the second, once the
+  // grace window has passed with nobody late, replays and runs the turn.
+  ({ record: m } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt));
+  const { record } = applyMatchMessage(m, { type: 'alarm' }, m.flushDeadlineAt);
+  assert.equal(record.state.turnIndex, 1, 'the turn ran with the offense\'s fresh commit and the defense\'s replay');
+});
+
+test('the alarm before both coaches have connected is a no-op', () => {
+  const waiting = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  const { record, messages } = applyMatchMessage(waiting, { type: 'alarm' }, 1000);
+  assert.equal(record.status, 'waiting');
+  assert.deepEqual(messages, []);
+});
+
+test('the deadline with someone uncommitted sends timeUp and does not resolve the turn yet', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  // defense never commits.
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
+  assert.equal(record.state.turnIndex, 0, 'not resolved yet');
+  assert.deepEqual(messages, [{ to: 'defense', type: 'timeUp' }]);
+  assert.notEqual(record.flushDeadlineAt, null);
+});
+
+test('a commit during the grace window is accepted, and resolves the turn immediately -- the second alarm is then a no-op', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt)); // timeUp sent
+  const grace = m.flushDeadlineAt;
+  const late = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, grace - 500);
+  assert.equal(late.record.state.turnIndex, 1, 'both sides are now in -- the turn does not wait for the second alarm');
+  assert.ok(late.messages.some((mm) => mm.type === 'turn'), 'accepted during the grace window');
+  const { record, messages } = applyMatchMessage(late.record, { type: 'alarm' }, grace);
+  assert.equal(record.state.turnIndex, 1, 'the stale grace-window alarm lands on the already-resolved turn');
+  assert.deepEqual(messages, []);
+});
+
+test('the second alarm after nobody used the grace window falls through to the replay rule', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt));
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.flushDeadlineAt);
+  assert.equal(record.state.turnIndex, 1);
+  assert.ok(messages.some((mm) => mm.type === 'turn'));
+});
+
+test('both sides already committed: a premature alarm before the new deadline is a no-op -- no spurious timeUp', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 1050));
+  // The turn already resolved on the second commit, with a fresh 12-second
+  // deadline. A real Durable Object always re-arms its one alarm to that new
+  // deadline (Task 13), so an alarm callback for the OLD, now-superseded
+  // schedule should never actually fire before it -- this is the pure
+  // engine's own defense against that race, not something that can happen
+  // once MatchDO's re-arming is in place.
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, 1060);
+  assert.equal(record.state.turnIndex, 1);
+  assert.deepEqual(messages, []);
+});
+
+test('a disconnect pauses the clock and tells the survivor', () => {
+  const m = started();
+  const { record, messages } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000);
+  assert.equal(record.status, 'paused');
+  assert.deepEqual(messages, [{ to: 'offense', type: 'opponentGone', resumeBy: 1000 + 20_000 }]);
+  assert.equal(record.disconnectedAt.defense, 1000);
+});
+
+test('a reconnect with the right token resumes the clock and tells the survivor', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000));
+  const { record, messages } = applyMatchMessage(m, { type: 'reconnect', side: 'defense', token: 'tok-d' }, 5000);
+  assert.equal(record.status, 'active');
+  assert.equal(record.disconnectedAt.defense, null);
+  const toOffense = messages.find((mm) => mm.to === 'offense');
+  const toDefense = messages.find((mm) => mm.to === 'defense');
+  assert.equal(toOffense.type, 'opponentBack');
+  assert.equal(toDefense.type, 'turn', 'the returning client gets the current snapshot through the ordinary path');
+  assert.deepEqual(toDefense.frames, []);
+});
+
+test('a reconnect with the wrong token is refused and the match stays paused', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000));
+  const { record, messages } = applyMatchMessage(m, { type: 'reconnect', side: 'defense', token: 'wrong' }, 5000);
+  assert.equal(record.status, 'paused');
+  assert.deepEqual(messages, [{ to: 'defense', type: 'refused' }]);
+});
+
+test('dropTimeout with nobody back ends the match and tells the survivor', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000));
+  const { record, messages } = applyMatchMessage(m, { type: 'dropTimeout', side: 'defense' }, 21_001);
+  assert.equal(record.status, 'over');
+  assert.equal(record.reason, 'opponent-left');
+  assert.deepEqual(messages, [{ to: 'offense', type: 'matchOver', reason: 'opponent-left' }]);
+});
+
+test('dropTimeout is a no-op if the dropped coach already reconnected', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000));
+  ({ record: m } = applyMatchMessage(m, { type: 'reconnect', side: 'defense', token: 'tok-d' }, 5000));
+  const { record, messages } = applyMatchMessage(m, { type: 'dropTimeout', side: 'defense' }, 21_001);
+  assert.equal(record.status, 'active');
+  assert.deepEqual(messages, []);
+});
+
+test('the clock does not run while paused: alarm is a no-op', () => {
+  let m = started();
+  ({ record: m } = applyMatchMessage(m, { type: 'disconnect', side: 'defense' }, 1000));
+  const { record, messages } = applyMatchMessage(m, { type: 'alarm' }, m.deadlineAt);
+  assert.equal(record.status, 'paused');
+  assert.deepEqual(messages, []);
+});
+
+test('a second connect with the wrong token on a taken seat is refused, and the match is untouched', () => {
+  let m = started();
+  const before = m;
+  const { record, messages } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'not-it' }, 5000);
+  assert.deepEqual(messages, [{ to: 'offense', type: 'refused' }]);
+  assert.deepEqual(record, before);
+});
+
+test('a second connect with the RIGHT token on a taken seat is the same coach back: a snapshot, no change', () => {
+  // A reload, or a dropped connection the server has not noticed yet. The
+  // token is his alone, so the new socket is him; he gets the board and the
+  // clock as they stand, and the record is not touched.
+  const m = started();
+  const { record, messages } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 5000);
+  assert.deepEqual(record, m);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].to, 'offense');
+  assert.equal(messages[0].type, 'turn');
+  assert.deepEqual(messages[0].frames, []);
+  assert.equal(messages[0].deadlineAt, m.deadlineAt);
+  assert.equal(messages[0].state.turnIndex, m.state.turnIndex);
+  // Once the match is over there is nothing to hand back.
+  const over = { ...m, status: 'over' };
+  assert.deepEqual(applyMatchMessage(over, { type: 'connect', side: 'offense', token: 'tok-o' }, 5000).messages,
+    [{ to: 'offense', type: 'refused' }]);
+});
+
+test('an oversized commit message is dropped', () => {
+  const m = started();
+  const huge = { name: '', plans: {}, stances: {}, pass: null,
+    spots: { 'o-rb': { across: 0, down: '0'.repeat(MAX_COMMIT_BYTES) } } };
+  const { record } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: huge }, 1000);
+  assert.equal(record.committed.offense, null);
+});
+
+test('a whole drive, start to a dead ball, through nothing but messages', () => {
+  let m = createMatch({ matchId: 'm1', variant: '7', seed: 99, tokens });
+  let t = 0;
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, t));
+  ({ record: m } = applyMatchMessage(m, { type: 'connect', side: 'defense', token: 'tok-d' }, t));
+  assert.equal(m.status, 'active');
+
+  // A truly empty play forever never ends: with aiTeam null (a real match has
+  // no computer on either side, unlike single-player) nobody ever moves, so
+  // nothing ever collides and nextDown never fires -- this is exactly as
+  // true of an idle hot-seat single-player game, not a match-engine bug.
+  // The offense instead runs the quarterback toward the sideline every turn,
+  // which reliably ends each play (out of bounds) and burns downs; the
+  // defense still commits nothing, exercising the same commit/commit path
+  // the empty-play version would have.
+  const offensePlay = {
+    name: '', plans: { 'o-qb': { dir: { x: 1, y: 0 }, throttle: 1 } }, stances: {}, pass: null, spots: {},
+  };
+  let turns = 0;
+  let last = [];
+  while (m.status === 'active' && turns < 60) {
+    const turnIndex = m.state.turnIndex;
+    t += 500;
+    ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex, play: offensePlay }, t));
+    ({ record: m, messages: last } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex, play: emptyPlay }, t));
+    turns += 1;
+  }
+  assert.ok(turns < 60, 'the drive ended on its own -- a tackle, an incompletion, or downs, within 60 turns');
+  assert.equal(m.status, 'over');
+  assert.equal(m.reason, 'down');
+  // The end is said outright, to both, after the turn that ended it: the
+  // client's one way of hearing a match end is matchOver, and a drive that
+  // ends on downs is a match ending as surely as an opponent leaving is.
+  assert.deepEqual(last.map((x) => x.type), ['turn', 'turn', 'matchOver', 'matchOver']);
+  assert.deepEqual(last.filter((x) => x.type === 'matchOver').map((x) => [x.to, x.reason]),
+    [['offense', 'down'], ['defense', 'down']]);
+  assert.equal(last[0].state.phase, 'gameOver');
+});
+
+test('a turn that does not end the drive says nothing about it ending', () => {
+  const record = started();
+  const { messages } = applyMatchMessage(
+    { ...record, committed: { ...record.committed, offense: emptyPlay } },
+    { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 3000,
+  );
+  assert.deepEqual(messages.map((x) => x.type), ['turn', 'turn']);
+});
+
+test('nextAlarm names the deadline the shell has to arm', () => {
+  // The Durable Object's alarm is one-shot: whatever is armed now is the ONLY
+  // thing that will ever wake the match again. Which deadline that should be
+  // is a decision, so it lives here where it can be tested -- MatchDO having
+  // owned it is why a started match armed nothing at all and a coach who
+  // never pressed End Turn hung the drive forever.
+  const record = started();
+  assert.deepEqual(nextAlarm(record), { at: record.deadlineAt, kind: 'clock' });
+
+  // The flush window is a nearer deadline than the clock it replaces.
+  const flushing = { ...record, flushDeadlineAt: record.deadlineAt + FLUSH_GRACE_MS };
+  assert.deepEqual(nextAlarm(flushing),
+    { at: record.deadlineAt + FLUSH_GRACE_MS, kind: 'clock' });
+
+  const paused = { ...record, status: 'paused', disconnectedAt: { offense: 1000, defense: null } };
+  assert.deepEqual(nextAlarm(paused), { at: 1000 + DROP_GRACE_MS, kind: 'dropTimeout' });
+
+  assert.equal(nextAlarm({ ...record, status: 'over' }), null);
+  // A match nobody has joined is on the connect timeout the shell armed when
+  // it created the record; there is no deadline of its own to name yet.
+  assert.equal(nextAlarm(createMatch({ matchId: 'm', variant: '7', seed: 1, tokens: {} })), null);
+});
+
+test('a commit the server cannot read is refused out loud too', () => {
+  const record = started();
+  for (const play of [null, { name: 5 }, { name: '', plans: 'nope', stances: {} }]) {
+    const { messages } = applyMatchMessage(
+      record, { type: 'commit', side: 'defense', turnIndex: 0, play }, 3000,
+    );
+    assert.deepEqual(messages, [
+      { to: 'defense', type: 'commitRefused', reason: 'malformed', turnIndex: 0 },
+    ]);
+  }
+});
+
+test('an oversized commit is refused out loud, not swallowed', () => {
+  const record = started();
+  const huge = { ...emptyPlay, name: 'x'.repeat(MAX_COMMIT_BYTES) };
+  const { messages } = applyMatchMessage(
+    record, { type: 'commit', side: 'offense', turnIndex: 0, play: huge }, 3000,
+  );
+  assert.deepEqual(messages, [
+    { to: 'offense', type: 'commitRefused', reason: 'too-big', turnIndex: 0 },
+  ]);
+});

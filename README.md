@@ -26,6 +26,23 @@ leave the page running a mixture of edited and cached modules — a failure that
 looks like a bug in the game rather than a bug in the cache. Pass a port to use
 a different one (`python3 serve.py 8099`).
 
+`npm run serve` serves single-player only. **Multiplayer** needs the
+Cloudflare Worker behind the page (the lobby and the match referee are
+Durable Objects), so to play a match locally run
+
+```
+npm run serve:worker
+```
+
+instead. That assembles `_site` and starts `wrangler dev` on
+**http://localhost:8787** with real Durable Objects; open it in two tabs,
+pick the same game, choose *Multiplayer*, and queue one tab for the offense
+and the other for the defense. `wrangler` is fetched by `npx` on first use
+(it is not a dependency of the game); `wrangler.toml` pins a
+`compatibility_date`, so a `wrangler` older than that date refuses to start —
+let `npx` fetch the current one. On the static server, picking a side in the
+multiplayer chooser shows a screen saying the lobby could not be reached.
+
 ## Training the learned AI
 
 The two learned levels — `Defense: computer (learned)` and
@@ -109,14 +126,21 @@ module like any other source file.
 
 ## Deploying
 
-Pushes to `main` publish the game to GitHub Pages via
-`.github/workflows/deploy.yml`. The workflow runs the test suite, copies
-`index.html`, `app/`, and `lib/` into the Pages artifact, and deploys — no
-build step, same files the local server hands out.
+Pushes to `main` publish the game twice via `.github/workflows/deploy.yml`,
+after the test suite passes:
 
-The workflow enables Pages itself (`configure-pages` with `enablement: true`),
-so there's no Settings step to remember. The site lives at
-https://jamesjnadeau.github.io/football-by-turn/.
+- **The Cloudflare Worker** is the whole game: the page plus the lobby and
+  match Durable Objects. `npm run build:site` assembles `_site` and
+  `wrangler deploy` publishes it, authenticating with a `CLOUDFLARE_API_TOKEN`
+  repository secret (Workers Scripts: Edit, plus Durable Objects). It serves
+  from `football-by-turn.<account>.workers.dev`; no domain is needed.
+- **GitHub Pages** is the single-player mirror: the same files assembled with
+  `--no-multiplayer`, so its home screen never offers a lobby it has no
+  server for. The workflow enables Pages itself (`configure-pages` with
+  `enablement: true`). It lives at https://jamesjnadeau.github.io/football-by-turn/.
+
+Neither deploy needs the other, so a broken Worker deploy costs multiplayer
+rather than the game.
 
 ## How to play
 

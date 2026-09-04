@@ -197,4 +197,3 @@ test('the defensive note follows the ball once the play has broken', () => {
   loose.ball = { carrierId: null, pos: fieldPos(0, loose.losYard + 2), vel: { x: 0, y: 0 } };
   assert.match(autoplanLearnedDefense(loose), /^Loose ball/);
 });
-

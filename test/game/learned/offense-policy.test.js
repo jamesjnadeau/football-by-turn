@@ -214,7 +214,7 @@ test('turn 0 decides the call and remembers it', () => {
 test('a run play coaches the carrier to daylight, tucked under pressure', () => {
   const s = createGame({ seed: 1 });
   s.turnIndex = 2;
-  s.playRead = { look: null, read: null, call: { offense: { call: 'run', side: 1, give: false }, defense: null } };
+  s.playRead = { look: null, call: { offense: { call: 'run', side: 1, give: false }, defense: null } };
   s.ball = { carrierId: 'o-qb', pos: null, vel: null };
   s.plannedPass = null;
   const qb = getPlayer(s, 'o-qb');
@@ -228,7 +228,7 @@ test('a run play coaches the carrier to daylight, tucked under pressure', () => 
 test('a loose ball sends the whole offense after it', () => {
   const s = createGame({ seed: 1 });
   s.turnIndex = 3;
-  s.playRead = { look: null, read: null, call: { offense: { call: 'run', side: 1, give: true }, defense: null } };
+  s.playRead = { look: null, call: { offense: { call: 'run', side: 1, give: true }, defense: null } };
   s.ball = { carrierId: null, pos: fieldPos(2, s.losYard - 2), vel: { x: 0, y: 0 }, loose: 0 };
   s.plannedPass = null;
   coachLearnedOffense(s, makeGenome(OFFENSE_SPEC));

@@ -998,6 +998,24 @@ board.on('keydown', (e) => {
   if (pressBoardButton(e.target)) e.preventDefault();
 });
 
+/**
+ * Space runs the turn, same as pressing the board's own Run Turn button --
+ * a keyboard coach on a desktop shouldn't have to reach for the mouse every
+ * half second. Skipped when focus is on a button (or anything else space
+ * already has a job for): the native activation would otherwise fire beside
+ * this one, or this one would steal the press from whatever focus actually
+ * wants it. Skipped too while the Coaches Menu is open, since that dialog's
+ * own buttons cover the same ground and a turn running behind a menu the
+ * coach is still reading would be a surprise, not a shortcut.
+ */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== ' ') return;
+  if (menu.open) return;
+  if (e.target.closest?.('button, [role="button"], input, textarea, select, a[href], [tabindex]')) return;
+  e.preventDefault();
+  pressRun();
+});
+
 // Content is inside .menu-body, so a click whose target IS the dialog landed
 // on the backdrop. Esc is handled natively by showModal().
 menu.addEventListener('click', (e) => {

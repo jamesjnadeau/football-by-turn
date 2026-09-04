@@ -27,7 +27,7 @@ import {
 import { lobLanded, isLob } from '../lib/game/lob.js';
 import {
   TURN_SECONDS, PENALTY_YARDS, PICK_SLOP_UNITS, DEAD_BALL_PAUSE_SECONDS,
-  MIN_ZOOM_SCALE, MAX_ZOOM_SCALE,
+  MIN_ZOOM_SCALE, MAX_ZOOM_SCALE, LOFT_HANDLE_RADIUS_UNITS,
 } from '../lib/game/constants.js';
 import {
   minOnLine, DEFAULT_VARIANT, OFFENSIVE_LINE_ROLES, PERSONNEL_PACKAGES, personnelId,
@@ -423,7 +423,7 @@ function loftHandleHit(p) {
   if (!isLob(passReach(pp.power))) return null;
   const passer = getPlayer(state, pp.from);
   const tip = passArrowTip(passer.pos, pp.dir, pp.power);
-  return Math.hypot(tip.x - p.x, tip.y - p.y) <= PICK_SLOP_UNITS ? { loft: pp.from } : null;
+  return Math.hypot(tip.x - p.x, tip.y - p.y) <= LOFT_HANDLE_RADIUS_UNITS ? { loft: pp.from } : null;
 }
 
 function hitTest(p) {

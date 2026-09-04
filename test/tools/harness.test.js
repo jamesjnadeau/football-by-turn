@@ -10,7 +10,7 @@ import { makeGenome } from '../../lib/game/learned/genome.js';
 import { DEFENSE_SPEC } from '../../lib/game/learned/defense-spec.js';
 import { OFFENSE_SPEC } from '../../lib/game/learned/offense-spec.js';
 import { spotFault, formationFoul } from '../../lib/game/formation.js';
-import { loadGhostLog } from '../../tools/ghost.js';
+import { loadGhostLog, ghostCoach } from '../../tools/ghost.js';
 
 test('scenario deals a plannable hot-seat down inside the field', () => {
   const rand = mulberry32(11);
@@ -45,6 +45,31 @@ test('a play is deterministic for its seeds', () => {
     return playOnePlay(s, scriptedOffenseCoach, defenseCoach(genome), mulberry32(5));
   };
   assert.deepEqual(run(), run());
+});
+
+/**
+ * The harness's own load-bearing advancePlay call, inside defenseCoach
+ * (lib/game/train/harness.js). A ghost arm replays a recorded human's
+ * positions turn by turn and never calls setCalledPlay -- neither does
+ * playActionCoach at turn 0 -- so defenseCoach is the only thing that can
+ * build the down's percept before the first runTurn. Without its own
+ * advancePlay call, defenseCoach's learnedOrders still plays a scheme (it
+ * falls back to a throwaway stand-in percept — see defense-policy.js's
+ * percept()), but the decision is made against a percept nobody keeps, so
+ * state.playRead.call.defense stays null until turn 1 claims it off a field
+ * the ball has already moved through.
+ */
+test('the harness commits the defense scheme at turn 0, not turn 1, against a ghost arm', () => {
+  const runLog = loadGhostLog(new URL('../../coaching-logs/default-offense.json', import.meta.url));
+  const ghost = ghostCoach(runLog, 'offense');
+  const s = scenario(mulberry32(11));
+  assert.equal(s.turnIndex, 0);
+  ghost(s);
+  assert.equal(s.playRead, null, 'the ghost never calls setCalledPlay');
+  defenseCoach(makeGenome(DEFENSE_SPEC))(s);
+  assert.ok(s.playRead, 'the percept exists before runTurn has ever advanced it');
+  assert.ok(s.playRead.call.defense?.scheme,
+    'the scheme is committed this same turn, not deferred to the next one');
 });
 
 test('evaluateDefense aggregates deterministically', () => {
@@ -150,8 +175,8 @@ test('the play-action script sells a run and then throws', () => {
 });
 
 test('the three-way deal is reproducible and uses all three arms', () => {
-  const runLog = loadGhostLog('coaching-logs/default-offense.json');
-  const passLog = loadGhostLog('coaching-logs/default-offense2.json');
+  const runLog = loadGhostLog(new URL('../../coaching-logs/default-offense.json', import.meta.url));
+  const passLog = loadGhostLog(new URL('../../coaching-logs/default-offense2.json', import.meta.url));
   const arms = (seed) => {
     const coach = dealtOffenseCoach({ runLog, passLog, rand: mulberry32(seed) });
     const seen = [];
@@ -168,8 +193,8 @@ test('the three-way deal is reproducible and uses all three arms', () => {
 });
 
 test('an arm is chosen once per down, not once per turn', () => {
-  const runLog = loadGhostLog('coaching-logs/default-offense.json');
-  const passLog = loadGhostLog('coaching-logs/default-offense2.json');
+  const runLog = loadGhostLog(new URL('../../coaching-logs/default-offense.json', import.meta.url));
+  const passLog = loadGhostLog(new URL('../../coaching-logs/default-offense2.json', import.meta.url));
   const coach = dealtOffenseCoach({ runLog, passLog, rand: mulberry32(3) });
   const s = scenario(mulberry32(11));
   coach(s);

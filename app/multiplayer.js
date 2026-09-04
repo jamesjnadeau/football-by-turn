@@ -8,7 +8,7 @@
  * actually a DECISION (what the lobby screen says) lives in a tested lib/
  * module; this file only wires sockets to the DOM and to main.js's net seam.
  */
-import { lobbyMarkup, matchOverMarkup, matchOverResult, lobbyUnavailableMarkup } from '../lib/game/lobby.js';
+import { lobbyMarkup, matchOverMarkup, matchOverResult, lobbyUnavailableMarkup, rejoinMarkup } from '../lib/game/lobby.js';
 import { sideMarkup, MULTIPLAYER_SIDES } from '../lib/game/home.js';
 import { gameOverMessage } from '../lib/game/hud.js';
 import { getVariant } from '../lib/game/variants.js';
@@ -44,7 +44,7 @@ function openLobbySocket(variant, side, onMatched, onExit) {
     } else if (msg.type === 'matched') {
       settled = true;
       ws.close();
-      onMatched(msg);
+      onMatched({ matchId: msg.matchId, side: msg.side, token: msg.token, variant: variant.id });
     }
   });
   ws.addEventListener('close', () => {
@@ -71,65 +71,173 @@ function openLobbySocket(variant, side, onMatched, onExit) {
   return ws;
 }
 
-function openMatchSocket(matchId, side, token, onMessage) {
-  const ws = new WebSocket(wsUrl(`/match/${matchId}?side=${side}&token=${token}`));
-  ws.addEventListener('message', (ev) => onMessage(JSON.parse(ev.data)));
-  sessionStorage.setItem('fbt-match', JSON.stringify({ matchId, side, token }));
-  return ws;
+const MATCH_KEY = 'fbt-match';
+
+/**
+ * The match this tab is in, kept so a reload can rejoin it. sessionStorage
+ * on purpose: it is per tab, so a second tab is a stranger to the match
+ * (it has no token), and it dies with the tab, so a match is never offered
+ * back days later.
+ */
+function saveMatch(match) {
+  try { sessionStorage.setItem(MATCH_KEY, JSON.stringify(match)); } catch { /* storage denied: no rejoin, nothing worse */ }
+}
+function clearMatch() {
+  try { sessionStorage.removeItem(MATCH_KEY); } catch { /* nothing to clear */ }
+}
+function loadMatch() {
+  try {
+    const m = JSON.parse(sessionStorage.getItem(MATCH_KEY));
+    return m && m.matchId && m.side && m.token && m.variant ? m : null;
+  } catch { return null; }
 }
 
 /** How long the board keeps the final play before the end screen replaces it. */
 const MATCH_OVER_LINGER_MS = 3000;
+/** How long a dropped connection keeps trying before the match is given up.
+ *  Matches the server's own DROP_GRACE_MS: past it the seat is gone anyway. */
+const RECONNECT_WINDOW_MS = 20_000;
+const RECONNECT_DELAY_MS = 1000;
 
-async function enterMatch(variant, matched, onExit) {
-  show(home, false);
-  show(board, true);
-  // Leaving the match -- the Coaches Menu's Home button, or Back on the end
-  // screen -- closes the socket, so the server sees this coach go rather
-  // than holding a seat for a browser that has gone home. Without this the
-  // opponent was left playing a ghost whose seat stayed occupied.
-  let left = false;
+/**
+ * Enter a match: open its socket, hand main.js the net handle, and keep the
+ * socket alive for the whole drive. `match` is `{matchId, side, token,
+ * variant}` -- what the lobby's `matched` said, or what a reload found saved.
+ *
+ * The socket is not the match. It is reopened, with the same token, every
+ * time it dies before the match is over: the server keeps the seat for
+ * DROP_GRACE_MS and hands a returning coach the board as it stands, so a
+ * dropped connection costs the coach a message, not the game. main.js never
+ * sees the swap -- createNet's attach moves its handlers onto the new wire.
+ */
+async function enterMatch(variant, match, onExit, { resuming = false } = {}) {
+  saveMatch(match);
+  const net = createNet(null, match.side);
+  let left = false;   // this coach chose to go: Home, Back, Play again
+  let over = false;   // the server said the match ended, or refused the seat
+  let dealt = false;  // the board has been handed over at least once
+  let lostAt = null;  // when the current outage began, or null while connected
+  let retryTimer = null;
+  let ws = null;
+  let lastState = null;
+
+  if (resuming) {
+    // No board yet: the rejoin screen holds the section until the first
+    // snapshot, and Give up is the way out of a server that never answers.
+    show(board, false);
+    show(home, true);
+    home.innerHTML = rejoinMarkup({ variant, side: match.side });
+    home.addEventListener('click', function onGiveUp(e) {
+      if (!e.target.closest?.('[data-lobby-back]')) return;
+      home.removeEventListener('click', onGiveUp);
+      leave();
+    });
+  } else {
+    show(home, false);
+    show(board, true);
+  }
+
+  const stop = () => {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    clearMatch();
+    // Closing the socket is what tells the server this coach has gone,
+    // rather than holding a seat for a browser that went home.
+    try { ws?.close(); } catch { /* already gone */ }
+  };
   const leave = () => {
     if (left) return;
     left = true;
-    ws.close();
+    stop();
     onExit();
   };
-  // Play again: the socket is done with, but the coach is not going home --
-  // he is going straight back into the queue for the side he just played.
+  // Play again: straight back into the queue for the side he just played.
   const again = () => {
     if (left) return;
     left = true;
-    ws.close();
-    openLobbySocket(variant, matched.side, (next) => enterMatch(variant, next, onExit), onExit);
+    stop();
+    openLobbySocket(variant, match.side, (next) => enterMatch(variant, next, onExit), onExit);
   };
-  // The last state the server sent, kept so the end screen can say the
-  // result in the game's own words, facing this coach.
-  let lastState = null;
+  const endWith = (result) => {
+    over = true;
+    clearMatch();
+    if (left) return;
+    showMatchOver(variant, match.side, result, { leave, again });
+  };
+  const finalCall = () => {
+    const finalState = lastState && {
+      ...lastState, aiTeam: null, remoteTeam: match.side === 'offense' ? 'defense' : 'offense',
+    };
+    return finalState ? gameOverMessage(finalState) : 'The drive is over.';
+  };
+
   const onMessage = (msg) => {
     if (msg.type === 'turn') {
       lastState = msg.state;
+      if (!dealt) {
+        dealt = true;
+        show(home, false);
+        show(board, true);
+      }
+    } else if (msg.type === 'start') {
+      dealt = true;
     } else if (msg.type === 'matchOver') {
-      const finalState = lastState && {
-        ...lastState, aiTeam: null, remoteTeam: matched.side === 'offense' ? 'defense' : 'offense',
-      };
-      const result = matchOverResult(msg.reason, finalState ? gameOverMessage(finalState) : 'The drive is over.');
       // The board narrates the ending first (main.js's own matchOver
       // handler); the end screen follows once the coach has had a look.
-      setTimeout(() => {
-        if (left) return;
-        showMatchOver(variant, matched.side, result, { leave, again });
-      }, MATCH_OVER_LINGER_MS);
+      const result = matchOverResult(msg.reason, finalCall());
+      over = true;
+      clearMatch();
+      setTimeout(() => endWith(result), MATCH_OVER_LINGER_MS);
+    } else if (msg.type === 'refused') {
+      // The seat is not this token's any more: the match is over, or the
+      // server has forgotten it. There is nothing to keep trying for.
+      endWith(dealt ? 'The connection could not be restored.' : 'That match could not be rejoined.');
     }
   };
-  // The handle goes on the socket in the same breath the socket is opened,
-  // because MatchDO broadcasts `start` the moment the second coach connects
-  // -- which is inside the await below. createNet holds anything that lands
-  // before startGame has registered a handler for it.
-  const ws = openMatchSocket(matched.matchId, matched.side, matched.token, onMessage);
-  const net = createNet(ws, matched.side);
+
+  const connect = () => {
+    const socket = new WebSocket(wsUrl(`/match/${match.matchId}?side=${match.side}&token=${match.token}`));
+    ws = socket;
+    net.attach(socket);
+    socket.addEventListener('message', (ev) => onMessage(JSON.parse(ev.data)));
+    socket.addEventListener('open', () => {
+      if (lostAt === null) return;
+      lostAt = null;
+      net.deliver({ type: 'connectionRestored' });
+    });
+    socket.addEventListener('close', () => {
+      if (ws !== socket || left || over) return;
+      if (lostAt === null) {
+        lostAt = Date.now();
+        net.deliver({ type: 'connectionLost' });
+      }
+      if (Date.now() - lostAt > RECONNECT_WINDOW_MS) {
+        endWith(dealt ? 'The connection was lost and could not be restored.' : 'That match could not be rejoined.');
+        return;
+      }
+      retryTimer = setTimeout(connect, RECONNECT_DELAY_MS);
+    });
+  };
+  // The socket is opened before main.js is imported, because MatchDO
+  // broadcasts `start` the moment the second coach connects -- inside the
+  // await below. createNet holds anything that lands before startGame has
+  // registered a handler for it.
+  connect();
   game ??= await import('./main.js');
-  game.startGame({ variant: variant.id, side: matched.side, onExit: leave, net });
+  game.startGame({ variant: variant.id, side: match.side, onExit: leave, net });
+}
+
+/**
+ * Pick the match this tab was in back up, if it was in one. app/home.js asks
+ * on every page load, before drawing the home screen: a reload mid-drive
+ * comes straight back to the board rather than to a menu with the match
+ * quietly still running behind it. Returns whether there was one to rejoin.
+ */
+export function resumeSavedMatch({ onExit = () => {} } = {}) {
+  const saved = loadMatch();
+  if (!saved) return false;
+  enterMatch(getVariant(saved.variant), saved, onExit, { resuming: true });
+  return true;
 }
 
 /**

@@ -115,4 +115,17 @@ home.addEventListener('click', (e) => {
       sidesFor({ multiplayer: MULTIPLAYER }));
   }
 });
-showHome();
+/**
+ * A tab that reloaded mid-match goes back to its match, not to the menu.
+ * Only a build with a Worker behind it can have saved one; the import is
+ * the same lazy one startMultiplayer makes.
+ */
+async function resumeOrHome() {
+  if (MULTIPLAYER) {
+    ownsSection = false;
+    multiplayerModule ??= await import('./multiplayer.js');
+    if (multiplayerModule.resumeSavedMatch({ onExit: showHome })) return;
+  }
+  showHome();
+}
+resumeOrHome();

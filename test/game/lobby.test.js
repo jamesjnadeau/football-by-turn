@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lobbyMarkup, matchOverMarkup, matchOverResult, lobbyUnavailableMarkup } from '../../lib/game/lobby.js';
+import { lobbyMarkup, matchOverMarkup, matchOverResult, lobbyUnavailableMarkup, rejoinMarkup } from '../../lib/game/lobby.js';
 
 const variant = { id: '7', label: 'Seven-a-side' };
 
@@ -52,5 +52,11 @@ test('a lobby that cannot be reached says so, names the fix, and offers Back', (
   const markup = lobbyUnavailableMarkup({ variant });
   assert.match(markup, /could not be reached/);
   assert.match(markup, /serve:worker/);
+  assert.match(markup, /data-lobby-back/);
+});
+
+test('the rejoin screen names the side being rejoined and offers a way out', () => {
+  const markup = rejoinMarkup({ variant, side: 'defense' });
+  assert.match(markup, /Rejoining your match as the defense/);
   assert.match(markup, /data-lobby-back/);
 });

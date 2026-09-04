@@ -57,10 +57,19 @@ function startMatch(record, now) {
 
 export function applyMatchMessage(record, message, now) {
   if (message.type === 'connect') {
-    if (record.connected[message.side]) {
+    if (record.tokens[message.side] !== message.token) {
       return { record, messages: [{ to: message.side, type: 'refused' }] };
     }
-    if (record.tokens[message.side] !== message.token) {
+    if (record.connected[message.side]) {
+      // The right token on a seat that is already taken is the same coach on
+      // a new socket -- a reload, or a connection the server has not yet
+      // noticed dying. The token is his alone, so the new socket is him and
+      // the old one is dead or superseded (the shell closes it). He gets the
+      // board and the clock back the way a returning coach does; the record
+      // is untouched because nothing about the match changed.
+      if (record.status === 'active') {
+        return { record, messages: [snapshotFor(record, message.side)] };
+      }
       return { record, messages: [{ to: message.side, type: 'refused' }] };
     }
     const connected = { ...record.connected, [message.side]: true };
@@ -104,11 +113,7 @@ export function applyMatchMessage(record, message, now) {
     const survivor = OTHER[message.side];
     return {
       record: next,
-      messages: [
-        { to: survivor, type: 'opponentBack' },
-        { to: message.side, type: 'turn', frames: [], events: [], down: record.state.down,
-          deadlineAt: next.deadlineAt, state: stripForSide(record.state, message.side) },
-      ],
+      messages: [{ to: survivor, type: 'opponentBack' }, snapshotFor(next, message.side)],
     };
   }
 
@@ -179,6 +184,18 @@ export function applyMatchMessage(record, message, now) {
   }
 
   return { record, messages: [] };
+}
+
+/**
+ * The board as it stands, shaped like a `turn` with nothing to animate, for
+ * a coach who has to be handed the match again: a reconnect, or a new socket
+ * from a coach the server still had seated.
+ */
+function snapshotFor(record, side) {
+  return {
+    to: side, type: 'turn', frames: [], events: [], down: record.state.down,
+    deadlineAt: record.deadlineAt, state: stripForSide(record.state, side),
+  };
 }
 
 function cloneState(state) {

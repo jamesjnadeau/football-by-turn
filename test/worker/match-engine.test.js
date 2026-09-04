@@ -346,12 +346,31 @@ test('the clock does not run while paused: alarm is a no-op', () => {
   assert.deepEqual(messages, []);
 });
 
-test('a second connect on an already-connected side is refused, and the match is untouched', () => {
+test('a second connect with the wrong token on a taken seat is refused, and the match is untouched', () => {
   let m = started();
   const before = m;
-  const { record, messages } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 5000);
+  const { record, messages } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'not-it' }, 5000);
   assert.deepEqual(messages, [{ to: 'offense', type: 'refused' }]);
   assert.deepEqual(record, before);
+});
+
+test('a second connect with the RIGHT token on a taken seat is the same coach back: a snapshot, no change', () => {
+  // A reload, or a dropped connection the server has not noticed yet. The
+  // token is his alone, so the new socket is him; he gets the board and the
+  // clock as they stand, and the record is not touched.
+  const m = started();
+  const { record, messages } = applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 5000);
+  assert.deepEqual(record, m);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].to, 'offense');
+  assert.equal(messages[0].type, 'turn');
+  assert.deepEqual(messages[0].frames, []);
+  assert.equal(messages[0].deadlineAt, m.deadlineAt);
+  assert.equal(messages[0].state.turnIndex, m.state.turnIndex);
+  // Once the match is over there is nothing to hand back.
+  const over = { ...m, status: 'over' };
+  assert.deepEqual(applyMatchMessage(over, { type: 'connect', side: 'offense', token: 'tok-o' }, 5000).messages,
+    [{ to: 'offense', type: 'refused' }]);
 });
 
 test('an oversized commit message is dropped', () => {

@@ -43,6 +43,12 @@ and the other for the defense. `wrangler` is fetched by `npx` on first use
 let `npx` fetch the current one. On the static server, picking a side in the
 multiplayer chooser shows a screen saying the lobby could not be reached.
 
+A match survives a dropped connection and a page reload. The server holds a
+coach's seat for twenty seconds; the page reconnects with the same token in
+the background (the board says *Connection lost — reconnecting…*), and a tab
+that reloads rejoins the match it was in and is handed the board as it
+stands. Past twenty seconds the seat is given up and the opponent is told.
+
 ## Training the learned AI
 
 The two learned levels — `Defense: computer (learned)` and

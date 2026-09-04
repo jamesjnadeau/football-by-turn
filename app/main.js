@@ -158,6 +158,10 @@ let netDeadlineAt = null;
 // after he has -- how long his opponent has left is worth knowing -- but it
 // stops being his to spend, which is what the dimmed plate says.
 let netCommitted = false;
+// Whether the board has been built for the current match. A match dealt by
+// the server's `start` builds it there; one rejoined after a reload has no
+// `start` coming and builds it off the first snapshot instead.
+let boardDealt = false;
 let clockTimer = null;
 
 function layer(id) {
@@ -189,6 +193,7 @@ function rebuildBoard() {
   board.attr('viewBox', viewBox);
   board.clear();
   board.svg(markup); // parses the markup string from render.js and inserts it as real SVG nodes
+  boardDealt = true;
 }
 
 /**
@@ -331,6 +336,10 @@ function paint() {
  * here afterwards.
  */
 function drawMessage() {
+  // Nothing to draw into until the board exists -- a match that has not
+  // been dealt yet can still have things to say (a connection lost while
+  // rejoining); paint() draws messageText once there is a board.
+  if (!boardDealt) return;
   const cam = cameraYard();
   layer('game-message').clear()
     .svg(renderMessage(messageText, state.losYard, cam) + playClockMark(cam));
@@ -1472,6 +1481,8 @@ function applyServerTurn({ frames, events, down, deadlineAt, state: serverState 
   const newDown = serverState.phase === 'planning' && serverState.turnIndex === 0 && frames.length > 0;
   state = claimSide(serverState);
   netCommitted = false; // a new turn is his to spend again
+  // A rejoined match has no `start`: the first snapshot is the deal.
+  if (!boardDealt) rebuildBoard();
   layer('game-arrows').clear();
   const finish = () => {
     if (newDown) rebuildBoard();
@@ -1539,6 +1550,10 @@ function startMultiplayerGame() {
   });
   net.onOpponentGone(({ resumeBy }) => say(`Your opponent dropped. Waiting up to ${Math.ceil((resumeBy - Date.now()) / 1000)}s…`));
   net.onOpponentBack(() => say('Your opponent is back.'));
+  // This side of the wire. The board is left as it is: whatever he had drawn
+  // is still his to send once the server's snapshot hands him the turn back.
+  net.onConnectionLost(() => say('Connection lost — reconnecting…'));
+  net.onConnectionRestored(() => say('Reconnected.'));
   net.onMatchOver(({ reason }) => {
     stopClockDisplay();
     netCommitted = false;
@@ -1683,6 +1698,7 @@ export function startGame({
   variantId = variant;
   sideId = side;
   net = netHandle;
+  boardDealt = false;
   stopClockDisplay();
   if (!inputAttached) {
     attachInput(board, { hitTest, onGesture, onDragPreview });

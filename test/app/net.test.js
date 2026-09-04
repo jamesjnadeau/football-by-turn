@@ -8,6 +8,7 @@ function fakeSocket() {
   return {
     sent: [],
     closers: [],
+    readyState: 1,
     addEventListener: function (type, fn) {
       if (type === 'message') listeners.push(fn);
       if (type === 'close') this.closers.push(fn);
@@ -103,4 +104,40 @@ test('a bound listener can be let go before the socket closes', () => {
   target.fire('click');
   assert.deepEqual(seen, []);
   ws.deliverClose(); // and releasing twice is not an error
+});
+
+test('attaching a new socket keeps every handler, and the old socket goes quiet', () => {
+  const first = fakeSocket();
+  const net = createNet(first, 'offense');
+  const seen = [];
+  net.onTurn((m) => seen.push(m.n));
+  first.deliver({ type: 'turn', n: 1 });
+  const second = fakeSocket();
+  net.attach(second);
+  first.deliver({ type: 'turn', n: 2 }); // a superseded socket's late word is dropped
+  second.deliver({ type: 'turn', n: 3 });
+  assert.deepEqual(seen, [1, 3]);
+  net.commit({ name: '' }, 4);
+  assert.equal(first.sent.length, 0);
+  assert.equal(second.sent.length, 1);
+});
+
+test('a handle can be made before it has a socket, and a commit with no wire is dropped, not thrown', () => {
+  const net = createNet(null, 'defense');
+  assert.equal(net.commit({ name: '' }, 0), false);
+  const ws = fakeSocket();
+  net.attach(ws);
+  assert.equal(net.commit({ name: '' }, 0), true);
+  ws.readyState = 3;
+  assert.equal(net.commit({ name: '' }, 1), false);
+});
+
+test('what this side of the wire has to say is routed like a message', () => {
+  const net = createNet(fakeSocket(), 'offense');
+  const seen = [];
+  net.deliver({ type: 'connectionLost' }); // before the handler: held
+  net.onConnectionLost(() => seen.push('lost'));
+  net.onConnectionRestored(() => seen.push('back'));
+  net.deliver({ type: 'connectionRestored' });
+  assert.deepEqual(seen, ['lost', 'back']);
 });

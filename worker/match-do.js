@@ -67,7 +67,13 @@ export class MatchDO {
       server.close(1008, 'refused');
       return new Response(null, { status: 101, webSocket: client });
     }
+    // The same coach on a new socket (the engine accepted his token on a
+    // seat it still had as taken): the old socket is dead or superseded, and
+    // closing it here is what keeps its late close from being read as a
+    // disconnect -- onClose only listens to the seated socket.
+    const superseded = this.sockets[side];
     this.sockets[side] = server;
+    if (superseded) try { superseded.close(1000, 'superseded'); } catch { /* already gone */ }
     server.addEventListener('message', (ev) => this.onMessage(side, server, ev));
     server.addEventListener('close', () => this.onClose(side, server));
     await this.dispatch(result);

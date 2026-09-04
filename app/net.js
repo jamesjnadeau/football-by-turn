@@ -18,11 +18,26 @@
 export function createNet(socket, side) {
   const handlers = {};
   const held = [];
-  socket.addEventListener('message', (ev) => {
-    const msg = JSON.parse(ev.data);
+  let current = null;
+  const deliver = (msg) => {
     if (handlers[msg.type]) handlers[msg.type](msg);
     else held.push(msg);
-  });
+  };
+  /**
+   * Point the handle at a socket. Called again on every reconnect: the
+   * handlers app/main.js registered stay exactly where they are, and only the
+   * wire underneath them changes. Messages from a socket that has since been
+   * replaced are dropped -- it is closing, and anything it still had to say
+   * the new socket's snapshot says better.
+   */
+  const attach = (ws) => {
+    current = ws;
+    ws.addEventListener('message', (ev) => {
+      if (current !== ws) return;
+      deliver(JSON.parse(ev.data));
+    });
+  };
+  if (socket) attach(socket);
   const on = (type) => (handler) => {
     handlers[type] = handler;
     // Taken off the pile before any of them is delivered, so a handler that
@@ -34,7 +49,18 @@ export function createNet(socket, side) {
   };
   return {
     side,
-    commit: (play, turnIndex) => socket.send(JSON.stringify({ type: 'commit', turnIndex, play })),
+    attach,
+    /** Something this side of the wire has to say -- a dropped connection,
+     *  a restored one -- routed like a message so main.js hears it the same way. */
+    deliver,
+    commit: (play, turnIndex) => {
+      // A commit with no wire under it is dropped rather than thrown: the
+      // reconnect's snapshot hands the coach the turn back, and he presses
+      // End Turn again on a board he can see.
+      if (!current || current.readyState !== 1) return false;
+      current.send(JSON.stringify({ type: 'commit', turnIndex, play }));
+      return true;
+    },
     onStart: on('start'),
     onTurn: on('turn'),
     onTimeUp: on('timeUp'),
@@ -42,6 +68,8 @@ export function createNet(socket, side) {
     onOpponentGone: on('opponentGone'),
     onOpponentBack: on('opponentBack'),
     onMatchOver: on('matchOver'),
+    onConnectionLost: on('connectionLost'),
+    onConnectionRestored: on('connectionRestored'),
   };
 }
 

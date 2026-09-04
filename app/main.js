@@ -30,7 +30,7 @@ import {
   MIN_ZOOM_SCALE, MAX_ZOOM_SCALE, LOFT_HANDLE_RADIUS_UNITS,
 } from '../lib/game/constants.js';
 import {
-  minOnLine, DEFAULT_VARIANT, OFFENSIVE_LINE_ROLES, PERSONNEL_PACKAGES, personnelId,
+  minOnLine, DEFAULT_VARIANT, OFFENSIVE_LINE_ROLES, PERSONNEL_PACKAGES, personnelId, baseVariantId,
 } from '../lib/game/rosters.js';
 import { followYard, yardsOfY, gameView } from '../lib/game/view.js';
 import { applyZoomPan } from '../lib/game/zoom.js';
@@ -141,7 +141,7 @@ let trainer = null;
  * other team mid-drive, and the menu has to follow it.
  */
 function myBook() {
-  return bookFor(library, playbookSide(state));
+  return bookFor(library, baseVariantId(state.variantId), playbookSide(state));
 }
 // Whether drags are moving players around the line rather than giving them
 // orders. A coaching input mode, like `showVelocity` — the game does not care
@@ -919,7 +919,8 @@ function savePlay() {
   if (!name) return; // cancelled, or named nothing
   const play = capturePlay(state, name); // capturePlay is what cuts the name to length
   const side = playbookSide(state);
-  const book = bookFor(library, side);
+  const variant = baseVariantId(state.variantId);
+  const book = bookFor(library, variant, side);
   let slot = firstEmptySlot(book);
   if (slot === -1) {
     const answer = window.prompt(
@@ -930,9 +931,10 @@ function savePlay() {
     if (!Number.isInteger(n) || n < 1 || n > PLAY_SLOTS) return;
     slot = n - 1;
   }
-  // Into this side's book only. putBook copies, so the other side's five are
-  // the same five they were.
-  library = putBook(library, side, putPlay(book, slot, play));
+  // Into this side's book, this variant's library only. putBook copies, so
+  // the other side's five — and the other variant's — are the same five they
+  // were.
+  library = putBook(library, variant, side, putPlay(book, slot, play));
   const kept = saveLibrary(library);
   closeMenu();
   say(kept

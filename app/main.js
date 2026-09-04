@@ -263,7 +263,13 @@ function paintArrows() {
       // between the two men most likely to be moved, so it stays on the board:
       // it is the one arrow that answers "what did that just do?".
       repositioning ? lineZoneMark(state) + (state.plannedPass?.auto ? renderPassArrow(state) : '')
-      : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state) + unplannedRingsMark(state)
+      : state.phase === 'planning' ? renderPlans(state) + renderPassArrow(state)
+        // Quiet until the coach actually tries to run the turn short-handed —
+        // pendingWarning is exactly that attempt, the same flag pressRun sets
+        // to know a second press means "anyway". Flashing from the first
+        // player drawn on would just be noise; this is the same warning
+        // pressRun's own message gives in words, not a second, earlier one.
+        + (pendingWarning ? unplannedRingsMark(state) : '')
       : ''
     ),
   );
@@ -1078,6 +1084,7 @@ function pressRun() {
     // Spec: warn when not every player has a direction. Second press runs anyway.
     pendingWarning = true;
     say(`${missing.length} player(s) have no direction set. Press Run Turn again to run anyway.`);
+    paintArrows(); // rings the men the warning is talking about, not just the words
     return;
   }
   pendingWarning = false;

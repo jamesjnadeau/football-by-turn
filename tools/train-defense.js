@@ -37,6 +37,11 @@ export { defenseFitness, TURNOVER_BONUS_YARDS, TOUCHDOWN_PENALTY_YARDS };
  */
 const RUN_LOG = new URL('../coaching-logs/default-offense.json', import.meta.url);
 const PASS_LOG = new URL('../coaching-logs/default-offense2.json', import.meta.url);
+// Read and parsed once, not once per candidate per generation: the fitness
+// lambda below runs hundreds of times a training run and the JSON underneath
+// these two logs does not change between calls.
+const RUN_LOG_DATA = loadGhostLog(RUN_LOG);
+const PASS_LOG_DATA = loadGhostLog(PASS_LOG);
 
 export function trainDefense({ generations, popSize, plays, seed, sigma }) {
   return evolve({
@@ -55,8 +60,8 @@ export function trainDefense({ generations, popSize, plays, seed, sigma }) {
         plays,
         seed: seedForGen,
         offenseCoach: dealtOffenseCoach({
-          runLog: loadGhostLog(RUN_LOG),
-          passLog: loadGhostLog(PASS_LOG),
+          runLog: RUN_LOG_DATA,
+          passLog: PASS_LOG_DATA,
           rand: mulberry32(seedForGen),
         }),
       }));

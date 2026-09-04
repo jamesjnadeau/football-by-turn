@@ -116,6 +116,33 @@ test('mode legality: tuck = non-lineman carrier only, prepared = defense only, h
   assert.equal(getPlayer(s, 'o-c').charge, 0);
 });
 
+test('untucking drops a planned throw, but tucking in the first place does not', () => {
+  const s = createGame({ seed: 1 });
+  s.ball.carrierId = 'o-rb';
+  setMode(s, 'o-rb', 'tucked');
+  setPass(s, 'o-rb', { x: 0, y: 1 }, 0.5);
+  assert.ok(s.plannedPass, 'a throw can be planned while tucked -- setPass does not gate on mode');
+  setMode(s, 'o-rb', 'normal');
+  assert.equal(s.plannedPass, null, 'untucking cancels it');
+
+  // The other direction leaves a plan alone: only the tucked-to-normal edge
+  // cancels anything.
+  setPass(s, 'o-rb', { x: 0, y: 1 }, 0.5);
+  setMode(s, 'o-rb', 'tucked');
+  assert.ok(s.plannedPass, 'tucking does not itself cancel a throw');
+  setMode(s, 'o-rb', 'normal');
+  assert.equal(s.plannedPass, null, 'and untucking from there still cancels it');
+
+  // Only the carrier's own throw is at risk -- someone else's planned throw
+  // survives another player's stance changing.
+  s.ball.carrierId = 'o-c';
+  setPass(s, 'o-c', { x: 0, y: 1 }, 0.5);
+  s.ball.carrierId = 'o-rb';
+  setMode(s, 'o-rb', 'tucked');
+  setMode(s, 'o-rb', 'normal');
+  assert.ok(s.plannedPass, 'not this player\'s throw to cancel');
+});
+
 test('cut block is offensive linemen only -- every role in the default roster', () => {
   const s = createGame({ seed: 1 });
   for (const id of ['o-c', 'o-lg', 'o-rg']) {

@@ -47,7 +47,8 @@ function bothConnected(record) {
 
 function startMatch(record, now) {
   const state = createGame({ seed: record.seed, variant: record.variant });
-  const deadlineAt = now + HUDDLE_SECONDS * 1000;
+  // The same rule every later down is dealt by -- a fresh down is a huddle.
+  const deadlineAt = now + turnClockSeconds(state) * 1000;
   const next = { ...record, status: 'active', state, deadlineAt };
   const messages = ['offense', 'defense'].map((side) => ({
     to: side, type: 'start', seed: record.seed, variant: record.variant,
@@ -304,6 +305,16 @@ function fillFromLastCommitted(record) {
   return state;
 }
 
+/**
+ * How long the coaches get to plan the turn `state` is now sitting on: the
+ * huddle for the first turn of a down, the shorter adjust clock for every
+ * turn after. Exported so a test can ask the question directly, the same way
+ * nextAlarm is.
+ */
+export function turnClockSeconds(state) {
+  return state.phase === 'planning' && state.turnIndex === 0 ? HUDDLE_SECONDS : TURN_CLOCK_SECONDS;
+}
+
 function runResolvedTurn(record, now) {
   const random = mulberry32(record.seed + record.state.turnIndex);
   const state = cloneState(record.state);
@@ -318,7 +329,19 @@ function runResolvedTurn(record, now) {
     offense: record.committed.offense ?? record.lastCommitted.offense,
     defense: record.committed.defense ?? record.lastCommitted.defense,
   };
-  const deadlineAt = now + TURN_CLOCK_SECONDS * 1000;
+  // Which clock the coaches get next is the same question startMatch answers
+  // when it deals the first down, and it has the same answer: a down that has
+  // just been dealt is a HUDDLE. Formations are being set on it -- turnIndex 0
+  // is the only turn canReposition is open on, and the only one a coach can
+  // change his personnel or his whole look on -- so it gets the 30 seconds the
+  // spec gives that, not the 12 for "adjusting a picture already drawn".
+  //
+  // Handing every turn the 12s clock is what made a new down unplayable: the
+  // coach had a fresh formation to set and a third of the time to set it in,
+  // ran out, and the flush replayed the play he had already run. Then it did
+  // it again, every 12 seconds, because nothing about that ever gave him long
+  // enough to draw a new one.
+  const deadlineAt = now + turnClockSeconds(state) * 1000;
   const next = {
     ...record, state, lastCommitted, committed: { offense: null, defense: null }, deadlineAt,
     flushDeadlineAt: null,

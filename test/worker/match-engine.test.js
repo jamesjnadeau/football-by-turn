@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createMatch, applyMatchMessage, stripForSide, MAX_COMMIT_BYTES,
-  nextAlarm, FLUSH_GRACE_MS, DROP_GRACE_MS,
+  nextAlarm, FLUSH_GRACE_MS, DROP_GRACE_MS, HUDDLE_SECONDS, TURN_CLOCK_SECONDS, turnClockSeconds,
 } from '../../worker/match-engine.js';
 import { fieldPos } from '../../lib/game/view.js';
 
@@ -577,4 +577,52 @@ test('a shift before the match has started is ignored', () => {
   );
   assert.deepEqual(messages, []);
   assert.equal(record.state, null);
+});
+
+test('the first turn of a down is a huddle, every turn after is the adjust clock', () => {
+  const m = started();
+  assert.equal(turnClockSeconds(m.state), HUDDLE_SECONDS, 'turnIndex 0 is where formations are set');
+  assert.equal(turnClockSeconds({ ...m.state, turnIndex: 1 }), TURN_CLOCK_SECONDS);
+  assert.equal(turnClockSeconds({ ...m.state, turnIndex: 7 }), TURN_CLOCK_SECONDS);
+  // Mid-play, not a planning turn at all: nobody is being given a clock to
+  // draw on, so it is not the huddle.
+  assert.equal(turnClockSeconds({ ...m.state, phase: 'playOver', turnIndex: 0 }), TURN_CLOCK_SECONDS);
+});
+
+test('the match opens on the huddle clock', () => {
+  const m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  const { record, messages } = applyMatchMessage(
+    applyMatchMessage(m, { type: 'connect', side: 'offense', token: 'tok-o' }, 0).record,
+    { type: 'connect', side: 'defense', token: 'tok-d' }, 0,
+  );
+  assert.equal(record.deadlineAt, HUDDLE_SECONDS * 1000);
+  for (const msg of messages) assert.equal(msg.deadlineAt, record.deadlineAt, 'both coaches are told the same clock');
+});
+
+test('a turn that ends the down deals the next one a full huddle, not the adjust clock', () => {
+  // The whistle is about to blow: this turn ends the down, so runResolvedTurn
+  // calls nextDown and the coaches get a fresh formation to set.
+  let m = started();
+  m = { ...m, state: { ...m.state, phase: 'playOver', deadReason: 'tackle' } };
+  const now = 5000;
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: m.state.turnIndex, play: emptyPlay }, now));
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'commit', side: 'defense', turnIndex: m.state.turnIndex, play: emptyPlay }, now,
+  );
+  assert.equal(record.state.down, 2, 'the down moved on');
+  assert.equal(record.state.turnIndex, 0, 'and the new one is at its first turn');
+  assert.equal(record.deadlineAt - now, HUDDLE_SECONDS * 1000,
+    'a coach with a whole formation to set gets the huddle, not 12s');
+  for (const msg of messages.filter((x) => x.type === 'turn')) {
+    assert.equal(msg.deadlineAt, record.deadlineAt, 'and is told so');
+  }
+});
+
+test('a turn inside a live down keeps the shorter adjust clock', () => {
+  const m = started();
+  const now = 5000;
+  let r = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, now).record;
+  const { record } = applyMatchMessage(r, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, now);
+  if (record.state.turnIndex === 0) return; // that turn ended the down; the huddle case covers it
+  assert.equal(record.deadlineAt - now, TURN_CLOCK_SECONDS * 1000);
 });

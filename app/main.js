@@ -21,6 +21,7 @@ import { downDistanceText, gameOverMessage, kickoffMessage, humanSide } from '..
 import { planForDrag } from '../lib/game/predict.js';
 import { opponentAt, setCover } from '../lib/game/cover.js';
 import { mulberry32 } from '../lib/game/rng.js';
+import { frameAtElapsed } from '../lib/game/animation.js';
 import {
   receiverAt, lockOnPass, passLanding, backOnPasser, passReach, loftFromDrag,
   passOrigin, passAim, passShadowSpots, lobLandingAt,
@@ -134,6 +135,17 @@ let messageText = '';
 // live during that window and a second click runs a whole extra turn on top
 // of the one being drawn. Set when animate() starts, cleared in finish().
 let animating = false;
+/**
+ * Ends the animation that is in flight, if there is one, as though its last
+ * frame had just been drawn -- or null when nothing is being drawn.
+ *
+ * A match's turns arrive on the server's clock, not on this board's, so the
+ * next one can land while the last is still being walked. Cutting the old one
+ * short is what keeps two loops from writing over the same player groups, and
+ * what makes sure the turn that is being replaced is FINISHED (its `done` run,
+ * `animating` cleared) rather than abandoned half-drawn with the board locked.
+ */
+let endAnimation = null;
 // A debug read-out, not game state: New Game replaces `state` wholesale, and
 // the player's choice of whether to see velocities — on by default, but
 // including having turned it off — should survive that.
@@ -828,7 +840,8 @@ function onPinch(factor, anchor) {
  * glued to the former carrier until the post-turn paint().
  */
 function animate(frames, done) {
-  const perFrame = (TURN_SECONDS * 1000) / frames.length;
+  const total = TURN_SECONDS * 1000;
+  const perFrame = total / frames.length;
   const playersLayer = layer('game-players');
   const overlay = layer('game-overlay');
   // Friction is a per-frame report, not a standing order: who is leaning on
@@ -848,9 +861,7 @@ function animate(frames, done) {
     overlay.clear().svg(looseBallMark(frames[0].ball || { x: 0, y: 0 }));
     ballNode = overlay.node.querySelector('[data-loose-ball]');
   }
-  let i = 0;
-  function tick() {
-    const frame = frames[i];
+  const draw = (frame) => {
     // Scroll with the ball -- the BALL, not the carrier, so a fumble bouncing
     // downfield stays on screen instead of leaving the window with nobody
     // holding it. Only the viewBox is written: the field underneath was drawn
@@ -869,15 +880,55 @@ function animate(frames, done) {
       const size = frame.looseBall ? frame.looseBall.scale : 1;
       ballNode.setAttribute('transform', `translate(${frame.ball.x}, ${frame.ball.y}) scale(${size})`);
     }
-    i += 1;
-    if (i < frames.length) setTimeout(() => requestAnimationFrame(tick), perFrame);
-    else {
-      if (ballNode) overlay.clear(); // paint() redraws the ball in its resting place
-      frictionLayer.clear();         // the whistle ends the hand-fighting too
-      done();
-    }
+  };
+
+  let finished = false;
+  const started = performance.now();
+  // One guarded ending, because there are now two ways to reach it: the last
+  // frame, and a caller cutting the turn short (endAnimation). Running `done`
+  // twice would finish the same turn twice.
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    endAnimation = null;
+    draw(frames[frames.length - 1]); // however few frames were drawn, the men end where the turn put them
+    if (ballNode) overlay.clear(); // paint() redraws the ball in its resting place
+    frictionLayer.clear();         // the whistle ends the hand-fighting too
+    done();
+  };
+  endAnimation = finish;
+
+  /**
+   * Which frame belongs to NOW, rather than the next one along.
+   *
+   * This is the difference between an animation that takes half a second and
+   * one that takes half a minute. A browser clamps setTimeout to about a
+   * second in a tab that is not on screen and stops requestAnimationFrame
+   * altogether -- and in a match one of the two windows is always the one the
+   * coach is not looking at. Walking the frames one timer at a time therefore
+   * made a 0.5s animation last 30 timer-seconds in the background window, and
+   * `animating` is what gates End Turn: that coach was locked out of his own
+   * board for longer than the 12s turn clock he was being timed by, every
+   * turn, for ever.
+   *
+   * Reading the frame off the clock instead means a throttled tab SKIPS
+   * frames rather than falling behind, and the first tick that lands past the
+   * end finishes. The animation costs what it says it costs wherever it runs.
+   */
+  function tick() {
+    if (finished) return;
+    const at = frameAtElapsed(performance.now() - started, total, frames.length);
+    if (at === null) { finish(); return; }
+    draw(frames[at]);
+    schedule();
   }
-  requestAnimationFrame(tick);
+  function schedule() {
+    // requestAnimationFrame is not scheduling here, it is only asking to draw
+    // on a frame boundary -- and a hidden tab never gets one, so it is skipped
+    // there rather than waited on.
+    setTimeout(() => { if (document.hidden) tick(); else requestAnimationFrame(tick); }, perFrame);
+  }
+  tick();
 }
 
 /**
@@ -1672,6 +1723,12 @@ function stopClockDisplay() {
  */
 function applyServerTurn({ frames, events, down, deadlineAt, state: serverState }) {
   void down; // carried on the message for app/multiplayer.js's own bookkeeping; state.down is already current
+  // Before anything reads or replaces `state`: if the last turn is still being
+  // drawn, it ends here, on the board it was drawn for. The server does not
+  // wait for this client's animation, so on a slow or throttled tab the next
+  // turn can arrive mid-walk -- and its finish() would otherwise land on a
+  // state that has already been swapped out from under it.
+  endAnimation?.();
   // The server has already run nextDown when the whistle ended the down, so a
   // turn that lands on turnIndex 0 of a planning phase is a fresh down: the
   // board shell (line of scrimmage, line to gain, camera) is rebuilt for it
@@ -1917,6 +1974,10 @@ export function startGame({
   sideId = side;
   net = netHandle;
   boardDealt = false;
+  // Whatever the last game left in flight is not this one's to finish, and a
+  // board that starts locked is a board with no way to unlock it.
+  endAnimation = null;
+  animating = false;
   stopClockDisplay();
   if (!inputAttached) {
     attachInput(board, {

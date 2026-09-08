@@ -13,6 +13,7 @@ import { createGame, serializeState, hydrateState } from '../lib/game/state.js';
 import { applyPlay, sanitizePlay } from '../lib/game/play.js';
 import { runTurn } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
+import { canReposition, placePlayer } from '../lib/game/formation.js';
 import { mulberry32 } from '../lib/game/rng.js';
 
 export const HUDDLE_SECONDS = 30;    // spec: first turn of a down -- formations are being set
@@ -156,6 +157,47 @@ export function applyMatchMessage(record, message, now) {
     return { record: withCommit, messages: [] };
   }
 
+  if (message.type === 'shift') {
+    // A shift is not a commit. Nothing is decided by it, no clock moves, and
+    // it is not remembered as a play -- one man moves and the other coach is
+    // told, now, rather than at the snap.
+    //
+    // This is not a new thing to know about the other team: stripForSide has
+    // always sent the opponent's POSITIONS and only ever hidden his plans and
+    // his coverage, because where a man is standing is what you can see from
+    // across the ball. What it could not do was send them AGAIN before the
+    // turn ran, so a defense watched an offense shift into trips by being
+    // told about it afterwards. Pre-snap alignment is exactly the information
+    // a defense is supposed to be reacting to.
+    //
+    // It also makes the server's board the true one during the huddle rather
+    // than at the end of it: both coaches' spots land here as they are made,
+    // so the occupancy check a later commit runs is judged against where
+    // everyone is actually standing.
+    if (message.turnIndex !== record.state.turnIndex) return { record, messages: [] };
+    // The same gate placeFormation keeps: a formation is what you come to the
+    // line with, so it may be changed right up to the snap and not after.
+    if (!canReposition(record.state)) return { record, messages: [] };
+    const pos = sanPos(message.pos);
+    if (!pos) return { record, messages: [] };
+    const player = record.state.players.find((p) => p.id === message.id);
+    // His own men only. Without this a coach could stand the other team's
+    // linemen wherever he liked, which no commit has ever been able to do
+    // (applyPlay's `mine` check) and this must not be the way in.
+    if (!player || player.team !== message.side) return { record, messages: [] };
+    const state = cloneState(record.state);
+    // placePlayer is the board's own rule -- past the line, out of bounds,
+    // inside another man, the snapper outside the hashes. A spot it refuses
+    // is simply not taken, and the other coach is told nothing, because
+    // nothing happened.
+    if (!placePlayer(state, message.id, pos)) return { record, messages: [] };
+    const moved = state.players.find((p) => p.id === message.id);
+    return {
+      record: { ...record, state },
+      messages: [{ to: OTHER[message.side], type: 'shift', id: message.id, pos: moved.pos }],
+    };
+  }
+
   if (message.type === 'alarm') {
     if (record.status !== 'active') return { record, messages: [] };
     const bothIn = record.committed.offense !== null && record.committed.defense !== null;
@@ -191,6 +233,19 @@ export function applyMatchMessage(record, message, now) {
  * a coach who has to be handed the match again: a reconnect, or a new socket
  * from a coach the server still had seated.
  */
+/**
+ * A spot off the wire, or null. Strict for the reason sanitizePlay is strict:
+ * these two numbers are written straight onto a player and one NaN puts him
+ * at NaN,NaN for the rest of the drive.
+ */
+function sanPos(pos) {
+  if (!pos || typeof pos !== 'object') return null;
+  const { x, y } = pos;
+  if (typeof x !== 'number' || !Number.isFinite(x)) return null;
+  if (typeof y !== 'number' || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
 function snapshotFor(record, side) {
   return {
     to: side, type: 'turn', frames: [], events: [], down: record.state.down,

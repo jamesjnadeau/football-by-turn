@@ -61,7 +61,19 @@ export function createNet(socket, side) {
       current.send(JSON.stringify({ type: 'commit', turnIndex, play }));
       return true;
     },
+    /**
+     * One man moved pre-snap. Dropped rather than queued when there is no
+     * wire, like commit: a shift is worth nothing once it is late, and the
+     * spot rides along in the commit's own `spots` anyway, so a shift lost
+     * to a dropped connection costs the opponent a preview and nothing else.
+     */
+    shift: (id, pos, turnIndex) => {
+      if (!current || current.readyState !== 1) return false;
+      current.send(JSON.stringify({ type: 'shift', turnIndex, id, pos }));
+      return true;
+    },
     onStart: on('start'),
+    onShift: on('shift'),
     onTurn: on('turn'),
     onTimeUp: on('timeUp'),
     onCommitRefused: on('commitRefused'),

@@ -141,3 +141,27 @@ test('what this side of the wire has to say is routed like a message', () => {
   net.deliver({ type: 'connectionRestored' });
   assert.deepEqual(seen, ['lost', 'back']);
 });
+
+test('a shift goes out on the wire as the man and the spot he moved to', () => {
+  const socket = fakeSocket();
+  const net = createNet(socket, 'offense');
+  assert.equal(net.shift('o-c', { x: 12, y: 34 }, 0), true);
+  assert.deepEqual(socket.sent, [{ type: 'shift', turnIndex: 0, id: 'o-c', pos: { x: 12, y: 34 } }]);
+});
+
+test('a shift with no wire under it is dropped rather than thrown', () => {
+  const socket = fakeSocket();
+  socket.readyState = 3; // CLOSED
+  const net = createNet(socket, 'offense');
+  assert.equal(net.shift('o-c', { x: 12, y: 34 }, 0), false);
+  assert.deepEqual(socket.sent, [], 'nothing was written to a dead socket');
+});
+
+test("a shift that lands before startGame has registered a handler is held, like every other message", () => {
+  const socket = fakeSocket();
+  const net = createNet(socket, 'defense');
+  socket.deliver({ type: 'shift', id: 'o-c', pos: { x: 1, y: 2 } });
+  const seen = [];
+  net.onShift((m) => seen.push(m));
+  assert.deepEqual(seen, [{ type: 'shift', id: 'o-c', pos: { x: 1, y: 2 } }]);
+});

@@ -609,6 +609,16 @@ function reposition(playerId, point) {
   if (!placePlayer(state, playerId, point)) return;
   realignDefense();
   pendingWarning = false;
+  // In a match the other coach is looking at this formation, so he is told
+  // the moment it changes rather than at the snap. Sent from HERE, after
+  // placePlayer accepted the spot, so what goes on the wire is a move that
+  // actually happened -- the server judges it again by the same rule, and a
+  // refusal there is simply a shift the opponent never hears about.
+  //
+  // The spot still rides along in the commit's own `spots`, so this is a
+  // preview and never the record of the move: a shift dropped by a dead
+  // socket costs the opponent a few seconds of notice and nothing else.
+  if (net) net.shift(playerId, getPlayer(state, playerId).pos, state.turnIndex);
   say(formationNote());
 }
 
@@ -1723,6 +1733,27 @@ function startMultiplayerGame() {
     paint();
   });
   net.onTurn((msg) => applyServerTurn(msg));
+  // The other coach moved a man before the snap. Written straight onto the
+  // board rather than put through placePlayer again: the server has already
+  // judged the spot against the arrangement it referees -- which now holds
+  // BOTH coaches' pre-snap moves as they are made -- and judging it a second
+  // time here, against a board this coach may have been dragging his own men
+  // around, is how the two screens would come to disagree about where a man
+  // is standing.
+  net.onShift(({ id, pos }) => {
+    const p = state?.players?.find((pl) => pl.id === id);
+    // His men only. The server only ever sends the opponent's, so a shift for
+    // anyone else is not something to draw.
+    if (!p || p.team !== state.remoteTeam) return;
+    p.pos = pos;
+    // Moving a man makes the order he was holding a lie -- the same rule
+    // placePlayer keeps. His plan is already stripped on this side of the
+    // wire (stripForSide), so this is only ever tidying.
+    p.plan = null;
+    p.cover = null;
+    aimSnap(state); // the snap is aimed off two men, and one of them may have just moved
+    paint();
+  });
   net.onTimeUp(() => say('Time is up — the server is waiting a moment longer for your opponent.'));
   // The board was locked the moment End Turn was pressed. If the server will
   // not take that commit, the lock has nothing left to wait for and has to

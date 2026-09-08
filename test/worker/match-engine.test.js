@@ -474,3 +474,107 @@ test('an oversized commit is refused out loud, not swallowed', () => {
     { to: 'offense', type: 'commitRefused', reason: 'too-big', turnIndex: 0 },
   ]);
 });
+
+/**
+ * A man of `side`'s, and a legal spot to shift him to: three yards straight
+ * back from the line, which is away from it for either team and far enough
+ * not to land him inside the man beside him.
+ */
+function someone(m, side) {
+  const p = m.state.players.find((pl) => pl.team === side);
+  // Offense lines up at decreasing y from the line, defense at increasing.
+  const back = side === 'offense' ? -3 : 3;
+  return { id: p.id, from: { ...p.pos }, to: { x: p.pos.x, y: p.pos.y + back } };
+}
+
+test('a pre-snap shift moves the man and tells the other coach at once', () => {
+  const m = started();
+  const { id, to } = someone(m, 'offense');
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'shift', side: 'offense', turnIndex: m.state.turnIndex, id, pos: to }, 100,
+  );
+  assert.deepEqual(messages, [{ to: 'defense', type: 'shift', id, pos: to }],
+    'the defense hears it now, not at the snap');
+  const moved = record.state.players.find((p) => p.id === id);
+  assert.deepEqual(moved.pos, to, "the server's board is the shifted one");
+  assert.equal(record.deadlineAt, m.deadlineAt, 'a shift is not a commit -- no clock moves');
+  assert.deepEqual(record.committed, { offense: null, defense: null }, 'nothing was committed');
+});
+
+test('a shift the other side sees is stripped of nothing it was not already stripped of', () => {
+  const m = started();
+  const { id, to } = someone(m, 'offense');
+  const { record } = applyMatchMessage(
+    m, { type: 'shift', side: 'offense', turnIndex: m.state.turnIndex, id, pos: to }, 100,
+  );
+  const seen = stripForSide(record.state, 'defense').players.find((p) => p.id === id);
+  assert.deepEqual(seen.pos, to, 'position is public -- it always was');
+  assert.equal(seen.plan, null, 'his orders still are not');
+});
+
+test('a coach may not shift the other team, however well-formed the message', () => {
+  const m = started();
+  const { id, from, to } = someone(m, 'offense');
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'shift', side: 'defense', turnIndex: m.state.turnIndex, id, pos: to }, 100,
+  );
+  assert.deepEqual(messages, []);
+  assert.deepEqual(record.state.players.find((p) => p.id === id).pos, from, 'he did not move');
+});
+
+test('a shift to an impossible spot is refused, and nobody is told anything', () => {
+  const m = started();
+  const { id, from } = someone(m, 'offense');
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'shift', side: 'offense', turnIndex: m.state.turnIndex, id, pos: { x: -9999, y: from.y } }, 100,
+  );
+  assert.deepEqual(messages, [], 'nothing happened, so there is nothing to say');
+  assert.deepEqual(record.state.players.find((p) => p.id === id).pos, from);
+});
+
+test('a shift carrying a NaN is dropped rather than written onto a player', () => {
+  const m = started();
+  const { id, from } = someone(m, 'offense');
+  for (const pos of [{ x: NaN, y: 0 }, { x: 0, y: Infinity }, { x: '3', y: 4 }, null]) {
+    const { record, messages } = applyMatchMessage(
+      m, { type: 'shift', side: 'offense', turnIndex: m.state.turnIndex, id, pos }, 100,
+    );
+    assert.deepEqual(messages, []);
+    assert.deepEqual(record.state.players.find((p) => p.id === id).pos, from);
+  }
+});
+
+test('a stale shift is ignored -- it was drawn for a turn that has already run', () => {
+  const m = started();
+  const { id, from, to } = someone(m, 'offense');
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'shift', side: 'offense', turnIndex: m.state.turnIndex + 1, id, pos: to }, 100,
+  );
+  assert.deepEqual(messages, []);
+  assert.deepEqual(record.state.players.find((p) => p.id === id).pos, from);
+});
+
+test('shifting is over once the huddle is -- a formation is what you come to the line with', () => {
+  let m = started();
+  const { id, to } = someone(m, 'offense');
+  // Both commit: the turn runs, and the next turn of the same down is not a
+  // turn anybody may reposition on (canReposition is turnIndex 0 only).
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'offense', turnIndex: 0, play: emptyPlay }, 100));
+  ({ record: m } = applyMatchMessage(m, { type: 'commit', side: 'defense', turnIndex: 0, play: emptyPlay }, 100));
+  if (m.state.turnIndex === 0) return; // the down ended on that turn; nothing to assert here
+  const before = { ...m.state.players.find((p) => p.id === id).pos };
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'shift', side: 'offense', turnIndex: m.state.turnIndex, id, pos: to }, 200,
+  );
+  assert.deepEqual(messages, []);
+  assert.deepEqual(record.state.players.find((p) => p.id === id).pos, before);
+});
+
+test('a shift before the match has started is ignored', () => {
+  const m = createMatch({ matchId: 'm1', variant: '7', seed: 5, tokens });
+  const { record, messages } = applyMatchMessage(
+    m, { type: 'shift', side: 'offense', turnIndex: 0, id: 'anyone', pos: { x: 10, y: 10 } }, 100,
+  );
+  assert.deepEqual(messages, []);
+  assert.equal(record.state, null);
+});

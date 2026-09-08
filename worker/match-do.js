@@ -94,6 +94,14 @@ export class MatchDO {
       this.dispatch(applyMatchMessage(
         this.record, { type: 'commit', side, turnIndex: msg.turnIndex, play: msg.play }, Date.now(),
       ));
+    } else if (msg.type === 'shift') {
+      // One man moved pre-snap, passed straight through to the other coach.
+      // No clock moves, so dispatch's re-arm finds the same deadline it
+      // armed before and leaves it alone (arm() is a no-op for the alarm it
+      // already holds).
+      this.dispatch(applyMatchMessage(
+        this.record, { type: 'shift', side, turnIndex: msg.turnIndex, id: msg.id, pos: msg.pos }, Date.now(),
+      ));
     }
   }
 

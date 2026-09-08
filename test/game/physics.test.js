@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { stepPhysics } from '../../lib/game/physics.js';
+import { contactsAt } from '../../lib/game/physics.js';
+import { frictionsAt } from '../../lib/game/turn.js';
+import { frictionArcsAtMark } from '../../lib/game/render.js';
 import { createGame, setPlan, setMode, getPlayer } from '../../lib/game/state.js';
 import { setCover } from '../../lib/game/cover.js';
 import { maxSpeed, accelMult } from '../../lib/game/modes.js';
@@ -374,4 +377,65 @@ test('a contact reports the contact normal and the friction actually applied', (
   assert.ok(Math.abs(contact.normal.x) < 1e-9, `normal points up the field, got ${contact.normal.x}`);
   assert.ok(Math.abs(contact.normal.y + 1) < 1e-9, `unit normal, got ${contact.normal.y}`);
   assert.equal(contact.mu, FRICTION_BLOCK, 'an ordinary engagement hand-fights');
+});
+
+/**
+ * contactsAt is the static read the board draws its planning-time friction
+ * arcs from: the same overlap test resolveCollisions makes, with nothing
+ * moved and no impulse applied.
+ */
+test('contactsAt reports two men in contact without moving either of them', () => {
+  const state = createGame({ seed: 1, variant: '7' });
+  const [a, b] = [state.players[0], state.players.find((p) => p.team !== state.players[0].team)];
+  // Stand them on top of each other, just inside contact distance.
+  a.pos = { x: 100, y: 100 };
+  b.pos = { x: 100 + a.radius + b.radius - 1, y: 100 };
+  const before = [{ ...a.pos }, { ...b.pos }];
+  const contacts = contactsAt(state).filter((c) => (c.a === a && c.b === b) || (c.a === b && c.b === a));
+  assert.equal(contacts.length, 1, 'the pair is in contact');
+  assert.deepEqual(a.pos, before[0], 'and nobody was pushed out of the overlap');
+  assert.deepEqual(b.pos, before[1]);
+  assert.ok(Math.abs(Math.hypot(contacts[0].normal.x, contacts[0].normal.y) - 1) < 1e-9,
+    'the normal is a unit vector');
+});
+
+test('contactsAt leaves men who are not touching alone', () => {
+  const state = createGame({ seed: 1, variant: '7' });
+  const [a, b] = [state.players[0], state.players.find((p) => p.team !== state.players[0].team)];
+  a.pos = { x: 100, y: 100 };
+  b.pos = { x: 100 + a.radius + b.radius + 5, y: 100 };
+  const contacts = contactsAt(state).filter((c) => (c.a === a && c.b === b) || (c.a === b && c.b === a));
+  assert.equal(contacts.length, 0);
+});
+
+test('the huddle arcs mark opponents only, from both sides of the contact', () => {
+  const state = createGame({ seed: 1, variant: '7' });
+  const off = state.players.filter((p) => p.team === 'offense');
+  const def = state.players.filter((p) => p.team === 'defense');
+  // Two team-mates standing inside each other: constant on a crowded field,
+  // and marking it would paint the whole line orange and say nothing.
+  off[0].pos = { x: 100, y: 100 };
+  off[1].pos = { x: 101, y: 100 };
+  const mates = frictionsAt(state).filter((f) => f.id === off[0].id || f.id === off[1].id);
+  assert.deepEqual(mates, [], 'team-mates do not count');
+
+  // An opponent leaning on him does, and both men are marked.
+  off[0].pos = { x: 40, y: 60 };
+  def[0].pos = { x: 40 + off[0].radius + def[0].radius - 1, y: 60 };
+  const ids = frictionsAt(state).map((f) => f.id);
+  assert.ok(ids.includes(off[0].id) && ids.includes(def[0].id), 'both sides of the contact are marked');
+});
+
+test('a friction arc is drawn for the board at rest, and none when nobody is engaged', () => {
+  const state = createGame({ seed: 1, variant: '7' });
+  // The opening formation: the two lines are set apart, so nothing is engaged.
+  assert.equal(frictionArcsAtMark(state), '', 'a clean line of scrimmage draws no arcs');
+
+  const off = state.players.find((p) => p.team === 'offense');
+  const def = state.players.find((p) => p.team === 'defense');
+  off.pos = { x: 120, y: 90 };
+  def.pos = { x: 120 + off.radius + def.radius - 1, y: 90 };
+  const mark = frictionArcsAtMark(state);
+  assert.equal((mark.match(/class="friction-arc"/g) || []).length, 2,
+    'one arc on each man, the same as the animated case draws');
 });

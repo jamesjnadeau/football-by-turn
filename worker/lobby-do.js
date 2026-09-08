@@ -42,8 +42,16 @@ export class LobbyDO {
     this.sockets.set(id, server);
 
     server.addEventListener('message', (ev) => this.onMessage(id, ev));
+    // Both, and for the same handler. A socket that dies badly -- a killed
+    // tab, a sleeping laptop, a phone changing network -- raises `error`, and
+    // some of those never raise `close` at all. Listening only for `close` is
+    // what left this coach's id in the queue to be paired with as a ghost.
     server.addEventListener('close', () => this.onClose(id));
+    server.addEventListener('error', () => this.onClose(id));
 
+    // Before the join, so a ghost at the head of a queue is gone before this
+    // coach can be paired with it rather than after.
+    await this.sweep();
     await this.dispatch(applyLobbyMessage(this.record, { type: 'join', id, side }));
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -55,8 +63,32 @@ export class LobbyDO {
   }
 
   onClose(id) {
-    this.sockets.delete(id);
+    // `close` and `error` can both arrive for the same socket, and a coach
+    // who has already been matched is no longer in a queue at all -- so this
+    // has to be safe to run twice. It is: deleting a key that is gone is a
+    // no-op, and lobby-engine's `leave` returns no messages when the id was
+    // not queued.
+    if (!this.sockets.delete(id)) return;
     this.dispatch(applyLobbyMessage(this.record, { type: 'leave', id }));
+  }
+
+  /** Whether `id`'s socket is one this DO can still send on. */
+  isLive(id) {
+    const ws = this.sockets.get(id);
+    // 1 is OPEN. A socket that is closing or closed can still be handed to
+    // send() without throwing, which is exactly how a ghost went unnoticed.
+    return !!ws && ws.readyState === 1;
+  }
+
+  /**
+   * Drop queued coaches whose sockets are gone. Runs before every join, which
+   * is the only moment a ghost can do any harm: pairing happens on a join, so
+   * a queue that is clean going into one cannot pair anybody with a ghost.
+   */
+  async sweep() {
+    for (const [id, ws] of this.sockets) if (ws.readyState !== 1) this.sockets.delete(id);
+    const live = [...this.sockets.keys()];
+    await this.dispatch(applyLobbyMessage(this.record, { type: 'sweep', live }));
   }
 
   /**
@@ -72,6 +104,25 @@ export class LobbyDO {
   async dispatch({ record, messages }) {
     this.record = record;
     const matchedPair = messages.filter((m) => m.type === 'matched');
+    // The sweep makes this rare; it does not make it impossible. A socket can
+    // die in the moment between the sweep that kept it and the pairing that
+    // popped it, and a match minted for a pair with only one live coach in it
+    // is the ghost bug all over again -- so the survivor goes back to the
+    // FRONT of his queue (he has waited longest) and no match is created.
+    if (matchedPair.length === 2 && !matchedPair.every((m) => this.isLive(m.to))) {
+      let requeued = record;
+      for (const m of matchedPair) {
+        if (this.isLive(m.to)) requeued = { ...requeued, [m.side]: [m.to, ...requeued[m.side]] };
+        else this.sockets.delete(m.to);
+      }
+      this.record = requeued;
+      const depth = {
+        to: 'broadcast', type: 'queued',
+        offense: requeued.offense.length, defense: requeued.defense.length,
+      };
+      for (const ws of this.sockets.values()) safeSend(ws, depth);
+      return;
+    }
     let tokens = null;
     let matchId = null;
     if (matchedPair.length === 2) {

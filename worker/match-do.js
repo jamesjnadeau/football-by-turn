@@ -75,7 +75,13 @@ export class MatchDO {
     this.sockets[side] = server;
     if (superseded) try { superseded.close(1000, 'superseded'); } catch { /* already gone */ }
     server.addEventListener('message', (ev) => this.onMessage(side, server, ev));
+    // `error` as well as `close`, for the reason LobbyDO listens to both: a
+    // socket that dies badly may never raise `close`, and a seat nobody
+    // vacates is an opponent who is never told his coach dropped -- the
+    // match then runs the drop grace out on a clock the other coach is
+    // watching tick against a man who is not coming back.
     server.addEventListener('close', () => this.onClose(side, server));
+    server.addEventListener('error', () => this.onClose(side, server));
     await this.dispatch(result);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -93,7 +99,9 @@ export class MatchDO {
 
   onClose(side, server) {
     // Only the seated socket closing empties the seat: a superseded one
-    // closing late must not unseat the coach who replaced it.
+    // closing late must not unseat the coach who replaced it. This also
+    // makes the handler safe to run twice, which it has to be now that
+    // `close` and `error` share it.
     if (this.sockets[side] !== server) return;
     this.sockets[side] = null;
     this.dispatch(applyMatchMessage(this.record, { type: 'disconnect', side }, Date.now()));

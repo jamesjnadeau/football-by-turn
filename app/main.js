@@ -12,7 +12,7 @@ import { nextDown } from '../lib/game/rules.js';
 import {
   renderBoardShell, renderPlayers, renderPlans, renderPassArrow, renderLoftHandle, renderLooseBall,
   looseBallMark, planMark, coverMark, passArrowMark, passArrowTip, renderMessage, renderPlayClock, destinationMark,
-  frictionArcsMark,
+  frictionArcsMark, frictionArcsAtMark,
   lineZoneMark, passLandingMark, passLockMark, cameraViewBox, liveLobMark,
   passFlightMark, passShadowMark, loftHandlePoint, unplannedRingsMark,
 } from '../lib/game/render.js';
@@ -347,6 +347,15 @@ function paintArrows() {
 function paint() {
   layer('game-players').clear().svg(renderPlayers(state, { showVelocity }) + renderLooseBall(state));
   paintArrows();
+  // The friction arcs on the board as it stands. They used to be painted only
+  // from a turn's frames, so two men already leaning on each other were
+  // unmarked for the whole huddle and lit up the moment the turn ran -- the
+  // one moment the coach could no longer do anything about it. Same arcs, same
+  // rule; the animation is untouched and still draws its own, per frame.
+  //
+  // Never while animating: animate() owns this layer then, and paint() does
+  // run inside that window -- a match's clock ticks it once a second.
+  if (!animating) layer('game-friction').clear().svg(frictionArcsAtMark(state));
   // In a match, the clock is the other half of the down/distance line — a
   // coach reads them together, the same way he reads down-and-distance
   // itself. Outside a match netDeadlineAt is always null and this is

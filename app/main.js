@@ -6,7 +6,7 @@ import {
 import {
   canReposition, placePlayer, spotFault, alignDefense, lineCount, setPersonnel, answerOffense,
 } from '../lib/game/formation.js';
-import { clearAiPlans, AI_MODES, aiModeIndex, nextAiMode, defaultModeForSide } from '../lib/game/ai.js';
+import { clearAiPlans, AI_MODES, aiModeIndex, defaultModeForSide } from '../lib/game/ai.js';
 import { runTurn, unplannedPlayers } from '../lib/game/turn.js';
 import { nextDown } from '../lib/game/rules.js';
 import {
@@ -75,6 +75,9 @@ const board = SVG(document.getElementById('board'));
 const hud = document.getElementById('hud');
 const menu = document.getElementById('menu');
 const closeMenuBtn = document.getElementById('close-menu');
+const aiModal = document.getElementById('ai-modal');
+const aiModalOptionsEl = document.getElementById('ai-modal-options');
+const aiModalCancelBtn = document.getElementById('ai-modal-cancel');
 const playsHeading = document.getElementById('plays-heading');
 const savePlayBtn = document.getElementById('save-play');
 const playSlotsEl = document.getElementById('play-slots');
@@ -957,6 +960,30 @@ for (let i = 0; i < PLAY_SLOTS; i++) {
 }
 
 /**
+ * The 🤖 picker's own options, one per AI_MODES entry, built once for the
+ * same reason the slot buttons above are: paint() runs on every gesture, and
+ * rebuilding these each time would throw away the focus of anyone tabbing
+ * through the dialog with the keyboard. AI_MODES itself never changes at
+ * runtime, so unlike the slot buttons these never need relabelling either —
+ * only which one is currently picked, which syncAiModal (below) marks.
+ */
+const aiModalOptionBtns = AI_MODES.map((m) => {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'home-choice';
+  const label = document.createElement('span');
+  label.className = 'home-choice-label';
+  label.textContent = m.label;
+  const note = document.createElement('span');
+  note.className = 'home-choice-note';
+  note.textContent = m.note;
+  btn.append(label, note);
+  btn.addEventListener('click', () => chooseAiMode(m));
+  aiModalOptionsEl.appendChild(btn);
+  return btn;
+});
+
+/**
  * The Coaches Menu's own buttons, by the control name they answer to. Both
  * this menu and the board's buttons are painted from one controlsFor list, so
  * a control's label and its enable rule are written once — see
@@ -1155,13 +1182,13 @@ board.on('keydown', (e) => {
  * half second. Skipped when focus is on a button (or anything else space
  * already has a job for): the native activation would otherwise fire beside
  * this one, or this one would steal the press from whatever focus actually
- * wants it. Skipped too while the Coaches Menu is open, since that dialog's
- * own buttons cover the same ground and a turn running behind a menu the
- * coach is still reading would be a surprise, not a shortcut.
+ * wants it. Skipped too while the Coaches Menu or the 🤖 picker is open,
+ * since each dialog's own buttons cover the same ground and a turn running
+ * behind one the coach is still reading would be a surprise, not a shortcut.
  */
 document.addEventListener('keydown', (e) => {
   if (e.key !== ' ') return;
-  if (menu.open) return;
+  if (menu.open || aiModal.open) return;
   if (e.target.closest?.('button, [role="button"], input, textarea, select, a[href], [tabindex]')) return;
   e.preventDefault();
   pressRun();
@@ -1174,6 +1201,15 @@ menu.addEventListener('click', (e) => {
 });
 
 closeMenuBtn.addEventListener('click', closeMenu);
+
+// Same backdrop rule as the Coaches Menu above: content lives inside
+// .menu-body, so a click landing on the dialog element itself is a
+// backdrop click, and Esc is handled natively by showModal().
+aiModal.addEventListener('click', (e) => {
+  if (e.target === aiModal) closeAiModal();
+});
+aiModalCancelBtn.addEventListener('click', closeAiModal);
+
 savePlayBtn.addEventListener('click', savePlay);
 
 /**
@@ -1420,10 +1456,43 @@ function pressClear() {
   paint();
 }
 
+/**
+ * Ring the option the state is actually in, so a coach reopening the picker
+ * sees where he stands rather than a plain list. `aria-pressed` is what a
+ * screen reader announces; `is-picked` is what the coach sees.
+ */
+function syncAiModal() {
+  const at = aiModeIndex(state);
+  aiModalOptionBtns.forEach((btn, i) => {
+    btn.classList.toggle('is-picked', i === at);
+    btn.setAttribute('aria-pressed', String(i === at));
+  });
+}
+
+function openAiModal() {
+  if (aiModal.open) return;
+  syncAiModal();
+  aiModal.showModal();
+}
+
+function closeAiModal() {
+  if (aiModal.open) aiModal.close();
+}
+
+/**
+ * The 🤖 button: opens a picker of every setting rather than stepping to the
+ * next one, so a coach can go straight from "computer plays smart defense"
+ * to "both teams: computer" without cycling past everything in between.
+ */
 function pressAi() {
   if (net) return; // the server owns aiTeam/remoteTeam in a match -- nobody here is the computer's to hand off.
   if (animating || state.phase !== 'planning') return;
-  const next = nextAiMode(state);
+  openAiModal();
+}
+
+/** One of the picker's own options, chosen. */
+function chooseAiMode(next) {
+  closeAiModal();
   state.aiBoth = next.ai === 'both';
   state.aiTeam = state.aiBoth ? null : next.ai;
   state.aiLevel = next.level;

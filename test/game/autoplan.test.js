@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   autoplanLearned, autoplanLearnedOffense, clearTeamOrders, autoplanLearnedDefense,
+  autoplanBothTeams,
 } from '../../lib/game/autoplan.js';
 import { createGame, getPlayer, setPlan, setMode, aimSnap } from '../../lib/game/state.js';
 import { fieldPos } from '../../lib/game/view.js';
@@ -196,4 +197,37 @@ test('the defensive note follows the ball once the play has broken', () => {
   loose.turnIndex = 1;
   loose.ball = { carrierId: null, pos: fieldPos(0, loose.losYard + 2), vel: { x: 0, y: 0 } };
   assert.match(autoplanLearnedDefense(loose), /^Loose ball/);
+});
+
+test('autoplanBothTeams draws up both sides, byte-for-byte what each half draws alone', () => {
+  const both = createGame({ seed: 1 });
+  const offenseOnly = createGame({ seed: 1 });
+  autoplanLearnedOffense(offenseOnly);
+  const defenseOnly = createGame({ seed: 1 });
+  autoplanLearnedDefense(defenseOnly);
+
+  autoplanBothTeams(both);
+
+  assert.deepEqual(board(both, 'offense'), board(offenseOnly, 'offense'));
+  assert.deepEqual(board(both, 'defense'), board(defenseOnly, 'defense'));
+  assert.ok(
+    both.players.every((p) => p.plan !== null),
+    'every man on the field has a plan',
+  );
+});
+
+test('the gift button draws both sides once the computer is coaching both', () => {
+  const s = createGame({ seed: 1 });
+  s.aiBoth = true;
+  // Something already on the board, on both sides, that the press must
+  // override -- the whole point of pressing it rather than just hitting End
+  // Turn.
+  setPlan(s, 'o-rb', { x: 1, y: 0 }, 0.3);
+  setPlan(s, 'd-cb1', { x: -1, y: 0 }, 0.3);
+
+  autoplanLearned(s);
+
+  assert.ok(s.players.every((p) => p.plan !== null), 'nobody is left blank');
+  assert.notDeepEqual(getPlayer(s, 'o-rb').plan, { dir: { x: 1, y: 0 }, throttle: 0.3, target: null });
+  assert.notDeepEqual(getPlayer(s, 'd-cb1').plan, { dir: { x: -1, y: 0 }, throttle: 0.3, target: null });
 });

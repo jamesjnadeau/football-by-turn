@@ -216,7 +216,7 @@ test('a whole smart turn runs, and leaves nothing of the computer behind', () =>
   'no plan and no halo for the human to read');
 });
 
-test('the mode button cycles all four computer settings and hot-seat', () => {
+test('the mode button cycles all five computer settings and hot-seat', () => {
   const s = createGame({ seed: 1, ai: 'defense', aiLevel: 'smart' });
   const labels = [];
   for (let i = 0; i < AI_MODES.length; i++) {
@@ -230,6 +230,7 @@ test('the mode button cycles all four computer settings and hot-seat', () => {
     'Defense: computer (learned)',
     'Defense: computer (basic)',
     'Offense: computer (learned)',
+    'Both teams: computer',
     'Defense: you',
   ]);
   // The cycle closes.

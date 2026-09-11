@@ -61,7 +61,9 @@ import { serializeBundle } from '../lib/game/train/bundle.js';
 import {
   loadGenomeBundles, saveGenomeBundle, clearGenomeBundles, overrideValues,
 } from './genome-store.js';
-import { autoplanLearned } from '../lib/game/autoplan.js';
+import {
+  autoplanLearned, autoplanBothTeams, autoplanLearnedOffense, autoplanLearnedDefense,
+} from '../lib/game/autoplan.js';
 import { maybeApplyLearnedFormations } from '../lib/game/learned/formation.js';
 import { activeGenome } from '../lib/game/learned/active.js';
 import { createLesson } from './tutorial.js';
@@ -1245,6 +1247,9 @@ function finishTurn(events) {
   // there is to say about what got thrown and by whom.
   const passEvent = events.find((e) => e.type === 'pass');
   animating = false;
+  // Training mode's both-computer game: a fresh turn opens with a fresh plan
+  // already on the board for every man, not a blank one waiting on a press.
+  if (state.aiBoth && state.phase === 'planning') autoplanBothTeams(state);
   paint();
   for (const e of events) {
     if (e.type === 'tackled') say('Tackled!');
@@ -1327,7 +1332,17 @@ function pressRun() {
   // ones it is deliberately not teaching yet. A match has a clock: asking for
   // a second press spends seconds a coach cannot get back, on a button that
   // says End Turn rather than Run Turn, to warn him about a board he can see.
-  const missing = lesson || net ? [] : unplannedPlayers(state);
+  // Training mode's both-computer game: nobody is ever left without a move.
+  // Whichever side still has a gap gets a full plan of its own -- the same
+  // thing the gift button draws up, just for that side, and only if it
+  // actually needs it -- a side with every man already ordered, by hand or
+  // by an earlier gift press, is left exactly as drawn. So the warning below
+  // never has anything left to say.
+  if (state.aiBoth) {
+    if (state.players.some((p) => p.team === 'offense' && p.plan === null)) autoplanLearnedOffense(state);
+    if (state.players.some((p) => p.team === 'defense' && p.plan === null)) autoplanLearnedDefense(state);
+  }
+  const missing = lesson || net || state.aiBoth ? [] : unplannedPlayers(state);
   if (missing.length > 0 && !pendingWarning) {
     // Spec: warn when not every player has a direction. Second press runs anyway.
     pendingWarning = true;
@@ -1409,12 +1424,16 @@ function pressAi() {
   if (net) return; // the server owns aiTeam/remoteTeam in a match -- nobody here is the computer's to hand off.
   if (animating || state.phase !== 'planning') return;
   const next = nextAiMode(state);
-  state.aiTeam = next.ai;
+  state.aiBoth = next.ai === 'both';
+  state.aiTeam = state.aiBoth ? null : next.ai;
   state.aiLevel = next.level;
   // Handing the defense back to the computer — or to a different brain — drops
   // whatever arrows and coverage were already on it. They are not that
   // coach's any more.
   if (state.aiTeam) clearAiPlans(state);
+  // Landing on the both-computer game: the board starts exactly as a gift
+  // press would leave it, not blank -- this mode never shows an empty board.
+  if (state.aiBoth) autoplanBothTeams(state);
   pendingWarning = false;
   say(next.note);
   paint();
@@ -1669,6 +1688,9 @@ function goToNextDown() {
   if (state.phase === 'gameOver') {
     say(gameOverMessage(state));
   } else {
+    // A new down rebuilds state.players from scratch, so a both-computer
+    // game opens it exactly as it opens every other turn: fully planned.
+    if (state.aiBoth) autoplanBothTeams(state);
     say(`${['1st', '2nd', '3rd', '4th'][state.down - 1]} down.`);
     rebuildBoard();
   }

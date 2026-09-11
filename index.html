@@ -153,10 +153,25 @@
     .home-choice-note { display: block; font-size: .85rem; opacity: .85; margin-top: .25rem; }
 
     /* Padding lives on .menu-body, not the dialog, so a click landing on the
-       dialog element itself is unambiguously a backdrop click. */
-    #menu { padding: 0; border: 1px solid #999; border-radius: .5rem; }
-    #menu::backdrop { background: rgba(0, 0, 0, .45); }
+       dialog element itself is unambiguously a backdrop click. Shared by
+       #ai-modal, the 🤖 button's own picker, so the two dialogs wear the
+       same chrome. */
+    #menu, #ai-modal {
+      padding: 0; border: 1px solid #999; border-radius: .5rem;
+      /* Six full options with their notes run taller than a short phone
+         screen -- the dialog scrolls its own content rather than running off
+         the bottom of the viewport with no way back to its own Close/Cancel. */
+      max-height: calc(100vh - 2rem); overflow-y: auto;
+    }
+    #menu::backdrop, #ai-modal::backdrop { background: rgba(0, 0, 0, .45); }
     .menu-body { width: 16rem; padding: 1rem; }
+    /* The 🤖 picker's options are home-choice buttons (same look as the home
+       screen's own pick-one list) stacked with .home-choices' own gap. */
+    #ai-modal .menu-body { width: 18rem; }
+    #ai-modal-cancel { margin-top: .75rem; }
+    /* The setting the game is actually in right now, marked on the button
+       that named it rather than left for the coach to work out from memory. */
+    .home-choice.is-picked { box-shadow: inset 0 0 0 2px #0b3d1e; }
     .menu-body h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
     #hud { margin-bottom: .5rem; }
     .menu-body button { display: block; width: 100%; margin: .25rem 0; padding: .5rem; }
@@ -202,6 +217,13 @@
         <button id="discard-genome">Use the shipped genome</button>
       </div>
       <button id="close-menu">Close</button>
+    </div>
+  </dialog>
+  <dialog id="ai-modal">
+    <div class="menu-body">
+      <h1>🤖 Who's coaching?</h1>
+      <div class="home-choices" id="ai-modal-options"></div>
+      <button id="ai-modal-cancel">Cancel</button>
     </div>
   </dialog>
   <script type="module" src="app/home.js"></script>
